@@ -1,6 +1,10 @@
 use abcd::Model;
+use serde::{Serialize, Deserialize};
 
-struct MyParameters;
+#[derive(Serialize, Deserialize)]
+struct MyParameters {
+    p_heads: f64,
+}
 
 #[derive(Debug)]
 struct MyModel{
