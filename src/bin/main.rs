@@ -14,7 +14,7 @@ struct MyModel{
 impl Model for MyModel{
     type Parameters = MyParameters;
 
-    fn prior_sample<R: abcd::Random>(&self, random: &R) -> Self::Parameters {
+    fn prior_sample<R: abcd::Random>(&self, _random: &R) -> Self::Parameters {
         todo!()
     }
 
@@ -22,15 +22,15 @@ impl Model for MyModel{
         todo!()
     }
 
-    fn perturb(&self, p: Self::Parameters) -> Self::Parameters {
+    fn perturb(&self, _p: Self::Parameters) -> Self::Parameters {
         todo!()
     }
 
-    fn pert_density(&self, a: Self::Parameters, b: Self::Parameters) -> f64 {
+    fn pert_density(&self, _a: Self::Parameters, _b: Self::Parameters) -> f64 {
         todo!()
     }
 
-    fn score(&self, p: Self::Parameters) -> f64 {
+    fn score(&self, _p: Self::Parameters) -> f64 {
         todo!()
     }
 }
