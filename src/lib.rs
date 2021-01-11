@@ -1,4 +1,5 @@
 mod storage;
+mod error;
 
 use serde::{Serialize, Deserialize};
 
@@ -20,6 +21,11 @@ pub trait Model {
 struct Scored<P> {
     parameter: P,
     score: f64,
+}
+impl<P> Scored<P> {
+    pub fn new(parameter: P, score: f64) -> Scored<P> {
+        Scored{parameter, score}
+    }
 }
 
 #[derive(Serialize, Deserialize)]
