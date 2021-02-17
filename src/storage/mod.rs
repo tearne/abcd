@@ -1,13 +1,15 @@
 use std::{fs::DirEntry, path::PathBuf};
 
-use crate::{Generation, Weighted};
+use serde::Serialize;
+
+use crate::{Generation, Weighted, error::Error};
 use crate::error::Result;
 
 trait Storage {
     fn check_active_gen_id(&self) -> Result<u16>;
     fn retrieve_active_gen<P>(&self) -> Result<Generation<P>>;
 
-    fn save_particle<P>(&self, w: Weighted<P>) -> Result<String>;
+    fn save_particle<P: Serialize>(&self, w: &Weighted<P>) -> Result<String>;
 
     fn num_particles_available(&self) -> Result<u16>;
     fn retrieve_all_particles<P>(&self) -> Vec<Weighted<P>>;
@@ -50,8 +52,15 @@ impl Storage for FileSystem {
         todo!()
     }
 
-    fn save_particle<P>(&self, _w: Weighted<P>) -> Result<String> {
-        todo!()
+    fn save_particle<P: Serialize>(&self, w: &Weighted<P>) -> Result<String> {
+        let file_path_buf = self.base_path.clone().join("monkey.json");
+        
+        std::fs::write(
+            file_path_buf.as_path(), 
+            serde_json::to_string_pretty(w).unwrap()
+        ).unwrap();
+        
+        file_path_buf.as_os_str().to_str().map(|v|v.to_owned()).ok_or(Error::Os(file_path_buf.as_os_str().to_owned()))
     }
 
     fn num_particles_available(&self) -> Result<u16> {
@@ -70,6 +79,7 @@ impl Storage for FileSystem {
 mod tests {
     use std::path::Path;
     use crate::Scored;
+    use serde::{Serialize, Deserialize};
 
     use super::*;
 
@@ -77,7 +87,7 @@ mod tests {
     impl TmpDir {
         pub fn new(name: &str) -> Self {
             let tmp_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("target").join("test_tmp").join(name);
-            if !tmp_path.exists() {
+            if tmp_path.exists() {
                 std::fs::remove_dir_all(&tmp_path).unwrap();
             }
             std::fs::create_dir_all(&tmp_path).expect("failed to create");
@@ -90,6 +100,7 @@ mod tests {
         }
     }
 
+    #[derive(Serialize, Deserialize, Debug, PartialEq)]
     struct DummyParams{
         a: u16,
         b: f32
@@ -134,12 +145,15 @@ mod tests {
         };
 
         let storage = storage(tmp_dir.0.clone());
-        let saved_1 = storage.save_particle(w1).unwrap();
-        let saved_2 = storage.save_particle(w2).unwrap();
 
-        let file = std::fs::File::open(tmp_dir.0.clone().join(saved_1));
-        let t = serde_json::from_reader(std::io::BufReader::new(file));
+        let saved_1 = storage.save_particle(&w1).unwrap();
+        println!("File was saved to {}", saved_1);
+        let saved_2 = storage.save_particle(&w2).unwrap();
+
+        let file = std::fs::File::open(tmp_dir.0.clone().join(saved_1)).unwrap();
+        println!("About to try and load from {:?}", file);
+        let loaded: Weighted<DummyParams> = serde_json::from_reader(std::io::BufReader::new(file)).unwrap();
         
-        // // load from 'tmp_dir/live'
+        assert_eq!(w1, loaded);
     }
 }

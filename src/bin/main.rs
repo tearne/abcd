@@ -18,7 +18,7 @@ impl Model for MyModel{
         todo!()
     }
 
-    fn prior_density(&self) -> f64 {
+    fn prior_density(&self, _p: Self::Parameters) -> f64 {
         todo!()
     }
 
