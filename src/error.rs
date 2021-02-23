@@ -7,6 +7,7 @@ pub enum Error {
     Io(std::io::Error),
     Os(std::ffi::OsString),
     Parse(std::num::ParseIntError),
+    Serde(serde_json::Error),
 }
 
 // impl error::Error for Error {}
@@ -17,7 +18,14 @@ impl fmt::Display for Error {
             &Error::Io(ref err) => err.fmt(f),
             &Error::Os(ref original) => f.write_fmt(format_args!("Failed to convert to string: {:?}", original)),
             &Error::Parse(ref err) => err.fmt(f),
+            &Error::Serde(ref err) => err.fmt(f),
         }
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(value: serde_json::Error) -> Self {
+        Error::Serde(value)
     }
 }
 

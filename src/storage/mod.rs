@@ -1,4 +1,4 @@
-use std::{fs::DirEntry, path::PathBuf};
+use std::{fs::DirEntry, path::{Path, PathBuf}};
 
 use serde::Serialize;
 
@@ -17,14 +17,13 @@ trait Storage {
     fn save_new_gen<P>(&self, g: Generation<P>) -> Result<u16>;
 }
 
-struct FileSystem {
-    base_path: PathBuf,
+struct FileSystem<'a> {
+    base_path: &'a Path,
 }
 
-impl Storage for FileSystem {
+impl Storage for FileSystem<'_> {
     fn check_active_gen_id(&self) -> Result<u16> {
-        let mut dir = self.base_path.clone();
-        dir.push("gen");
+        let dir = self.base_path.join("gen");
         
         let paths = std::fs::read_dir(&dir);
 
@@ -53,14 +52,12 @@ impl Storage for FileSystem {
     }
 
     fn save_particle<P: Serialize>(&self, w: &Weighted<P>) -> Result<String> {
-        let file_path_buf = self.base_path.clone().join("monkey.json");
+        let file_path = self.base_path.join("some_file.json");
         
-        std::fs::write(
-            file_path_buf.as_path(), 
-            serde_json::to_string_pretty(w).unwrap()
-        ).unwrap();
+        let pretty_json = serde_json::to_string_pretty(w);
+        std::fs::write(&file_path, pretty_json?)?;
         
-        file_path_buf.as_os_str().to_str().map(|v|v.to_owned()).ok_or(Error::Os(file_path_buf.as_os_str().to_owned()))
+        Ok(file_path.to_string_lossy().into_owned())
     }
 
     fn num_particles_available(&self) -> Result<u16> {
