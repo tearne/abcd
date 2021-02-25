@@ -106,19 +106,19 @@ mod tests {
         pub fn new(a: u16, b: f32) -> Self { DummyParams{a,b} }
     }
 
-    fn storage_test_resources(sub_dir: &str) -> FileSystem {
+    fn manifest_dir() -> &'static Path {
         // From: https://doc.rust-lang.org/cargo/reference/environment-variables.html
-        let full_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(sub_dir);
-        storage(full_path)
+        Path::new(env!("CARGO_MANIFEST_DIR"))
     }
 
-    fn storage(p: PathBuf) -> FileSystem {
+    fn storage(p: &Path) -> FileSystem {
         FileSystem{base_path: p}
     }
 
     #[test]
     fn test_no_gen_files() {
-        let storage = storage_test_resources("resources/test/fs/empty");
+        let full_path = manifest_dir().join("resources/test/fs/empty");
+        let storage = storage(&full_path);
         assert_eq!(0, storage.check_active_gen_id().unwrap());
     }
 
@@ -141,7 +141,7 @@ mod tests {
             weight: 2.0,
         };
 
-        let storage = storage(tmp_dir.0.clone());
+        let storage = storage(&tmp_dir.0);
 
         let saved_1 = storage.save_particle(&w1).unwrap();
         println!("File was saved to {}", saved_1);
