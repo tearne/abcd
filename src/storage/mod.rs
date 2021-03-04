@@ -28,7 +28,7 @@ impl Storage for FileSystem<'_> {
     fn check_active_gen_id(&self) -> Result<u16> {
         //let dir = self.base_path.join("gen");
         
-        let re = Regex::new(r#"gen_(?P<gid>/d)"#).unwrap();
+        let re = Regex::new(r#"^gen_(?P<gid>\d*)$"#).unwrap();
 
         let entries: Vec<_> = std::fs::read_dir(self.base_path)?
             // .into_iter()
