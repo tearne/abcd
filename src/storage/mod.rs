@@ -1,10 +1,12 @@
 use std::{fs::DirEntry, path::{Path, PathBuf}};
 
+use regex::Regex;
 use serde::Serialize;
 
 use crate::{Generation, Weighted, error::Error};
 use crate::error::Result;
 use uuid::Uuid;
+use std::convert::TryInto;
 
 trait Storage {
     fn check_active_gen_id(&self) -> Result<u16>;
@@ -24,28 +26,57 @@ struct FileSystem<'a> {
 
 impl Storage for FileSystem<'_> {
     fn check_active_gen_id(&self) -> Result<u16> {
-        let dir = self.base_path.join("gen");
+        //let dir = self.base_path.join("gen");
         
-        let paths = std::fs::read_dir(&dir);
+        let re = Regex::new(r#"gen_(?P<gid>/d)"#).unwrap();
 
-        let dirs: std::result::Result<Vec<DirEntry>, std::io::Error> = 
-            paths?
-                .into_iter()
-                .collect();
+        let entries: Vec<_> = std::fs::read_dir(self.base_path)?
+            // .into_iter()
+            .filter(|f| {
+                let path = f.as_ref().unwrap().path();
+                //TODO this stinks
+                path.is_dir() && path.file_name().unwrap().to_string_lossy().starts_with("gen_")
+            })
+            .map(|f| f.as_ref().unwrap().path().file_name().unwrap().to_string_lossy().to_string())
+            .map(|dir_name| {
+                let caps = re.captures(&dir_name).unwrap();
+                let genid = &caps["gid"];
 
-        let file_names: std::result::Result<Vec<String>, std::ffi::OsString> = 
-            dirs?.into_iter()
-                .map(|v| v.file_name().into_string())
-                .collect();
+            })
+            .collect();
 
-        let generation_numbers: std::result::Result<Vec<u16>, std::num::ParseIntError>  = 
-            file_names?
-                .into_iter()
-                .filter(|v| !v.starts_with("."))
-                .map(|v| v.parse::<u16>())
-                .collect();
+        println!("=====> {:?}", entries);
 
-        Result::Ok(generation_numbers?.into_iter().max().unwrap_or(0))
+        //unimplemented!();
+
+        // let entries: std::result::Result<Vec<DirEntry>, std::io::Error> = 
+        //         std::fs::read_dir(&dir)?
+        //         .into_iter()
+        //         .collect();
+
+        // let entry_names: std::result::Result<Vec<String>, std::ffi::OsString> = 
+        //     entries?.into_iter()
+        //         .map(|v| v.file_name().into_string())
+        //         .collect();
+
+        // let generation_numbers: std::result::Result<Vec<u16>, std::num::ParseIntError>  = 
+        //     entry_names?
+        //         .into_iter()
+        //         .filter(|v| !v.starts_with("."))
+        //         // .filter(|v|???) Filter out dirs?  Test me?
+        //         .map(|v| v.parse::<u16>())
+        //         .collect();
+
+        // let files = std::fs::read_dir(self.base_path).unwrap();
+
+        // let gen_dirs = 
+        // files.
+        // filter(|f| f.path().unwrap().starts_with("gen"))
+        // .collect();
+        // Result::Ok(gen_dirs.count).unwrap_or(0))
+
+       // Result::Ok(generation_numbers?.into_iter().max().unwrap_or(0))
+       Result::Ok(entries.len().try_into().unwrap())
     }
 
     fn retrieve_active_gen<P>(&self) -> Result<Generation<P>> {
@@ -55,7 +86,7 @@ impl Storage for FileSystem<'_> {
     fn save_particle<P: Serialize>(&self, w: &Weighted<P>) -> Result<String> {
         let file_uuid = Uuid::new_v4();
         let file_path = self.base_path.join(file_uuid.to_string()+".json");
-        
+
         let pretty_json = serde_json::to_string_pretty(w);
         std::fs::write(&file_path, pretty_json?)?;
         
@@ -63,17 +94,17 @@ impl Storage for FileSystem<'_> {
     }
 
     fn num_particles_available(&self) -> Result<u16> {
-        //todo!()
+        todo!()
         // // Get current non finished gen?
-        let gen_no = self.check_active_gen_id().to_string();
-        let dir = self.base_path.join(gen_no);
-        let files = std::fs::read_dir(dir).unwrap();
-        let particle_file_names = 
-                 files
-                     .filter(|v| v.path().extension() == Some(OsStr::from_bytes(b"json")))
-               //      .for_each(|f| println!("{:?}",f));
-                     .collect();
-         Result::Ok(particle_file_names.count).unwrap_or(0))
+        // let gen_no = self.check_active_gen_id().to_string();
+        // let dir = self.base_path.join(gen_no);
+        // let files = std::fs::read_dir(dir).unwrap();
+        // let particle_file_names = 
+        //          files
+        //              .filter(|v| v.path().extension() == Some(OsStr::from_bytes(b"json")))
+        //        //      .for_each(|f| println!("{:?}",f));
+        //              .collect();
+        //  Result::Ok(particle_file_names.count).unwrap_or(0))
     }
 
     fn retrieve_all_particles<P>(&self) -> Vec<Weighted<P>> {
@@ -133,6 +164,13 @@ mod tests {
         let full_path = manifest_dir().join("resources/test/fs/empty");
         let storage = storage(&full_path);
         assert_eq!(0, storage.check_active_gen_id().unwrap());
+    }
+
+    #[test]
+    fn test_number_gen_files() {
+        let full_path = manifest_dir().join("resources/test/fs/example");
+        let storage = storage(&full_path);
+        assert_eq!(2, storage.check_active_gen_id().unwrap());
     }
 
     #[test]
