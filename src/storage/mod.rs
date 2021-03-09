@@ -1,4 +1,4 @@
-use std::{fs::DirEntry, path::{Path, PathBuf}};
+use std::{ffi::OsStr, fs::DirEntry, path::{Path, PathBuf}};
 
 use regex::Regex;
 use serde::Serialize;
@@ -95,16 +95,23 @@ impl Storage for FileSystem<'_> {
 
     fn num_particles_available(&self) -> Result<u16> {
         todo!()
-        // // Get current non finished gen?
-        // let gen_no = self.check_active_gen_id().to_string();
-        // let dir = self.base_path.join(gen_no);
+        // Get current non finished gen?
+        // let re = Regex::new(r#"^gen_(?P<gid>\d*)$"#).unwrap();
+        // let gen_no = self.check_active_gen_id().unwrap();
+        // let gen_dir = format!("{}{}","gen_",gen_no);
+        // let dir = self.base_path.join(gen_dir);
         // let files = std::fs::read_dir(dir).unwrap();
-        // let particle_file_names = 
-        //          files
-        //              .filter(|v| v.path().extension() == Some(OsStr::from_bytes(b"json")))
-        //        //      .for_each(|f| println!("{:?}",f));
-        //              .collect();
-        //  Result::Ok(particle_file_names.count).unwrap_or(0))
+        // let particle_files = 
+        // files
+        // .map(|entry| {
+        //     let entry = entry.unwrap();
+        //     let entry_path = entry.path();
+        //     let filename = entry_path.file_name().unwrap();
+        //     let file_name_as_str = filename.to_str().unwrap();
+        //     let not_gen = !re.is_match(file_name_as_str);
+        //     not_gen
+        // }).collect();
+        //  Result::Ok(particle_files.count).unwrap_or(0)
     }
 
     fn retrieve_all_particles<P>(&self) -> Vec<Weighted<P>> {
