@@ -94,24 +94,25 @@ impl Storage for FileSystem<'_> {
     }
 
     fn num_particles_available(&self) -> Result<u16> {
-        todo!()
+        //todo!()
         // Get current non finished gen?
-        // let re = Regex::new(r#"^gen_(?P<gid>\d*)$"#).unwrap();
-        // let gen_no = self.check_active_gen_id().unwrap();
-        // let gen_dir = format!("{}{}","gen_",gen_no);
-        // let dir = self.base_path.join(gen_dir);
-        // let files = std::fs::read_dir(dir).unwrap();
-        // let particle_files = 
-        // files
-        // .map(|entry| {
-        //     let entry = entry.unwrap();
-        //     let entry_path = entry.path();
-        //     let filename = entry_path.file_name().unwrap();
-        //     let file_name_as_str = filename.to_str().unwrap();
-        //     let not_gen = !re.is_match(file_name_as_str);
-        //     not_gen
-        // }).collect();
-        //  Result::Ok(particle_files.count).unwrap_or(0)
+        let re = Regex::new(r#"^gen_(?P<gid>\d*)$"#).unwrap();
+        let gen_no = self.check_active_gen_id().unwrap_or(1);
+        println!("Gen no =====> {}",gen_no);
+        let gen_dir = format!("{}{}","gen_00",gen_no);
+        let dir = self.base_path.join(gen_dir);
+        println!("Gen dir =====> {}", dir.to_string_lossy());
+        let files = std::fs::read_dir(dir).unwrap();
+        let particle_files :Vec<_> = files
+        .filter(|entry| {
+            let entry = entry.as_ref().unwrap();
+            let entry_path = entry.path();
+            let filename = entry_path.file_name().unwrap();
+            let file_name_as_str = filename.to_str().unwrap();
+            let notgenmatch = !re.is_match(file_name_as_str);
+            notgenmatch
+        }).collect();
+         Result::Ok(particle_files.len().try_into().unwrap())
     }
 
     fn retrieve_all_particles<P>(&self) -> Vec<Weighted<P>> {
@@ -168,7 +169,7 @@ mod tests {
 
     #[test]
     fn test_no_gen_files() {
-        let full_path = manifest_dir().join("resources/test/fs/empty");
+        let full_path = manifest_dir().join("resources/test/fs/empty/");
         let storage = storage(&full_path);
         assert_eq!(0, storage.check_active_gen_id().unwrap());
     }
@@ -214,7 +215,7 @@ mod tests {
 
     #[test]
     fn test_no_particle_files() {
-        let full_path = manifest_dir().join("resources/test/fs/empty");
+        let full_path = manifest_dir().join("resources/test/fs/empty/");
         let storage = storage(&full_path);
         assert_eq!(0,storage.num_particles_available().unwrap())
     }
@@ -222,29 +223,8 @@ mod tests {
 
     #[test]
     fn test_number_particle_files() {
-        let tmp_dir = TmpDir::new("save_particle");
-
-        let p1 = DummyParams::new(1,2.);
-        let p2 = DummyParams::new(2,3.);
-        let p3 = DummyParams::new(3,4.);
-        let p4 = DummyParams::new(4,5.);
-
-        let w1 = Weighted {
-            scored_vec: vec![Scored::new(p1,1.0), Scored::new(p2,2.0)],
-            weight: 3.0,
-        };
-
-        let w2 = Weighted {
-            scored_vec: vec![Scored::new(p3,3.0), Scored::new(p4,4.0)],
-            weight: 2.0,
-        };
-
-        let storage = storage(&tmp_dir.0);
-
-        let saved_1 = storage.save_particle(&w1).unwrap();
-        println!("File 1 was saved to {}", saved_1);
-        let saved_2 = storage.save_particle(&w2).unwrap();
-        println!("File 2 was saved to {}", saved_2);
+        let full_path = manifest_dir().join("resources/test/fs/example/");
+        let storage = storage(&full_path);
         assert_eq!(2,storage.num_particles_available().unwrap())
     }
 
