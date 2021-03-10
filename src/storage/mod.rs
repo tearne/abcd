@@ -1,15 +1,15 @@
-use std::{ffi::OsStr, fs::DirEntry, path::{Path, PathBuf}};
+use std::path::Path;
 
 use regex::Regex;
 use serde::Serialize;
 
-use crate::{Generation, Weighted, error::Error};
+use crate::{Generation, Weighted};
 use crate::error::Result;
 use uuid::Uuid;
 use std::convert::TryInto;
 
 trait Storage {
-    fn check_active_gen_id(&self) -> Result<u16>;
+    fn check_active_gen(&self) -> Result<u16>;
     fn retrieve_active_gen<P>(&self) -> Result<Generation<P>>;
 
     fn save_particle<P: Serialize>(&self, w: &Weighted<P>) -> Result<String>;
@@ -25,58 +25,26 @@ struct FileSystem<'a> {
 }
 
 impl Storage for FileSystem<'_> {
-    fn check_active_gen_id(&self) -> Result<u16> {
-        //let dir = self.base_path.join("gen");
-        
+    fn check_active_gen(&self) -> Result<u16> {
         let re = Regex::new(r#"^gen_(?P<gid>\d*)$"#).unwrap();
 
-        let entries: Vec<_> = std::fs::read_dir(self.base_path)?
-            // .into_iter()
-            .filter(|f| {
-                let path = f.as_ref().unwrap().path();
-                //TODO this stinks
-                path.is_dir() && path.file_name().unwrap().to_string_lossy().starts_with("gen_")
+        let entries: Vec<u16> = std::fs::read_dir(self.base_path)?
+            .filter_map(|read_dir|{
+                let path = read_dir.as_ref().unwrap().path();
+                if path.is_dir() {
+                    path.file_name().map(|name| name.to_string_lossy().to_string())
+                } else {
+                    None
+                }
             })
-            .map(|f| f.as_ref().unwrap().path().file_name().unwrap().to_string_lossy().to_string())
-            .map(|dir_name| {
+            .filter(|dir_name| dir_name.starts_with("gen_"))
+            .filter_map(|dir_name| {
                 let caps = re.captures(&dir_name).unwrap();
-                let genid = &caps["gid"];
-
+                caps["gid"].parse::<u16>().ok()
             })
             .collect();
 
-        println!("=====> {:?}", entries);
-
-        //unimplemented!();
-
-        // let entries: std::result::Result<Vec<DirEntry>, std::io::Error> = 
-        //         std::fs::read_dir(&dir)?
-        //         .into_iter()
-        //         .collect();
-
-        // let entry_names: std::result::Result<Vec<String>, std::ffi::OsString> = 
-        //     entries?.into_iter()
-        //         .map(|v| v.file_name().into_string())
-        //         .collect();
-
-        // let generation_numbers: std::result::Result<Vec<u16>, std::num::ParseIntError>  = 
-        //     entry_names?
-        //         .into_iter()
-        //         .filter(|v| !v.starts_with("."))
-        //         // .filter(|v|???) Filter out dirs?  Test me?
-        //         .map(|v| v.parse::<u16>())
-        //         .collect();
-
-        // let files = std::fs::read_dir(self.base_path).unwrap();
-
-        // let gen_dirs = 
-        // files.
-        // filter(|f| f.path().unwrap().starts_with("gen"))
-        // .collect();
-        // Result::Ok(gen_dirs.count).unwrap_or(0))
-
-       // Result::Ok(generation_numbers?.into_iter().max().unwrap_or(0))
-       Result::Ok(entries.len().try_into().unwrap())
+        Ok(entries.into_iter().max().unwrap_or(0))  //TODO does it make sense to return 0 if no max?
     }
 
     fn retrieve_active_gen<P>(&self) -> Result<Generation<P>> {
@@ -94,25 +62,24 @@ impl Storage for FileSystem<'_> {
     }
 
     fn num_particles_available(&self) -> Result<u16> {
-        //todo!()
-        // Get current non finished gen?
-        let re = Regex::new(r#"^gen_(?P<gid>\d*)$"#).unwrap();
-        let gen_no = self.check_active_gen_id().unwrap_or(1);
-        println!("Gen no =====> {}",gen_no);
-        let gen_dir = format!("{}{}","gen_00",gen_no);
+        //TODO test case for when returns 1?
+        let gen_no = self.check_active_gen().unwrap_or(1);
+        let gen_dir = format!("gen_{:03}.json", gen_no);
         let dir = self.base_path.join(gen_dir);
-        println!("Gen dir =====> {}", dir.to_string_lossy());
-        let files = std::fs::read_dir(dir).unwrap();
-        let particle_files :Vec<_> = files
-        .filter(|entry| {
-            let entry = entry.as_ref().unwrap();
-            let entry_path = entry.path();
-            let filename = entry_path.file_name().unwrap();
-            let file_name_as_str = filename.to_str().unwrap();
-            let notgenmatch = !re.is_match(file_name_as_str);
-            notgenmatch
-        }).collect();
-         Result::Ok(particle_files.len().try_into().unwrap())
+
+        let re = Regex::new(r#"^gen_(?P<gid>\d*)$"#).unwrap(); //TODO use ?
+        
+        let particle_files :Vec<_> = std::fs::read_dir(dir)?
+            .filter(|entry| {
+                let entry = entry.as_ref().unwrap();
+                let entry_path = entry.path();
+                let filename = entry_path.file_name().unwrap();
+                let file_name_as_str = filename.to_string_lossy();
+                let not_gen_match = !re.is_match(&file_name_as_str);
+                not_gen_match
+            }).collect();
+        
+        Ok(particle_files.len().try_into().unwrap()) //TODO what's all this about then?
     }
 
     fn retrieve_all_particles<P>(&self) -> Vec<Weighted<P>> {
@@ -126,7 +93,7 @@ impl Storage for FileSystem<'_> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use crate::Scored;
     use serde::{Serialize, Deserialize};
 
@@ -171,14 +138,14 @@ mod tests {
     fn test_no_gen_files() {
         let full_path = manifest_dir().join("resources/test/fs/empty/");
         let storage = storage(&full_path);
-        assert_eq!(0, storage.check_active_gen_id().unwrap());
+        assert_eq!(0, storage.check_active_gen().unwrap());
     }
 
     #[test]
-    fn test_number_gen_files() {
+    fn test_check_active_gen() {
         let full_path = manifest_dir().join("resources/test/fs/example");
         let storage = storage(&full_path);
-        assert_eq!(2, storage.check_active_gen_id().unwrap());
+        assert_eq!(3, storage.check_active_gen().unwrap());
     }
 
     #[test]
@@ -225,7 +192,7 @@ mod tests {
     fn test_number_particle_files() {
         let full_path = manifest_dir().join("resources/test/fs/example/");
         let storage = storage(&full_path);
-        assert_eq!(2,storage.num_particles_available().unwrap())
+        assert_eq!(1,storage.num_particles_available().unwrap())
     }
 
 
