@@ -17,20 +17,21 @@ pub trait Model {
     fn score(&self, p: Self::Parameters) -> f64;
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
-struct Scored<P> {
-    parameter: P,
-    score: f64,
-}
-impl<P> Scored<P> {
-    pub fn new(parameter: P, score: f64) -> Scored<P> {
-        Scored{parameter, score}
-    }
-}
+// #[derive(Serialize, Deserialize, Debug, PartialEq)]
+// struct Scored<P> {
+//     parameters: P,
+//     score: f64,
+// }
+// impl<P> Scored<P> {
+//     pub fn new(parameters: P, score: f64) -> Scored<P> {
+//         Scored{parameters, score}
+//     }
+// }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 struct Weighted<P> {
-    scored_vec: Vec<Scored<P>>,
+    parameters: P,
+    scores: Vec<f64>,
     weight: f64,
 }
 
