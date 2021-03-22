@@ -1,7 +1,7 @@
-use std::path::Path;
+use std::{fs::read_to_string, path::Path};
 
 use regex::Regex;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, };
 
 use crate::{Generation, Weighted};
 use crate::error::Result;
@@ -13,11 +13,13 @@ trait Storage {
     fn retrieve_active_gen<P>(&self) -> Result<Generation<P>>;
 
     fn save_particle<P: Serialize>(&self, w: &Weighted<P>) -> Result<String>;
-
+   // fn get_particles_available(&self) -> Result<Vec<std::fs::DirEntry>>;
     fn num_particles_available(&self) -> Result<u16>;
     //TODO read this https://serde.rs/lifetimes.html
     fn retrieve_all_particles<'de, P>(&self) -> Vec<Weighted<P>> 
         where P: Deserialize<'de>;
+    // fn retrieve_all_particles<P>(&self) -> Vec<Weighted<P>> 
+    // where P: serde::DeserializeOwned;
 
     fn save_new_gen<P: Serialize>(&self, g: Generation<P>) -> Result<()>;
 }
@@ -63,6 +65,33 @@ impl Storage for FileSystem<'_> {
         Ok(file_path.to_string_lossy().into_owned())
     }
 
+    // fn get_particles_available(&self)  -> Result<Vec<std::fs::DirEntry>> {
+    //             //TODO test case for when returns 1?
+    //             let gen_no = self.check_active_gen().unwrap_or(1);
+    //             println!("Active gen is {}", gen_no);
+    //             let gen_dir = format!("gen_{:03}", gen_no);
+    //             let dir = self.base_path.join(gen_dir);
+    //             println!("---> {:?}",dir);
+        
+    //             let re = Regex::new(r#"^gen_(?P<gid>\d*)$"#).unwrap(); //TODO use ?
+                
+    //             // if gen_no == 1 && !dir.exists() {
+    //             //     Ok(0)
+    //             // } else {
+    //                 let particle_files :Result<Vec<std::fs::DirEntry>> = std::fs::read_dir(dir)?
+    //                     .filter(|entry| {
+    //                         let entry = entry.as_ref().unwrap();
+    //                         let entry_path = entry.path();
+    //                         let filename = entry_path.file_name().unwrap();
+    //                         let file_name_as_str = filename.to_string_lossy();
+    //                         let not_gen_match = !re.is_match(&file_name_as_str);
+    //                         not_gen_match
+    //                     }).collect();
+                    
+    //                 particle_files//TODO what's all this about then?
+    //            // }
+    // }
+
     fn num_particles_available(&self) -> Result<u16> {
         //TODO test case for when returns 1?
         let gen_no = self.check_active_gen().unwrap_or(1);
@@ -92,14 +121,38 @@ impl Storage for FileSystem<'_> {
 
     fn retrieve_all_particles<'a, P: Deserialize<'a>>(&self) -> Vec<Weighted<P>> {
 
-        let string = "{}";
-        let t: Weighted<P> = serde_json::from_str(string).unwrap();
-
-        todo!()
-        // Steps are:
-        // Get latest Gen - assuming a flush (because corrct number of particles reached) triggered
-        // Need to loop over all particle files and parse json into a weighted particle
+        let gen_no = self.check_active_gen().unwrap_or(1);
+        let gen_dir = format!("gen_{:03}", gen_no);
+        let dir = self.base_path.join(gen_dir);
+        let re = Regex::new(r#"^gen_(?P<gid>\d*)$"#).unwrap(); //TODO use ?
         
+        let particle_files :Vec<_> = std::fs::read_dir(dir).unwrap()
+                .filter(|entry| {
+                    let entry = entry.as_ref().unwrap();
+                    let entry_path = entry.path();
+                    let filename = entry_path.file_name().unwrap();
+                    let file_name_as_str = filename.to_string_lossy();
+                    let not_gen_match = !re.is_match(&file_name_as_str);
+                    not_gen_match
+                }).collect();
+            
+
+        let mut weightedParticles = Vec::new();
+        for entry in &particle_files{
+            if let Ok(entry) = entry {
+                let file_pathBuf = entry.path(); 
+                let file_path = file_pathBuf.as_path();
+                //let file = std::fs::File::open(file_name).expect("Could not open file");
+                let json_str = std::fs::read_to_string(file_path).expect("File should be proper JSON");
+                let json = &json_str;
+                let wp = serde_json::from_str(json).unwrap();
+                weightedParticles.push(wp);
+            }
+        }
+        //let string = "{}";;
+        //let t: Weighted<P> = serde_json::from_str(string).unwrap();
+
+        weightedParticles
     }
 
     fn save_new_gen<P: Serialize>(&self, g: Generation<P>) -> Result<()> {
