@@ -137,22 +137,22 @@ impl Storage for FileSystem<'_> {
                 }).collect();
             
 
-        let mut weightedParticles = Vec::new();
+        let mut weighted_particles = Vec::new();
         for entry in &particle_files{
             if let Ok(entry) = entry {
-                let file_pathBuf = entry.path(); 
-                let file_path = file_pathBuf.as_path();
+                let file_path_buf = entry.path(); 
+                let file_path = file_path_buf.as_path();
                 //let file = std::fs::File::open(file_name).expect("Could not open file");
-                let json_str = std::fs::read_to_string(file_path).expect("File should be proper JSON");
-                let json = &json_str;
-                let wp = serde_json::from_str(json).unwrap();
-                weightedParticles.push(wp);
+                let json_str = std::fs::read_to_string(file_path).expect("File should be proper JSON");//.to_owned();
+                let s= Box::leak(json_str.into_boxed_str()); //See how to convert a string into a static string
+                let wp: Weighted<P> = serde_json::from_str(s).unwrap(); //Use DeserializedOwned?
+                weighted_particles.push(wp);
             }
         }
         //let string = "{}";;
         //let t: Weighted<P> = serde_json::from_str(string).unwrap();
 
-        weightedParticles
+        weighted_particles
     }
 
     fn save_new_gen<P: Serialize>(&self, g: Generation<P>) -> Result<()> {
