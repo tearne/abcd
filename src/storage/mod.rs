@@ -1,4 +1,4 @@
-use std::{fs::read_to_string, path::Path};
+use std::{fs::DirEntry, path::Path};
 
 use regex::Regex;
 use serde::{Deserialize, Serialize, };
@@ -26,6 +26,34 @@ trait Storage {
 
 struct FileSystem<'a> {
     base_path: &'a Path,
+}
+impl<'a> FileSystem<'a> {
+    fn get_particle_files_in_current_gen_folder(&self) -> Result<Vec<std::fs::DirEntry>> {
+        //TODO test case for when returns 1?
+        let gen_no = self.check_active_gen().unwrap_or(1);
+        println!("Active gen is {}", gen_no);
+        let gen_dir = format!("gen_{:03}", gen_no);
+        let dir = self.base_path.join(gen_dir);
+        println!("---> {:?}",dir);
+
+        let re = Regex::new(r#"^gen_(?P<gid>\d*)$"#).unwrap(); //TODO use ?
+        
+        let r = std::fs::read_dir(dir)?
+            //TODO use filter_map
+            .map(|r| r.map_err(crate::error::Error::from))
+            .filter(|entry| {
+                let entry = entry.as_ref().unwrap();
+                let entry_path = entry.path();
+                let filename = entry_path.file_name().unwrap();
+                let file_name_as_str = filename.to_string_lossy();
+                let not_gen_match = !re.is_match(&file_name_as_str);
+                not_gen_match
+            })
+            .filter_map(Result::ok)
+            .collect::<Vec<DirEntry>>();
+
+        Ok(r)
+    }
 }
 
 impl Storage for FileSystem<'_> {
@@ -65,58 +93,16 @@ impl Storage for FileSystem<'_> {
         Ok(file_path.to_string_lossy().into_owned())
     }
 
-    // fn get_particles_available(&self)  -> Result<Vec<std::fs::DirEntry>> {
-    //             //TODO test case for when returns 1?
-    //             let gen_no = self.check_active_gen().unwrap_or(1);
-    //             println!("Active gen is {}", gen_no);
-    //             let gen_dir = format!("gen_{:03}", gen_no);
-    //             let dir = self.base_path.join(gen_dir);
-    //             println!("---> {:?}",dir);
-        
-    //             let re = Regex::new(r#"^gen_(?P<gid>\d*)$"#).unwrap(); //TODO use ?
-                
-    //             // if gen_no == 1 && !dir.exists() {
-    //             //     Ok(0)
-    //             // } else {
-    //                 let particle_files :Result<Vec<std::fs::DirEntry>> = std::fs::read_dir(dir)?
-    //                     .filter(|entry| {
-    //                         let entry = entry.as_ref().unwrap();
-    //                         let entry_path = entry.path();
-    //                         let filename = entry_path.file_name().unwrap();
-    //                         let file_name_as_str = filename.to_string_lossy();
-    //                         let not_gen_match = !re.is_match(&file_name_as_str);
-    //                         not_gen_match
-    //                     }).collect();
-                    
-    //                 particle_files//TODO what's all this about then?
-    //            // }
-    // }
-
     fn num_particles_available(&self) -> Result<u16> {
-        //TODO test case for when returns 1?
-        let gen_no = self.check_active_gen().unwrap_or(1);
-        println!("Active gen is {}", gen_no);
-        let gen_dir = format!("gen_{:03}", gen_no);
-        let dir = self.base_path.join(gen_dir);
-        println!("---> {:?}",dir);
+        let files_in_folder= self.get_particle_files_in_current_gen_folder();
 
-        let re = Regex::new(r#"^gen_(?P<gid>\d*)$"#).unwrap(); //TODO use ?
-        
-        if gen_no == 1 && !dir.exists() {
-            Ok(0)
-        } else {
-            let particle_files :Vec<_> = std::fs::read_dir(dir)?
-                .filter(|entry| {
-                    let entry = entry.as_ref().unwrap();
-                    let entry_path = entry.path();
-                    let filename = entry_path.file_name().unwrap();
-                    let file_name_as_str = filename.to_string_lossy();
-                    let not_gen_match = !re.is_match(&file_name_as_str);
-                    not_gen_match
-                }).collect();
-            
-            Ok(particle_files.len().try_into().unwrap()) //TODO what's all this about then?
-        }
+        let t = match files_in_folder {
+            Err(_) if self.check_active_gen().unwrap() == 1 => Ok(0),   //TODO rewrite equality for Result (i.e. get rid of unwrap())
+            Ok(files) => Ok(files.len() as u16), //TODO read dir numbers & take max //TODO safer way to do cast - Ok(u16::try_from(file.len()))
+            Err(e) => Err(e),
+        };
+
+        t
     }
 
     fn retrieve_all_particles<'a, P: Deserialize<'a>>(&self) -> Vec<Weighted<P>> {
