@@ -1,12 +1,11 @@
-use std::{fs::DirEntry, path::Path};
+use std::{fs::{DirEntry, File}, io::BufReader, path::Path};
 
 use regex::Regex;
-use serde::{Deserialize, Serialize, };
+use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{Generation, Weighted};
 use crate::error::Result;
 use uuid::Uuid;
-use std::convert::TryInto;
 
 trait Storage {
     fn check_active_gen(&self) -> Result<u16>;
@@ -16,10 +15,8 @@ trait Storage {
    // fn get_particles_available(&self) -> Result<Vec<std::fs::DirEntry>>;
     fn num_particles_available(&self) -> Result<u16>;
     //TODO read this https://serde.rs/lifetimes.html
-    fn retrieve_all_particles<'de, P>(&self) -> Vec<Weighted<P>> 
-        where P: Deserialize<'de>;
-    // fn retrieve_all_particles<P>(&self) -> Vec<Weighted<P>> 
-    // where P: serde::DeserializeOwned;
+    fn retrieve_all_particles<P>(&self) -> Result<Vec<Weighted<P>>> 
+        where P: DeserializeOwned;
 
     fn save_new_gen<P: Serialize>(&self, g: Generation<P>) -> Result<()>;
 }
@@ -96,49 +93,25 @@ impl Storage for FileSystem<'_> {
     fn num_particles_available(&self) -> Result<u16> {
         let files_in_folder= self.get_particle_files_in_current_gen_folder();
 
-        let t = match files_in_folder {
-            Err(_) if self.check_active_gen().unwrap() == 1 => Ok(0),   //TODO rewrite equality for Result (i.e. get rid of unwrap())
+        match files_in_folder {
+            Err(_) if self.check_active_gen().ok() == Some(1) => Ok(0),
             Ok(files) => Ok(files.len() as u16), //TODO read dir numbers & take max //TODO safer way to do cast - Ok(u16::try_from(file.len()))
             Err(e) => Err(e),
-        };
-
-        t
+        }
     }
 
-    fn retrieve_all_particles<'a, P: Deserialize<'a>>(&self) -> Vec<Weighted<P>> {
-
-        let gen_no = self.check_active_gen().unwrap_or(1);
-        let gen_dir = format!("gen_{:03}", gen_no);
-        let dir = self.base_path.join(gen_dir);
-        let re = Regex::new(r#"^gen_(?P<gid>\d*)$"#).unwrap(); //TODO use ?
-        
-        let particle_files :Vec<_> = std::fs::read_dir(dir).unwrap()
-                .filter(|entry| {
-                    let entry = entry.as_ref().unwrap();
-                    let entry_path = entry.path();
-                    let filename = entry_path.file_name().unwrap();
-                    let file_name_as_str = filename.to_string_lossy();
-                    let not_gen_match = !re.is_match(&file_name_as_str);
-                    not_gen_match
-                }).collect();
-            
+    fn retrieve_all_particles<P: DeserializeOwned>(&self) -> Result<Vec<Weighted<P>>> {
+        let particle_files = self.get_particle_files_in_current_gen_folder()?;
 
         let mut weighted_particles = Vec::new();
-        for entry in &particle_files{
-            if let Ok(entry) = entry {
-                let file_path_buf = entry.path(); 
-                let file_path = file_path_buf.as_path();
-                //let file = std::fs::File::open(file_name).expect("Could not open file");
-                let json_str = std::fs::read_to_string(file_path).expect("File should be proper JSON");//.to_owned();
-                let s= Box::leak(json_str.into_boxed_str()); //See how to convert a string into a static string
-                let wp: Weighted<P> = serde_json::from_str(s).unwrap(); //Use DeserializedOwned?
-                weighted_particles.push(wp);
-            }
+        for entry in particle_files {
+            let file = File::open(entry.path())?;
+            let reader = BufReader::new(file);
+            let wp: Weighted<P> = serde_json::from_reader(reader)?;
+            weighted_particles.push(wp);
         }
-        //let string = "{}";;
-        //let t: Weighted<P> = serde_json::from_str(string).unwrap();
 
-        weighted_particles
+        Ok(weighted_particles)
     }
 
     fn save_new_gen<P: Serialize>(&self, g: Generation<P>) -> Result<()> {
@@ -152,7 +125,7 @@ impl Storage for FileSystem<'_> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::{Path, PathBuf};
+    use std::{collections::HashSet, path::{Path, PathBuf}};
     use serde::{Serialize, Deserialize};
 
     use super::*;
@@ -258,7 +231,7 @@ mod tests {
         let full_path = manifest_dir().join("resources/test/fs/example/");
         let storage = storage(&full_path);
 
-        let expected = {
+        let mut expected /*: Result<Vec<Weighted<DummyParams>>>*/ = {
             let p1 = DummyParams::new(1,2.);
             let p2 = DummyParams::new(3,4.);
     
@@ -277,7 +250,18 @@ mod tests {
             vec![w1, w2]
         };
 
-        assert_eq!(expected, storage.retrieve_all_particles());
+        type Particles = Weighted<DummyParams>;
+
+       // let t = expected.into_iter().collect::<HashSet<Particles>>();
+       expected.sort_by(|a,b| a.partial_cmp(&b).unwrap_or(std::cmp::Ordering::Less));
+       let mut result: Vec<Weighted<DummyParams>> = storage.retrieve_all_particles().unwrap();
+       result.sort_by(|a,b| a.partial_cmp(&b).unwrap_or(std::cmp::Ordering::Less));
+
+
+        assert_eq!(
+            expected, 
+            result
+        );
     }
 
 
