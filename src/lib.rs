@@ -29,29 +29,19 @@ pub trait Model {
 //     }
 // }
 
-#[derive(Serialize, Deserialize, Debug)]
+//TODO rename to particle?
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 struct Weighted<P> {
     parameters: P,
     scores: Vec<f64>,
     weight: f64,
 }
 
-impl<P> PartialOrd for Weighted<P> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.weight.partial_cmp(&other.weight)
-    }
-}
-
-impl<P> PartialEq for Weighted<P> {
-    fn eq(&self, other: &Self) -> bool {
-        self.weight == other.weight
-    }
-}
-
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
 struct Generation<P> {
-    generation: u16,
+    generation_number: u16,
     tolerance: f64,
     acceptance: f64,
     particles: Vec<Weighted<P>>,
 }
+

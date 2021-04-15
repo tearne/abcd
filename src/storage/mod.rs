@@ -1,7 +1,7 @@
 use std::{fs::{DirEntry, File}, io::BufReader, path::Path};
 
 use regex::Regex;
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{Generation, Weighted};
 use crate::error::Result;
@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 trait Storage {
     fn check_active_gen(&self) -> Result<u16>;
-    fn retrieve_active_gen<P>(&self) -> Result<Generation<P>>;
+    fn retrieve_active_gen<P>(&self) -> Result<Generation<P>> where P: Deserialize;
 
     fn save_particle<P: Serialize>(&self, w: &Weighted<P>) -> Result<String>;
    // fn get_particles_available(&self) -> Result<Vec<std::fs::DirEntry>>;
@@ -76,8 +76,16 @@ impl Storage for FileSystem<'_> {
         Ok(entries.into_iter().max().unwrap_or(1))
     }
 
-    fn retrieve_active_gen<P>(&self) -> Result<Generation<P>> {
-        todo!()
+    fn retrieve_active_gen<P: Des>(&self) -> Result<Generation<P>> {
+        //todo!()
+        let prev_gen_no = self.check_active_gen().unwrap_or(1) - 1;
+        let previous_gen_dir = self.base_path.join(format!("gen_{:03}", prev_gen_no));
+        let file_path = previous_gen_dir.join(format!("gen_{:03}.json", prev_gen_no));
+        let file = File::open(file_path)?;
+        let reader = BufReader::new(file);
+        let gen: Result<Generation<P>> = serde_json::from_reader(reader)?;
+
+        unimplemented!();
     }
 
     fn save_particle<P: Serialize>(&self, w: &Weighted<P>) -> Result<String> {
@@ -180,6 +188,37 @@ mod tests {
     }
 
     #[test]
+    fn test_retrieve_active_gen() {
+        let expected : Generation<DummyParams> = {    
+            let particle_1 = Weighted {
+                parameters: DummyParams::new(1,2.),
+                scores: vec![100.0, 200.0],
+                weight: 1.234,
+            };
+    
+            let particle_2 = Weighted {
+                parameters: DummyParams::new(3,4.),
+                scores: vec![300.0, 400.0],
+                weight: 1.567,
+            };
+
+            Generation {
+                generation_number: 2,
+                tolerance: 0.1234,
+                acceptance: 0.7,
+                particles: vec![particle_1, particle_2],
+            }
+        };
+
+        let full_path = manifest_dir().join("resources/test/fs/example/");
+        let instance = storage(&full_path);
+        let result = 
+            instance.retrieve_active_gen::<DummyParams>().unwrap();
+
+        assert_eq!(expected, result);
+    }
+
+    #[test]
     fn test_save_particle() {
         let tmp_dir = TmpDir::new("save_particle");
 
@@ -229,34 +268,29 @@ mod tests {
     #[test]
     fn test_retrieve_particle_files() {
         let full_path = manifest_dir().join("resources/test/fs/example/");
-        let storage = storage(&full_path);
+        let instance = storage(&full_path);
 
-        let mut expected /*: Result<Vec<Weighted<DummyParams>>>*/ = {
-            let p1 = DummyParams::new(1,2.);
-            let p2 = DummyParams::new(3,4.);
-    
+        let mut expected /*: Result<Vec<Weighted<DummyParams>>>*/ = {    
             let w1 = Weighted {
-                parameters: p1,
+                parameters: DummyParams::new(1,2.),
                 scores: vec![100.0, 200.0],
                 weight: 1.234,
             };
     
             let w2 = Weighted {
-                parameters: p2,
+                parameters: DummyParams::new(3,4.),
                 scores: vec![300.0, 400.0],
                 weight: 1.567,
             };
 
             vec![w1, w2]
         };
+       
+        let mut result: Vec<Weighted<DummyParams>> = instance.retrieve_all_particles().unwrap();
 
-        type Particles = Weighted<DummyParams>;
-
-       // let t = expected.into_iter().collect::<HashSet<Particles>>();
-       expected.sort_by(|a,b| a.partial_cmp(&b).unwrap_or(std::cmp::Ordering::Less));
-       let mut result: Vec<Weighted<DummyParams>> = storage.retrieve_all_particles().unwrap();
-       result.sort_by(|a,b| a.partial_cmp(&b).unwrap_or(std::cmp::Ordering::Less));
-
+        //Sort by weight for easy comparison
+        expected.sort_by(|a,b| a.weight.partial_cmp(&b.weight).unwrap());
+        result.sort_by(|a,b| a.weight.partial_cmp(&b.weight).unwrap());
 
         assert_eq!(
             expected, 
