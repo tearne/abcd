@@ -1,7 +1,7 @@
 use std::{fs::{DirEntry, File}, io::BufReader, path::Path};
 
 use regex::Regex;
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{de::Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{Generation, Weighted};
 use crate::error::Result;
@@ -9,7 +9,8 @@ use uuid::Uuid;
 
 trait Storage {
     fn check_active_gen(&self) -> Result<u16>;
-    fn retrieve_active_gen<P>(&self) -> Result<Generation<P>> where P: Deserialize;
+    fn retrieve_active_gen<'de, P>(&self) -> Result<Generation<P>> 
+        where P: DeserializeOwned;
 
     fn save_particle<P: Serialize>(&self, w: &Weighted<P>) -> Result<String>;
    // fn get_particles_available(&self) -> Result<Vec<std::fs::DirEntry>>;
@@ -76,16 +77,20 @@ impl Storage for FileSystem<'_> {
         Ok(entries.into_iter().max().unwrap_or(1))
     }
 
-    fn retrieve_active_gen<P: Des>(&self) -> Result<Generation<P>> {
-        //todo!()
+    // fn retrieve_active_gen<'de, P>(&self) -> Result<Generation<P>> where P: Deserialize<'de>;
+    fn retrieve_active_gen<P>(&self) -> Result<Generation<P>> where P: DeserializeOwned {
         let prev_gen_no = self.check_active_gen().unwrap_or(1) - 1;
         let previous_gen_dir = self.base_path.join(format!("gen_{:03}", prev_gen_no));
         let file_path = previous_gen_dir.join(format!("gen_{:03}.json", prev_gen_no));
         let file = File::open(file_path)?;
         let reader = BufReader::new(file);
-        let gen: Result<Generation<P>> = serde_json::from_reader(reader)?;
 
-        unimplemented!();
+        //TODO why isn't our conversion in error.rs being applied?
+        // let gen: Result<Generation<P>> = serde_json::from_reader(reader);
+
+        let gen: Generation<P> = serde_json::from_reader(reader)?;
+
+        Ok(gen)
     }
 
     fn save_particle<P: Serialize>(&self, w: &Weighted<P>) -> Result<String> {
@@ -212,8 +217,9 @@ mod tests {
 
         let full_path = manifest_dir().join("resources/test/fs/example/");
         let instance = storage(&full_path);
+        let result = instance.retrieve_active_gen::<DummyParams>();
         let result = 
-            instance.retrieve_active_gen::<DummyParams>().unwrap();
+            instance.retrieve_active_gen::<DummyParams>().expect(&format!("{:?}", result));
 
         assert_eq!(expected, result);
     }
