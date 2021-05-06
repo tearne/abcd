@@ -1,24 +1,19 @@
 use std::{fs::{DirEntry, File}, io::BufReader, path::Path};
 
 use regex::Regex;
-use serde::{de::Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Serialize, de::DeserializeOwned};
+use serde_json::Value;
 
-use crate::{Generation, Weighted};
+use crate::{Generation, Particle};
 use crate::error::Result;
 use uuid::Uuid;
 
 trait Storage {
     fn check_active_gen(&self) -> Result<u16>;
-    fn retrieve_active_gen<'de, P>(&self) -> Result<Generation<P>> 
-        where P: DeserializeOwned;
-
-    fn save_particle<P: Serialize>(&self, w: &Weighted<P>) -> Result<String>;
-   // fn get_particles_available(&self) -> Result<Vec<std::fs::DirEntry>>;
+    fn retrieve_previous_gen<'de, P>(&self) -> Result<Generation<P>> where P: DeserializeOwned;
+    fn save_particle<P: Serialize>(&self, w: &Particle<P>) -> Result<String>;
     fn num_particles_available(&self) -> Result<u16>;
-    //TODO read this https://serde.rs/lifetimes.html
-    fn retrieve_all_particles<P>(&self) -> Result<Vec<Weighted<P>>> 
-        where P: DeserializeOwned;
-
+    fn retrieve_all_particles<P>(&self) -> Result<Vec<Particle<P>>> where P: DeserializeOwned;
     fn save_new_gen<P: Serialize>(&self, g: Generation<P>) -> Result<()>;
 }
 
@@ -77,8 +72,8 @@ impl Storage for FileSystem<'_> {
         Ok(entries.into_iter().max().unwrap_or(1))
     }
 
-    // fn retrieve_active_gen<'de, P>(&self) -> Result<Generation<P>> where P: Deserialize<'de>;
-    fn retrieve_active_gen<P>(&self) -> Result<Generation<P>> where P: DeserializeOwned {
+    // fn retrieve_previous_gen<'de, P>(&self) -> Result<Generation<P>> where P: Deserialize<'de>;
+    fn retrieve_previous_gen<P>(&self) -> Result<Generation<P>> where P: DeserializeOwned {
         let prev_gen_no = self.check_active_gen().unwrap_or(1) - 1;
         let previous_gen_dir = self.base_path.join(format!("gen_{:03}", prev_gen_no));
         let file_path = previous_gen_dir.join(format!("gen_{:03}.json", prev_gen_no));
@@ -93,7 +88,7 @@ impl Storage for FileSystem<'_> {
         Ok(gen)
     }
 
-    fn save_particle<P: Serialize>(&self, w: &Weighted<P>) -> Result<String> {
+    fn save_particle<P: Serialize>(&self, w: &Particle<P>) -> Result<String> {
         let file_uuid = Uuid::new_v4();
         let file_path = self.base_path.join(file_uuid.to_string()+".json");
 
@@ -113,14 +108,14 @@ impl Storage for FileSystem<'_> {
         }
     }
 
-    fn retrieve_all_particles<P: DeserializeOwned>(&self) -> Result<Vec<Weighted<P>>> {
+    fn retrieve_all_particles<P: DeserializeOwned>(&self) -> Result<Vec<Particle<P>>> {
         let particle_files = self.get_particle_files_in_current_gen_folder()?;
 
         let mut weighted_particles = Vec::new();
         for entry in particle_files {
             let file = File::open(entry.path())?;
             let reader = BufReader::new(file);
-            let wp: Weighted<P> = serde_json::from_reader(reader)?;
+            let wp: Particle<P> = serde_json::from_reader(reader)?;
             weighted_particles.push(wp);
         }
 
@@ -128,11 +123,13 @@ impl Storage for FileSystem<'_> {
     }
 
     fn save_new_gen<P: Serialize>(&self, g: Generation<P>) -> Result<()> {
+        let gen_dir = self.base_path.join(format!("gen_{:03}", g.generation_number));
+        let file_path = gen_dir.join(format!("gen_{:03}.json", g.generation_number));
 
-        let serialised = serde_json::to_string_pretty(&g).unwrap();
-        //TODO save to the current gen file using a filename like 'gen_003.json'
+        let serialised_gen = serde_json::to_string_pretty(&g);
+        std::fs::write(&file_path, serialised_gen?)?;
 
-        todo!()
+        Ok(())
     }
 }
 
@@ -156,7 +153,7 @@ mod tests {
     }
     impl Drop for TmpDir {
         fn drop(&mut self){
-            std::fs::remove_dir_all(self.0.as_path()).unwrap();
+            // std::fs::remove_dir_all(self.0.as_path()).unwrap();
         }
     }
 
@@ -178,6 +175,27 @@ mod tests {
         FileSystem{base_path: p}
     }
 
+    fn make_dummy_generation(gen_number: u16) -> Generation<DummyParams> {
+        let particle_1 = Particle {
+            parameters: DummyParams::new(10,20.),
+            scores: vec![1000.0, 2000.0],
+            weight: 0.234,
+        };
+
+        let particle_2 = Particle {
+            parameters: DummyParams::new(30,40.),
+            scores: vec![3000.0, 4000.0],
+            weight: 0.567,
+        };
+
+        Generation {
+            generation_number: gen_number,
+            tolerance: 0.1234,
+            acceptance: 0.7,
+            particles: vec![particle_1, particle_2],
+        }
+    }
+
     #[test]
     fn test_check_initial_active_gen() {
         let full_path = manifest_dir().join("resources/test/fs/empty");
@@ -193,33 +211,14 @@ mod tests {
     }
 
     #[test]
-    fn test_retrieve_active_gen() {
-        let expected : Generation<DummyParams> = {    
-            let particle_1 = Weighted {
-                parameters: DummyParams::new(1,2.),
-                scores: vec![100.0, 200.0],
-                weight: 1.234,
-            };
-    
-            let particle_2 = Weighted {
-                parameters: DummyParams::new(3,4.),
-                scores: vec![300.0, 400.0],
-                weight: 1.567,
-            };
-
-            Generation {
-                generation_number: 2,
-                tolerance: 0.1234,
-                acceptance: 0.7,
-                particles: vec![particle_1, particle_2],
-            }
-        };
+    fn test_retrieve_previous_gen() {
+        let expected = make_dummy_generation(2);
 
         let full_path = manifest_dir().join("resources/test/fs/example/");
         let instance = storage(&full_path);
-        let result = instance.retrieve_active_gen::<DummyParams>();
+        let result = instance.retrieve_previous_gen::<DummyParams>();
         let result = 
-            instance.retrieve_active_gen::<DummyParams>().expect(&format!("{:?}", result));
+            instance.retrieve_previous_gen::<DummyParams>().expect(&format!("{:?}", result));
 
         assert_eq!(expected, result);
     }
@@ -227,23 +226,23 @@ mod tests {
     #[test]
     fn test_save_particle() {
         let tmp_dir = TmpDir::new("save_particle");
+        let storage = storage(&tmp_dir.0);
 
         let p1 = DummyParams::new(1,2.);
         let p2 = DummyParams::new(3,4.);
 
-        let w1 = Weighted {
+        let w1 = Particle {
             parameters: p1,
             scores: vec![100.0, 200.0],
             weight: 1.234,
         };
 
-        let w2 = Weighted {
+        let w2 = Particle {
             parameters: p2,
             scores: vec![300.0, 400.0],
             weight: 1.567,
         };
 
-        let storage = storage(&tmp_dir.0);
 
         let saved_1 = storage.save_particle(&w1).unwrap();
         // println!("File was saved to {}", saved_1);
@@ -251,7 +250,7 @@ mod tests {
 
         let file = std::fs::File::open(tmp_dir.0.clone().join(saved_1)).unwrap();
         // println!("About to try and load from {:?}", file);
-        let loaded: Weighted<DummyParams> = serde_json::from_reader(std::io::BufReader::new(file)).unwrap();
+        let loaded: Particle<DummyParams> = serde_json::from_reader(std::io::BufReader::new(file)).unwrap();
         
         assert_eq!(w1, loaded);
     }
@@ -277,13 +276,13 @@ mod tests {
         let instance = storage(&full_path);
 
         let mut expected /*: Result<Vec<Weighted<DummyParams>>>*/ = {    
-            let w1 = Weighted {
+            let w1 = Particle {
                 parameters: DummyParams::new(1,2.),
                 scores: vec![100.0, 200.0],
                 weight: 1.234,
             };
     
-            let w2 = Weighted {
+            let w2 = Particle {
                 parameters: DummyParams::new(3,4.),
                 scores: vec![300.0, 400.0],
                 weight: 1.567,
@@ -292,7 +291,7 @@ mod tests {
             vec![w1, w2]
         };
        
-        let mut result: Vec<Weighted<DummyParams>> = instance.retrieve_all_particles().unwrap();
+        let mut result: Vec<Particle<DummyParams>> = instance.retrieve_all_particles().unwrap();
 
         //Sort by weight for easy comparison
         expected.sort_by(|a,b| a.weight.partial_cmp(&b.weight).unwrap());
@@ -303,6 +302,66 @@ mod tests {
             result
         );
     }
+
+    #[test]
+    fn save_new_generation(){
+        let tmp_dir = TmpDir::new("save_generation");
+        let instance = storage(&tmp_dir.0);
+
+        let gen = make_dummy_generation(3);
+        std::fs::create_dir(instance.base_path.join("gen_003")).expect("Expected successful dir creation");
+
+        instance.save_new_gen(gen).expect("Expected successful save");
+
+        let expected = serde_json::json!({
+            "generation_number": 3,
+            "tolerance": 0.1234,
+            "acceptance": 0.7,
+            "particles": [
+                {
+                    "parameters" : {
+                        "a": 10, "b": 20.0
+                    },
+                    "scores": [1000.0, 2000.0],
+                    "weight": 0.234
+                },{
+                    "parameters" : {
+                        "a": 30, "b": 40.0
+                    },
+                    "scores": [3000.0, 4000.0],
+                    "weight": 0.567
+                }
+            ]
+        });
+
+        let actual = {
+            let file = File::open(&tmp_dir.0.join("gen_003").join("gen_003.json")).unwrap();
+            println!("Trying to load gen from {:?}", file);
+            let reader = BufReader::new(file);
+            serde_json::from_reader::<_,Value>(reader).unwrap()
+        };
+
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn dont_save_over_existing_gen_file(){
+        let tmp_dir = TmpDir::new("save_over_generation");
+        let instance = storage(&tmp_dir.0);
+        
+        //1. Save an dummy gen_003 file
+        std::fs::create_dir(instance.base_path.join("gen_003")).expect("Expected successful dir creation");
+        std::fs::write(tmp_dir.0.join("gen_003").join("gen_003.json"), "placeholder file").unwrap();
+
+        //2. Try to save another gen over it
+        let gen = make_dummy_generation(3);
+        let result = instance.save_new_gen(gen);
+
+        //3. Test that the original file is intact and no panics.  
+        //4. Test that Result is Err::GenAlreadyExists()
+    }
+
+
 
 
 }

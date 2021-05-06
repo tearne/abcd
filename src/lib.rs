@@ -29,9 +29,8 @@ pub trait Model {
 //     }
 // }
 
-//TODO rename to particle?
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
-struct Weighted<P> {
+struct Particle<P> {
     parameters: P,
     scores: Vec<f64>,
     weight: f64,
@@ -42,6 +41,6 @@ struct Generation<P> {
     generation_number: u16,
     tolerance: f64,
     acceptance: f64,
-    particles: Vec<Weighted<P>>,
+    particles: Vec<Particle<P>>,
 }
 
