@@ -4,7 +4,7 @@ use regex::Regex;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 
-use crate::{Generation, Particle};
+use crate::{Generation, Particle, error::Error};
 use crate::error::Result;
 use uuid::Uuid;
 
@@ -126,10 +126,17 @@ impl Storage for FileSystem<'_> {
         let gen_dir = self.base_path.join(format!("gen_{:03}", g.generation_number));
         let file_path = gen_dir.join(format!("gen_{:03}.json", g.generation_number));
 
-        let serialised_gen = serde_json::to_string_pretty(&g);
-        std::fs::write(&file_path, serialised_gen?)?;
+        match file_path.exists() {
+            false => {
+                let serialised_gen = serde_json::to_string_pretty(&g);
+                std::fs::write(&file_path, serialised_gen?)?;
+                Ok(())
+            },
+            true => 
+                Err(Error::GenAlreadySaved(format!("Gen file already existed at {:?}", file_path))),
+        }
 
-        Ok(())
+        
     }
 }
 
@@ -349,19 +356,23 @@ mod tests {
         let tmp_dir = TmpDir::new("save_over_generation");
         let instance = storage(&tmp_dir.0);
         
-        //1. Save an dummy gen_003 file
+        //1. Save an dummy gen_003 file, representing file already save by another node
         std::fs::create_dir(instance.base_path.join("gen_003")).expect("Expected successful dir creation");
         std::fs::write(tmp_dir.0.join("gen_003").join("gen_003.json"), "placeholder file").unwrap();
 
-        //2. Try to save another gen over it
+        //2. Try to save another gen over it, pretending we didn't notice the other node save gen before us
         let gen = make_dummy_generation(3);
         let result = instance.save_new_gen(gen);
 
-        //3. Test that the original file is intact and no panics.  
+        //3. Test that the original file save by other node is intact and we didn't panic.  
+        let contents = std::fs::read_to_string(tmp_dir.0.join("gen_003").join("gen_003.json")).unwrap();
+        assert_eq!("placeholder file", contents);
+
+        
         //4. Test that Result is Err::GenAlreadyExists()
+        match result.unwrap_err(){
+            Error::GenAlreadySaved(_) => (),
+            other_error => panic!("Wrong error type: {}", other_error),
+        };
     }
-
-
-
-
 }

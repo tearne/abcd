@@ -8,6 +8,7 @@ pub enum Error {
     Os(std::ffi::OsString),
     Parse(std::num::ParseIntError),
     Serde(serde_json::Error),
+    GenAlreadySaved(String),
 }
 
 // impl error::Error for Error {}
@@ -19,6 +20,7 @@ impl fmt::Display for Error {
             &Error::Os(ref original) => f.write_fmt(format_args!("Failed to convert to string: {:?}", original)),
             &Error::Parse(ref err) => err.fmt(f),
             &Error::Serde(ref err) => err.fmt(f),
+            &Error::GenAlreadySaved(ref msg) => write!(f, "{}", msg),//f.write_str(string.as_str()),
         }
     }
 }
