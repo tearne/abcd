@@ -10,6 +10,7 @@ async fn main() ->  Result<(), Box<dyn std::error::Error>> {
     let s3_client = S3Client::new(Region::EuWest1);
     let fut = s3_client.list_objects_v2(ListObjectsV2Request{
         bucket: String::from("s3-ranch-007"),
+        prefix: Some("example/gen_002/".to_string()),
         ..Default::default()
     });
 
