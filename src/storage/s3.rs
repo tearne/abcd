@@ -6,14 +6,14 @@ use crate::{Generation, Particle};
 use crate::error::{Error, Result};
 use super::Storage;
 
-struct S3 {
+struct S3System {
     bucket: String,
-    prefix: String
+    prefix: String,
+    s3Client: S3Client
 }
-impl Storage for S3 {
+impl Storage for S3System {
     fn check_active_gen(&self) -> Result<u16> {
-        let s3_client = S3Client::new(Region::EuWest1);
-        let fut = s3_client.list_objects_v2(ListObjectsV2Request{
+        let fut = self.s3Client.list_objects_v2(ListObjectsV2Request{
             bucket: String::from(self.bucket),
             prefix: Some(self.prefix),
             ..Default::default()
@@ -78,8 +78,8 @@ mod tests {
         pub fn new(a: u16, b: f32) -> Self { DummyParams{a,b} }
     }
 
-    fn storage(bucket:String,prefix:String) -> S3 {
-        S3{bucket:bucket,prefix:prefix}
+    fn storage(bucket:String,prefix:String,s3_client:S3Client) -> S3System {
+        S3System{bucket:bucket,prefix:prefix,s3_client:s3_client}
     }
 
     fn make_dummy_generation(gen_number: u16) -> Generation<DummyParams> {
@@ -112,7 +112,8 @@ mod tests {
 
     #[test]
     fn test_check_active_gen() {
-        let storage = storage("s3-ranch-007".to_string(),"example/gen_002/".to_string());
+        let s3_client = S3Client::new(Region::EuWest1);
+        let storage = storage("s3-ranch-007".to_string(),"example/gen_002/".to_string(),s3_client);
         
         assert_eq!(3, storage.check_active_gen().unwrap());
     }
