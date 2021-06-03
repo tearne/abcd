@@ -5,26 +5,35 @@ use serde::{Serialize, de::DeserializeOwned};
 use crate::{Generation, Particle};
 use crate::error::{Error, Result};
 use super::Storage;
+use tokio;
+use std::convert::TryInto;
 
-struct S3System {
-    bucket: String,
-    prefix: String,
-    s3Client: S3Client
+struct S3System<'a> {
+    bucket:  &'a String,
+    prefix: &'a String,
+    s3Client: &'a S3Client
 }
-impl Storage for S3System {
+impl Storage for S3System<'_> {
     fn check_active_gen(&self) -> Result<u16> {
-        let fut = self.s3Client.list_objects_v2(ListObjectsV2Request{
-            bucket: String::from(self.bucket),
-            prefix: Some(self.prefix),
+        let mut key_names:Vec<String> = Vec::new();
+
+        tokio::spawn( async move {
+        let fut = self.s3Client.clone().list_objects_v2(ListObjectsV2Request{
+            bucket: String::from(self.bucket.clone()),
+            prefix: Some(self.prefix.clone()),
             ..Default::default()
         });
     
-        let response = fut.await?;
+        let response = fut.await.unwrap();
     
-        for thing in response.contents.unwrap() {
-            println!("{:#?}", thing.key.unwrap());
+        for keys in response.contents.unwrap() {
+            let keyStr = keys.key.unwrap();
+            if keyStr.starts_with("gen_") {
+            key_names.push(keys.key.unwrap());
+            }
         }
-        unimplemented!();
+    });
+    Ok(key_names.len().try_into().unwrap())
     }
 
     fn retrieve_previous_gen<'de, P>(&self) -> Result<Generation<P>> where P: DeserializeOwned{
@@ -79,7 +88,7 @@ mod tests {
     }
 
     fn storage(bucket:String,prefix:String,s3_client:S3Client) -> S3System {
-        S3System{bucket:bucket,prefix:prefix,s3_client:s3_client}
+        S3System{bucket:bucket,prefix:prefix,s3Client:s3Client}
     }
 
     fn make_dummy_generation(gen_number: u16) -> Generation<DummyParams> {
