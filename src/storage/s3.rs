@@ -1,6 +1,7 @@
 use rusoto_s3::{ListObjectsV2Request, S3, S3Client};
 use rusoto_core::Region;
 use serde::{Serialize, de::DeserializeOwned};
+use tokio::runtime::Runtime;
 
 use crate::{Generation, Particle};
 use crate::error::{Error, Result};
@@ -8,32 +9,46 @@ use super::Storage;
 use tokio;
 use std::convert::TryInto;
 
-struct S3System<'a> {
-    bucket:  &'a String,
-    prefix: &'a String,
-    s3Client: &'a S3Client
+struct S3System {
+    bucket:  String,
+    prefix:  String,
+    s3Client:  S3Client
 }
-impl Storage for S3System<'_> {
+impl Storage for S3System {
     fn check_active_gen(&self) -> Result<u16> {
-        let mut key_names:Vec<String> = Vec::new();
+        
+        let cloned = self.s3Client.clone();
+        let prefix_cloned = self.prefix.clone();
+        let bucket_cloned = self.bucket.clone();
 
-        tokio::spawn( async move {
-        let fut = self.s3Client.clone().list_objects_v2(ListObjectsV2Request{
-            bucket: String::from(self.bucket.clone()),
-            prefix: Some(self.prefix.clone()),
-            ..Default::default()
-        });
-    
-        let response = fut.await.unwrap();
-    
-        for keys in response.contents.unwrap() {
-            let keyStr = keys.key.unwrap();
-            if keyStr.starts_with("gen_") {
-            key_names.push(keys.key.unwrap());
+        let rt  = Runtime::new()?;
+
+        
+
+        let result = rt.block_on( async move {
+            let fut = cloned.list_objects_v2(ListObjectsV2Request{
+                bucket: String::from(bucket_cloned),
+                prefix: Some(prefix_cloned),
+                ..Default::default()
+            });
+        
+            let response = fut.await.unwrap();
+        
+            let mut key_names:Vec<String> = Vec::new();
+            for keys in response.contents.unwrap() {
+                println!("{:#?}", keys.clone().key.unwrap());
+                let key_str = keys.clone().key.unwrap();
+                if key_str.starts_with("gen_") {
+                    key_names.push(keys.clone().key.unwrap());
+                }
             }
-        }
-    });
-    Ok(key_names.len().try_into().unwrap())
+
+            key_names
+        });
+
+        // let t = Runtime::new().unwrap().block_on(result);
+        
+        Ok(result.len().try_into().unwrap())
     }
 
     fn retrieve_previous_gen<'de, P>(&self) -> Result<Generation<P>> where P: DeserializeOwned{
@@ -88,7 +103,7 @@ mod tests {
     }
 
     fn storage(bucket:String,prefix:String,s3_client:S3Client) -> S3System {
-        S3System{bucket:bucket,prefix:prefix,s3Client:s3Client}
+        S3System{bucket:bucket,prefix:prefix,s3Client:s3_client}
     }
 
     fn make_dummy_generation(gen_number: u16) -> Generation<DummyParams> {
@@ -119,6 +134,7 @@ mod tests {
     //     assert_eq!(1, storage.check_active_gen().unwrap());
     // }
 
+    // #[test
     #[test]
     fn test_check_active_gen() {
         let s3_client = S3Client::new(Region::EuWest1);
