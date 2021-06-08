@@ -1,7 +1,8 @@
-use rusoto_s3::{ListObjectsV2Request, S3, S3Client};
+use rusoto_s3::{ListObjectsV2Request, Object, S3, S3Client};
 use rusoto_core::Region;
 use serde::{Serialize, de::DeserializeOwned};
 use tokio::runtime::Runtime;
+use regex::Regex;
 
 use crate::{Generation, Particle};
 use crate::error::{Error, Result};
@@ -33,22 +34,19 @@ impl Storage for S3System {
             });
         
             let response = fut.await.unwrap();
-        
-            let mut key_names:Vec<String> = Vec::new();
-            for keys in response.contents.unwrap() {
-                println!("{:#?}", keys.clone().key.unwrap());
-                let key_str = keys.clone().key.unwrap();
-                if key_str.starts_with("gen_") {
-                    key_names.push(keys.clone().key.unwrap());
-                }
-            }
 
-            key_names
+            let re = Regex::new(r#"^gen_(?P<gid>\d*)$"#).unwrap(); //TODO use ?
+        
+            let r = response.contents.unwrap().iter()
+            .filter(|key| {
+                let key_string = key.clone().key.as_ref().unwrap();
+                let not_gen_match = !re.is_match(&key_string);
+                not_gen_match
+            }).count();
+
+            r
         });
-
-        // let t = Runtime::new().unwrap().block_on(result);
-        
-        Ok(result.len().try_into().unwrap())
+       Ok(result.try_into().unwrap())
     }
 
     fn retrieve_previous_gen<'de, P>(&self) -> Result<Generation<P>> where P: DeserializeOwned{
