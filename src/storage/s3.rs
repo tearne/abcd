@@ -61,7 +61,7 @@ impl Storage for S3System {
         let prev_gen_file_name = format!("gen_{:03}.json", prev_gen_no);
         let separator = "/".to_string();
         let prefix_cloned = self.prefix.clone();
-        let filename: &str =  format!("{},{},{},{},{}", prefix_cloned,separator,prev_gen_file_dir,separator,prev_gen_file_name);
+        let filename =  format!("{},{},{},{},{}", prefix_cloned,separator,prev_gen_file_dir,separator,prev_gen_file_name);
         let bucket_cloned = self.bucket.clone();
 
         let get_req = self.s3_client.get_object(GetObjectRequest { bucket: bucket_cloned,
@@ -70,14 +70,16 @@ impl Storage for S3System {
 
         let response = self.runtime.block_on(get_req).unwrap();
         let stream = response.body.take().unwrap();
-        let body = stream.into_async_read();
+        let mut body = stream.into_async_read();
+       // let body = body.map_ok(|b| b.to_vec()).
         let file = File::create(filename)?;
+        std::io::copy(&mut body,&mut file);
         let reader = BufReader::new(file);
 
 
         let gen: Generation<P> = serde_json::from_reader(reader)?;
 
-        ok(gen)
+        Ok(gen)
     }
     fn save_particle<P: Serialize>(&self, w: &Particle<P>) -> Result<String>{
         unimplemented!();
@@ -175,18 +177,18 @@ mod tests {
         assert_eq!(3, storage.check_active_gen().unwrap());
     }
 
-    // #[test]
-    // fn test_retrieve_previous_gen() {
-    //     let expected = make_dummy_generation(2);
-    //     let s3_client = S3Client::new(Region::EuWest1);
-    //     let storage = storage("s3-ranch-007".to_string(),"example/gen_002/".to_string(),s3_client);
+    #[test]
+    fn test_retrieve_previous_gen() {
+        let expected = make_dummy_generation(2);
+        let s3_client = S3Client::new(Region::EuWest1);
+        let storage = storage("s3-ranch-007".to_string(),"example/gen_002/".to_string(),s3_client);
         
-    //     let result = instance.retrieve_previous_gen::<DummyParams>();
-    //     let result = 
-    //         instance.retrieve_previous_gen::<DummyParams>().expect(&format!("{:?}", result));
+        let result = instance.retrieve_previous_gen::<DummyParams>();
+        let result = 
+            instance.retrieve_previous_gen::<DummyParams>().expect(&format!("{:?}", result));
 
-    //     assert_eq!(expected, result);
-    // }
+        assert_eq!(expected, result);
+    }
 
   
 
