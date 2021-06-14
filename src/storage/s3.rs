@@ -1,3 +1,4 @@
+use futures::FutureExt;
 use rusoto_s3::{ListObjectsV2Request, Object, S3, S3Client,GetObjectRequest};
 use rusoto_core::Region;
 use serde::{Serialize, de::DeserializeOwned};
@@ -11,6 +12,7 @@ use tokio;
 use std::convert::TryInto;
 use std::fs::File;
 use std::io::BufReader;
+use futures::future::Future;
 
 struct S3System {
     bucket:  String,
@@ -20,66 +22,67 @@ struct S3System {
 }
 impl Storage for S3System {
     fn check_active_gen(&self) -> Result<u16> {
-        
-        
         let prefix_cloned = self.prefix.clone();
         let bucket_cloned = self.bucket.clone();
 
-        let fut = self.s3_client.list_objects_v2(ListObjectsV2Request{
+        let list_request_fut = self.s3_client.list_objects_v2(ListObjectsV2Request{
             bucket: String::from(bucket_cloned),
             prefix: Some(prefix_cloned),
             ..Default::default()
         });
 
-        let response = self.runtime.block_on(fut).unwrap();
-        let re = Regex::new(r#"^example/gen_(?P<gid1>\d*)/gen_(?P<gid2>\d*).json"#).unwrap(); //TODO use ?
-        
-        let contents = response.contents.unwrap();
-        let items = contents.iter();
-        let keys: Vec<u16> = items.filter_map(|key| {
-            let key_string = key.key.as_ref().unwrap();
-            //println!("{:#?}", key_string);
-            //if re.is_match(&key_string) {
-            //let caps = re.captures(&key_string).unwrap();
-            let dir_match = re.is_match(&key_string);
-             let dir_no =   match dir_match{
-                    true => re.captures(&key_string).unwrap()["gid1"].parse::<u16>().ok(),
-                    false => None // Some(0)
-                };
-                //println!("captures = {:?}", caps["gid2"].parse::<u16>());
-                println!("dir_no = {:?}", dir_no);
-                dir_no  
-            })
-            .collect();
+        let gen_number_fut = list_request_fut.map(|response| {
+            let contents = response.unwrap().contents.unwrap();
+            let re = Regex::new(r#"^example/gen_(?P<gid1>\d*)/gen_(?P<gid2>\d*).json"#).unwrap(); //TODO use ?
+            let items = contents.iter();
+            let keys: Vec<u16> = items
+                .filter_map(|key| {
+                    let key_string = key.key.as_ref().unwrap();
+                    let dir_match = re.is_match(&key_string);
+                    let dir_no = match dir_match {
+                        true => re.captures(&key_string).unwrap()["gid1"].parse::<u16>().ok(),
+                        false => None
+                    };
+                    //println!("captures = {:?}", caps["gid2"].parse::<u16>());
+                    println!("dir_no = {:?}", dir_no);
+                    dir_no  
+                })
+               .collect();
+            
             let max_finished_gen = keys.into_iter().max().unwrap_or(0);
-       Ok(max_finished_gen+1) //Last gen with a gen file +1
+            max_finished_gen
+        });
+
+        let answer = self.runtime.block_on(gen_number_fut);
+        Ok(answer+1) //Last gen with a gen file +1
     }
 
     fn retrieve_previous_gen<'de, P>(&self) -> Result<Generation<P>> where P: DeserializeOwned{
-        let prev_gen_no = self.check_active_gen().unwrap_or(1) -1;
-        let prev_gen_file_dir = format!("gen_{:03}", prev_gen_no);
-        let prev_gen_file_name = format!("gen_{:03}.json", prev_gen_no);
-        let separator = "/".to_string();
-        let prefix_cloned = self.prefix.clone();
-        let filename =  format!("{},{},{},{},{}", prefix_cloned,separator,prev_gen_file_dir,separator,prev_gen_file_name);
-        let bucket_cloned = self.bucket.clone();
+        todo!();
+    //     let prev_gen_no = self.check_active_gen().unwrap_or(1) -1;
+    //     let prev_gen_file_dir = format!("gen_{:03}", prev_gen_no);
+    //     let prev_gen_file_name = format!("gen_{:03}.json", prev_gen_no);
+    //     let separator = "/".to_string();
+    //     let prefix_cloned = self.prefix.clone();
+    //     let filename =  format!("{},{},{},{},{}", prefix_cloned,separator,prev_gen_file_dir,separator,prev_gen_file_name);
+    //     let bucket_cloned = self.bucket.clone();
 
-        let get_req = self.s3_client.get_object(GetObjectRequest { bucket: bucket_cloned,
-        key:filename.to_owned(),
-        ..Default::default()});
+    //     let get_req = self.s3_client.get_object(GetObjectRequest { bucket: bucket_cloned,
+    //     key:filename.to_owned(),
+    //     ..Default::default()});
 
-        let response = self.runtime.block_on(get_req).unwrap();
-        let stream = response.body.take().unwrap();
-        let mut body = stream.into_async_read();
-       // let body = body.map_ok(|b| b.to_vec()).
-        let file = File::create(filename)?;
-        std::io::copy(&mut body,&mut file);
-        let reader = BufReader::new(file);
+    //     let response = self.runtime.block_on(get_req).unwrap();
+    //     let stream = response.body.take().unwrap();
+    //     let mut body = stream.into_async_read();
+    //    // let body = body.map_ok(|b| b.to_vec()).
+    //     let file = File::create(filename)?;
+    //     std::io::copy(&mut body,&mut file);
+    //     let reader = BufReader::new(file);
 
 
-        let gen: Generation<P> = serde_json::from_reader(reader)?;
+    //     let gen: Generation<P> = serde_json::from_reader(reader)?;
 
-        Ok(gen)
+    //     Ok(gen)
     }
     fn save_particle<P: Serialize>(&self, w: &Particle<P>) -> Result<String>{
         unimplemented!();
@@ -177,19 +180,16 @@ mod tests {
         assert_eq!(3, storage.check_active_gen().unwrap());
     }
 
-    #[test]
-    fn test_retrieve_previous_gen() {
-        let expected = make_dummy_generation(2);
-        let s3_client = S3Client::new(Region::EuWest1);
-        let storage = storage("s3-ranch-007".to_string(),"example/gen_002/".to_string(),s3_client);
+    // #[test]
+    // fn test_retrieve_previous_gen() {
+    //     let expected = make_dummy_generation(2);
+    //     let s3_client = S3Client::new(Region::EuWest1);
+    //     let storage = storage("s3-ranch-007".to_string(),"example/gen_002/".to_string(),s3_client);
         
-        let result = instance.retrieve_previous_gen::<DummyParams>();
-        let result = 
-            instance.retrieve_previous_gen::<DummyParams>().expect(&format!("{:?}", result));
+    //     let result = instance.retrieve_previous_gen::<DummyParams>();
+    //     let result = 
+    //         instance.retrieve_previous_gen::<DummyParams>().expect(&format!("{:?}", result));
 
-        assert_eq!(expected, result);
-    }
-
-  
-
+    //     assert_eq!(expected, result);
+    // }
 }
