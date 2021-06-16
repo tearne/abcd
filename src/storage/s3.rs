@@ -1,5 +1,5 @@
 use futures::FutureExt;
-use rusoto_s3::{ListObjectsV2Request, Object, S3, S3Client,GetObjectRequest};
+use rusoto_s3::{ListObjectsV2Request, Object, S3, S3Client,GetObjectRequest,PutObjectRequest};
 use rusoto_core::Region;
 use serde::{Serialize, de::DeserializeOwned};
 use tokio::fs::read_to_string;
@@ -14,6 +14,8 @@ use tokio;
 use std::convert::TryInto;
 use std::fs::File;
 use std::io::BufReader;
+use uuid::Uuid;
+
 
 struct S3System {
     bucket:  String,
@@ -116,7 +118,25 @@ impl Storage for S3System {
     //     Ok(gen)
     }
     fn save_particle<P: Serialize>(&self, w: &Particle<P>) -> Result<String>{
-        unimplemented!();
+        let gen_no = self.check_active_gen().unwrap_or(1);
+        let gen_file_dir = format!("gen_{:03}", gen_no);
+        let file_uuid = Uuid::new_v4();
+        let particle_file_name = file_uuid.to_string()+".json";
+        let prefix_cloned = self.prefix.clone();
+        let s3_file_path =  format!("{}/{}/{}", prefix_cloned,gen_file_dir,particle_file_name);
+        let bucket_cloned = self.bucket.clone();
+        let pretty_json = serde_json::to_string_pretty(w);
+        let put_obj_req = PutObjectRequest 
+        { 
+            bucket: bucket_cloned,
+            key:s3_file_path.to_owned(),
+            body: Some(pretty_json.unwrap().to_owned().into_bytes().into()),
+            ..Default::default()
+        };
+        let put_req = self.s3_client.put_object(put_obj_req);
+        let mut response = self.runtime.block_on(put_req).unwrap();
+        
+        Ok(s3_file_path)
     }
     fn num_particles_available(&self) -> Result<u16>{
         unimplemented!();
@@ -131,7 +151,7 @@ impl Storage for S3System {
 
 #[cfg(test)]
 mod tests {
-    use std::path::{Path, PathBuf};
+    use std::{io::Read, path::{Path, PathBuf}};
     use serde::{Serialize, Deserialize};
     use serde_json::Value;
 
@@ -195,6 +215,28 @@ mod tests {
         }
     }
 
+    fn load_particle_file(particle_file_name: String) -> Particle<DummyParams>  {
+        let s3_client = S3Client::new(Region::EuWest1);
+        let storage = storage("s3-ranch-007".to_string(),"save_particle".to_string(),s3_client);
+        let particle_file_dir = storage.prefix.clone();
+        let filename =  format!("{}/{}", particle_file_dir,particle_file_name);
+        let bucket_cloned = storage.bucket.clone();
+        let get_obj_req = GetObjectRequest 
+        { 
+            bucket: bucket_cloned,
+            key:filename.to_owned(),
+            ..Default::default()
+        };
+        let get_req = storage.s3_client.get_object(get_obj_req);
+        let mut response = storage.runtime.block_on(get_req).unwrap();
+        let stream = response.body.take().unwrap();
+        let mut string: String = String::new();
+        let _ = stream.into_blocking_read().read_to_string(&mut string);
+        println!(" ========> {}", string);
+        let parsed: Particle<DummyParams>  = serde_json::from_str(&string).unwrap();
+        parsed
+    }
+
     // #[test]
     // fn test_check_initial_active_gen() {
     //     let full_path = manifest_dir().join("resources/test/fs/empty");
@@ -221,5 +263,23 @@ mod tests {
             storage.retrieve_previous_gen::<DummyParams>().expect(&format!("{:?}", result));
 
         assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn test_save_particle() {
+        let s3_client = S3Client::new(Region::EuWest1);
+        let storage = storage("s3-ranch-007".to_string(),"save_particle".to_string(),s3_client);
+
+        let p1 = DummyParams::new(1,2.);
+        let w1 = Particle {
+            parameters: p1,
+            scores: vec![100.0, 200.0],
+            weight: 1.234,
+        };
+
+        let saved_1 = storage.save_particle(&w1).unwrap();
+        let loaded: Particle<DummyParams> = load_particle_file(saved_1);
+        
+        assert_eq!(w1, loaded);
     }
 }
