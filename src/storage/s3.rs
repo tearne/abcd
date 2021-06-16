@@ -131,12 +131,14 @@ impl Storage for S3System {
             bucket: bucket_cloned,
             key:s3_file_path.to_owned(),
             body: Some(pretty_json.unwrap().to_owned().into_bytes().into()),
+            acl: Some("bucket-owner-full-control".to_string()),
             ..Default::default()
         };
         let put_req = self.s3_client.put_object(put_obj_req);
         let mut response = self.runtime.block_on(put_req).unwrap();
         
         Ok(s3_file_path)
+        //Ok(particle_file_name)
     }
     fn num_particles_available(&self) -> Result<u16>{
         unimplemented!();
@@ -217,14 +219,15 @@ mod tests {
 
     fn load_particle_file(particle_file_name: String) -> Particle<DummyParams>  {
         let s3_client = S3Client::new(Region::EuWest1);
-        let storage = storage("s3-ranch-007".to_string(),"save_particle".to_string(),s3_client);
-        let particle_file_dir = storage.prefix.clone();
-        let filename =  format!("{}/{}", particle_file_dir,particle_file_name);
+        //let storage = storage("s3-ranch-007".to_string(),"save_particle".to_string(),s3_client);
+        let storage = storage("s3-ranch-007".to_string(),"example".to_string(),s3_client);
+        //let particle_file_dir = storage.prefix.clone();
+        //let filename =  format!("{}/{}", particle_file_dir,particle_file_name);
         let bucket_cloned = storage.bucket.clone();
         let get_obj_req = GetObjectRequest 
         { 
             bucket: bucket_cloned,
-            key:filename.to_owned(),
+            key:particle_file_name.to_owned(),
             ..Default::default()
         };
         let get_req = storage.s3_client.get_object(get_obj_req);
@@ -268,7 +271,7 @@ mod tests {
     #[test]
     fn test_save_particle() {
         let s3_client = S3Client::new(Region::EuWest1);
-        let storage = storage("s3-ranch-007".to_string(),"save_particle".to_string(),s3_client);
+        let storage = storage("s3-ranch-007".to_string(),"example".to_string(),s3_client);
 
         let p1 = DummyParams::new(1,2.);
         let w1 = Particle {
