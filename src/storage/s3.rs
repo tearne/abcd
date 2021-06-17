@@ -23,6 +23,32 @@ struct S3System {
     s3_client:  S3Client,
     runtime: Runtime,
 }
+impl S3System {
+    fn get_particle_files_in_current_gen_folder(&self) -> Result<Vec<Object>> { //TODO This is where we want to loop more than 1000
+        let gen_no = self.check_active_gen().unwrap_or(1);
+        let gen_dir = format!("gen_{:03}", gen_no);
+        let prefix_cloned = self.prefix.clone();
+        let bucket_cloned = self.bucket.clone();
+        let gen_prefix =  format!("{}/{}", prefix_cloned,gen_dir);
+
+        //println!("Requesting {}", gen_prefix);
+
+        let list_request_fut = self.s3_client.list_objects_v2(ListObjectsV2Request{
+            bucket: String::from(bucket_cloned),
+            prefix: Some(gen_prefix),
+            ..Default::default()
+        });
+
+        let current_gen_fut = list_request_fut.map(|response| {
+            let contents = response.unwrap().contents.unwrap();
+          //  println!("Contents ====> {:?}",&contents);
+            contents
+
+        });
+        let answer = self.runtime.block_on(current_gen_fut);
+        Ok(answer)
+    }
+}
 impl Storage for S3System {
     fn check_active_gen(&self) -> Result<u16> {
         let prefix_cloned = self.prefix.clone();
@@ -141,10 +167,30 @@ impl Storage for S3System {
         //Ok(particle_file_name)
     }
     fn num_particles_available(&self) -> Result<u16>{
-        unimplemented!();
+        //unimplemented!();
+        let files_in_folder= self.get_particle_files_in_current_gen_folder();
+        match files_in_folder {
+            Err(_) if self.check_active_gen().ok() == Some(1) => Ok(0),
+            Ok(files) => Ok(files.len() as u16), //TODO read dir numbers & take max //TODO safer way to do cast - Ok(u16::try_from(file.len()))
+            Err(e) => Err(e),
+        }
     }
+
     fn retrieve_all_particles<P>(&self) -> Result<Vec<Particle<P>>> where P: DeserializeOwned {
-        unimplemented!();
+       // unimplemented!();
+       let particle_files = self.get_particle_files_in_current_gen_folder()?;
+
+       let mut weighted_particles = Vec::new();
+       for entry in particle_files {
+           let stream = entry // Want to convert to string here?
+           use std::io::Read;
+           let mut string: String = String::new();
+           let _ = stream.into_blocking_read().read_to_string(&mut string);   
+           let wp: Particle<P> = serde_json::from_str(&string)?;
+           weighted_particles.push(wp);
+       }
+
+       Ok(weighted_particles)
     }
     fn save_new_gen<P: Serialize>(&self, g: Generation<P>) -> Result<()>{
         unimplemented!();
@@ -284,5 +330,21 @@ mod tests {
         let loaded: Particle<DummyParams> = load_particle_file(saved_1);
         
         assert_eq!(w1, loaded);
+        //If possible delete file that has just been saved - as it screws up later number of particles test
+    }
+
+    // #[test]
+    // fn test_no_particle_files_initially() {
+    //     let full_path = manifest_dir().join("resources/test/fs/empty/");
+    //     let storage = storage(&full_path);
+    //     assert_eq!(0,storage.num_particles_available().unwrap())
+    // }
+
+
+    #[test]
+    fn test_number_particle_files() {
+        let s3_client = S3Client::new(Region::EuWest1);
+        let storage = storage("s3-ranch-007".to_string(),"example".to_string(),s3_client);
+        assert_eq!(8,storage.num_particles_available().unwrap())
     }
 }
