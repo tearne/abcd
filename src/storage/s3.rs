@@ -15,6 +15,7 @@ use std::convert::TryInto;
 use std::fs::File;
 use std::io::BufReader;
 use uuid::Uuid;
+use std::io::Read;
 
 
 struct S3System {
@@ -179,19 +180,30 @@ impl Storage for S3System {
     fn retrieve_all_particles<P>(&self) -> Result<Vec<Particle<P>>> where P: DeserializeOwned {
        // unimplemented!();
        let particle_files = self.get_particle_files_in_current_gen_folder()?;
-
+       let bucket_cloned = self.bucket.clone();
        let mut weighted_particles = Vec::new();
        for entry in particle_files {
-           let stream = entry // Want to convert to string here?
-           use std::io::Read;
-           let mut string: String = String::new();
-           let _ = stream.into_blocking_read().read_to_string(&mut string);   
-           let wp: Particle<P> = serde_json::from_str(&string)?;
-           weighted_particles.push(wp);
+        let particle_filename= entry.key.unwrap();
+        let get_obj_req = GetObjectRequest 
+        { 
+            bucket: bucket_cloned.to_owned(),
+            key:particle_filename.to_owned(),
+            ..Default::default()
+        };
+        //println!("{:?}",&get_obj_req);
+        let get_req = self.s3_client.get_object(get_obj_req);
+        let mut response = self.runtime.block_on(get_req).unwrap();
+        let stream = response.body.take().unwrap();
+        // let t = stream.to_vec();
+        let mut string: String = String::new();
+        let _ = stream.into_blocking_read().read_to_string(&mut string);  
+        let wp: Particle<P> = serde_json::from_str(&string)?;
+        weighted_particles.push(wp);
        }
 
        Ok(weighted_particles)
     }
+
     fn save_new_gen<P: Serialize>(&self, g: Generation<P>) -> Result<()>{
         unimplemented!();
     }
@@ -330,7 +342,7 @@ mod tests {
         let loaded: Particle<DummyParams> = load_particle_file(saved_1);
         
         assert_eq!(w1, loaded);
-        //If possible delete file that has just been saved - as it screws up later number of particles test
+        //If possible delete file that has just been saved - as it screws up later number of particles test - maybe implement temp dir in bucket
     }
 
     // #[test]
@@ -346,5 +358,38 @@ mod tests {
         let s3_client = S3Client::new(Region::EuWest1);
         let storage = storage("s3-ranch-007".to_string(),"example".to_string(),s3_client);
         assert_eq!(8,storage.num_particles_available().unwrap())
+    }
+
+    #[test]
+    fn test_retrieve_particle_files() {
+        let s3_client = S3Client::new(Region::EuWest1);
+        let storage = storage("s3-ranch-007".to_string(),"example".to_string(),s3_client);
+
+        let mut expected /*: Result<Vec<Weighted<DummyParams>>>*/ = {    
+            let w1 = Particle {
+                parameters: DummyParams::new(1,2.),
+                scores: vec![100.0, 200.0],
+                weight: 1.234,
+            };
+    
+            let w2 = Particle {
+                parameters: DummyParams::new(3,4.),
+                scores: vec![300.0, 400.0],
+                weight: 1.567,
+            };
+
+            vec![w1, w2]
+        };
+       
+        let mut result: Vec<Particle<DummyParams>> = storage.retrieve_all_particles().unwrap();
+
+        //Sort by weight for easy comparison
+        expected.sort_by(|a,b| a.weight.partial_cmp(&b.weight).unwrap());
+        result.sort_by(|a,b| a.weight.partial_cmp(&b.weight).unwrap());
+
+        assert_eq!(
+            expected, 
+            result
+        );
     }
 }
