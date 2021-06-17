@@ -205,7 +205,42 @@ impl Storage for S3System {
     }
 
     fn save_new_gen<P: Serialize>(&self, g: Generation<P>) -> Result<()>{
-        unimplemented!();
+        //unimplemented!();
+        let gen_dir = format!("gen_{:03}", g.generation_number);
+        let file_name = format!("gen_{:03}.json", g.generation_number);
+        let prefix_cloned = self.prefix.clone();
+        let filename =  format!("{}/{}/{}", prefix_cloned,gen_dir,file_name);
+        let bucket_cloned = self.bucket.clone();
+        let bucket_cloned2 = self.bucket.clone();
+
+        let get_obj_req = GetObjectRequest 
+        { 
+            bucket: bucket_cloned,
+            key:filename.to_owned(),
+            ..Default::default()
+        };
+        println!("{:?}",&get_obj_req);
+        let get_req = self.s3_client.get_object(get_obj_req);
+        let mut response = self.runtime.block_on(get_req).unwrap();
+
+        match response.body.is_some() { //Is there something there already?
+            false => {
+                let pretty_json_gen = serde_json::to_string_pretty(&g);
+                let put_obj_req = PutObjectRequest 
+                { 
+                    bucket: bucket_cloned2,
+                    key:filename.to_owned(),
+                    body: Some(pretty_json_gen.unwrap().to_owned().into_bytes().into()),
+                    acl: Some("bucket-owner-full-control".to_string()),
+                    ..Default::default()
+                };
+                let put_req = self.s3_client.put_object(put_obj_req);
+                let mut response2 = self.runtime.block_on(put_req).unwrap();
+                Ok(())
+            },
+            true => 
+                Err(Error::GenAlreadySaved(format!("Gen file already existed at {:?}", filename))),
+        }
     }
 }
 
@@ -392,4 +427,70 @@ mod tests {
             result
         );
     }
+
+    // #[test]
+    // fn save_new_generation(){
+    //     // let tmp_dir = TmpDir::new("save_generation");
+    //     // let instance = storage(&tmp_dir.0);
+
+    //     //Again need to make possible temp s3 dir?
+
+    //     let s3_client = S3Client::new(Region::EuWest1);
+    //     let storage = storage("s3-ranch-007".to_string(),"example".to_string(),s3_client);
+
+    //     let gen = make_dummy_generation(3);
+    //     instance.save_new_gen(gen).expect("Expected successful save");
+
+    //     let expected = serde_json::json!({
+    //         "generation_number": 3,
+    //         "tolerance": 0.1234,
+    //         "acceptance": 0.7,
+    //         "particles": [
+    //             {
+    //                 "parameters" : {
+    //                     "a": 10, "b": 20.0
+    //                 },
+    //                 "scores": [1000.0, 2000.0],
+    //                 "weight": 0.234
+    //             },{
+    //                 "parameters" : {
+    //                     "a": 30, "b": 40.0
+    //                 },
+    //                 "scores": [3000.0, 4000.0],
+    //                 "weight": 0.567
+    //             }
+    //         ]
+    //     });
+
+    //     let actual = {
+ 
+    //     };
+
+    //     assert_eq!(expected, actual);
+    // }
+
+    // #[test]
+    // fn dont_save_over_existing_gen_file(){
+    //     let tmp_dir = TmpDir::new("save_over_generation");
+    //     let instance = storage(&tmp_dir.0);
+        
+    //     //1. Save an dummy gen_003 file, representing file already save by another node
+    //     std::fs::create_dir(instance.base_path.join("gen_003")).expect("Expected successful dir creation");
+    //     std::fs::write(tmp_dir.0.join("gen_003").join("gen_003.json"), "placeholder file").unwrap();
+
+    //     //2. Try to save another gen over it, pretending we didn't notice the other node save gen before us
+    //     let gen = make_dummy_generation(3);
+    //     let result = instance.save_new_gen(gen);
+
+    //     //3. Test that the original file save by other node is intact and we didn't panic.  
+    //     let contents = std::fs::read_to_string(tmp_dir.0.join("gen_003").join("gen_003.json")).unwrap();
+    //     assert_eq!("placeholder file", contents);
+
+        
+    //     //4. Test that Result is Err::GenAlreadyExists()
+    //     match result.unwrap_err(){
+    //         Error::GenAlreadySaved(_) => (),
+    //         other_error => panic!("Wrong error type: {}", other_error),
+    //     };
+    // }
 }
