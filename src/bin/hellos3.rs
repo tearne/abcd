@@ -15,12 +15,15 @@ async fn main() ->  Result<(), Box<dyn std::error::Error>> {
     };
     let mut count = 0u32;
     loop{
+        
         let result = s3_client.list_objects_v2(list_obj_req.clone());
         let response = result.await?;
-        for thing in response.contents.unwrap() {
+        let items = response.contents.unwrap();
+        for thing in items.iter() {
             count +=1;
-            println!("{:#?}", thing.key.unwrap());
+            //println!("{:#?}", thing.key.unwrap());
         }
+        println!("found {} items", items.len());
         list_obj_req.continuation_token = response.next_continuation_token.clone();
         if list_obj_req.continuation_token.is_none(){
             break;

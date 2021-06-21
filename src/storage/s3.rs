@@ -1,4 +1,4 @@
-use futures::FutureExt;
+use futures::{Future, FutureExt, TryFutureExt};
 use rusoto_s3::{ListObjectsV2Request, Object, S3, S3Client,GetObjectRequest,PutObjectRequest};
 use rusoto_core::Region;
 use serde::{Serialize, de::DeserializeOwned};
@@ -7,7 +7,7 @@ use tokio::runtime::Runtime;
 use regex::Regex;
 use std::fmt::Debug;
 
-use crate::{Generation, Particle};
+use crate::{Generation, Particle,Config};
 use crate::error::{Error, Result};
 use super::Storage;
 use tokio;
@@ -16,7 +16,6 @@ use std::fs::File;
 use std::io::BufReader;
 use uuid::Uuid;
 use std::io::Read;
-
 
 struct S3System {
     bucket:  String,
@@ -108,18 +107,28 @@ impl Storage for S3System {
         println!("{:?}",&get_obj_req);
         let get_req = self.s3_client.get_object(get_obj_req);
 
-        
+        let string_fut = get_req.then(move |gor| {
+            async {
+                let mut gor = gor.unwrap();
+                let stream = gor.body.take().unwrap();
+                use tokio::io::AsyncReadExt;
+                let mut string_buf: String = String::new();
+                let outcome = stream.into_async_read().read_to_string(&mut string_buf).await;
+                println!("Async read result = {:#?}", outcome);
+                string_buf
+            }
+        });
 
-        let mut response = self.runtime.block_on(get_req).unwrap();
+        let string = self.runtime.block_on(string_fut);
 
 
-
-        let stream = response.body.take().unwrap();
-        // let t = stream.to_vec();
-        use std::io::Read;
-        let mut string: String = String::new();
-        let _ = stream.into_blocking_read().read_to_string(&mut string);
-        println!(" ========> {}", string);
+        // let mut response = self.runtime.block_on(get_req).unwrap();
+        // let stream = response.body.take().unwrap();
+        // // let t = stream.to_vec();
+        // use std::io::Read;
+        // let mut string: String = String::new();
+        // let _ = stream.into_blocking_read().read_to_string(&mut string);
+        // println!(" ========> {}", string);
 
         let parsed: Generation<P> = serde_json::from_str(&string)?;
 
@@ -279,6 +288,9 @@ mod tests {
     }
 
     fn storage(bucket:String,prefix:String,s3_client:S3Client) -> S3System {
+        if !envmnt::exists("TEST_BUCKET") {
+            envmnt::set("TEST_BUCKET", "testBucket");
+        }
         let runtime = Runtime::new().unwrap();
 
         S3System{
