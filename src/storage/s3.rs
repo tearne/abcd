@@ -6,6 +6,7 @@ use tokio::fs::read_to_string;
 use tokio::runtime::Runtime;
 use regex::Regex;
 use std::fmt::Debug;
+use std::env; //For environment variables => https://doc.rust-lang.org/book/ch12-05-working-with-environment-variables.html
 
 use crate::{Generation, Particle,Config};
 use crate::error::{Error, Result};
@@ -287,10 +288,15 @@ mod tests {
         pub fn new(a: u16, b: f32) -> Self { DummyParams{a,b} }
     }
 
-    fn storage(bucket:String,prefix:String,s3_client:S3Client) -> S3System {
-        if !envmnt::exists("TEST_BUCKET") {
-            envmnt::set("TEST_BUCKET", "testBucket");
-        }
+    //fn storage(bucket:String,prefix:String,s3_client:S3Client) -> S3System {
+    fn storage(prefix:String,s3_client:S3Client) -> S3System {
+            // if !envmnt::exists("TEST_BUCKET") {
+        //     envmnt::set("TEST_BUCKET", "testBucket");
+        // } //Q is this only something related to simplelogger?
+        //let config = Config::from_path(opt.config); // Leaving for now as can't read in env variables in toml file
+       
+        let bucket = env::var("TEST_BUCKET").unwrap().to_string();
+        println!(" ====> bucket {}", bucket);
         let runtime = Runtime::new().unwrap();
 
         S3System{
@@ -325,7 +331,7 @@ mod tests {
     fn load_particle_file(particle_file_name: String) -> Particle<DummyParams>  {
         let s3_client = S3Client::new(Region::EuWest1);
         //let storage = storage("s3-ranch-007".to_string(),"save_particle".to_string(),s3_client);
-        let storage = storage("s3-ranch-007".to_string(),"example".to_string(),s3_client);
+        let storage = storage(/*"s3-ranch-007".to_string(),*/"example".to_string(),s3_client);
         //let particle_file_dir = storage.prefix.clone();
         //let filename =  format!("{}/{}", particle_file_dir,particle_file_name);
         let bucket_cloned = storage.bucket.clone();
@@ -356,7 +362,7 @@ mod tests {
     #[test]
     fn test_check_active_gen() {
         let s3_client = S3Client::new(Region::EuWest1);
-        let storage = storage("s3-ranch-007".to_string(),"example/".to_string(),s3_client);
+        let storage = storage(/*"s3-ranch-007".to_string(),*/"example/".to_string(),s3_client);
         
         assert_eq!(3, storage.check_active_gen().unwrap());
     }
@@ -365,7 +371,7 @@ mod tests {
     fn test_retrieve_previous_gen() {
         let expected = make_dummy_generation(2);
         let s3_client = S3Client::new(Region::EuWest1);
-        let storage = storage("s3-ranch-007".to_string(),"example".to_string(),s3_client);
+        let storage = storage(/*"s3-ranch-007".to_string(),*/"example".to_string(),s3_client);
         let result = storage.retrieve_previous_gen::<DummyParams>();
         let result = 
             storage.retrieve_previous_gen::<DummyParams>().expect(&format!("{:?}", result));
@@ -376,7 +382,7 @@ mod tests {
     #[test]
     fn test_save_particle() {
         let s3_client = S3Client::new(Region::EuWest1);
-        let storage = storage("s3-ranch-007".to_string(),"example".to_string(),s3_client);
+        let storage = storage(/*"s3-ranch-007".to_string(),*/"example".to_string(),s3_client);
 
         let p1 = DummyParams::new(1,2.);
         let w1 = Particle {
@@ -403,14 +409,14 @@ mod tests {
     #[test]
     fn test_number_particle_files() {
         let s3_client = S3Client::new(Region::EuWest1);
-        let storage = storage("s3-ranch-007".to_string(),"example".to_string(),s3_client);
+        let storage = storage(/*"s3-ranch-007".to_string(),*/"example".to_string(),s3_client);
         assert_eq!(8,storage.num_particles_available().unwrap())
     }
 
     #[test]
     fn test_retrieve_particle_files() {
         let s3_client = S3Client::new(Region::EuWest1);
-        let storage = storage("s3-ranch-007".to_string(),"example".to_string(),s3_client);
+        let storage = storage(/*"s3-ranch-007".to_string(),*/"example".to_string(),s3_client);
 
         let mut expected /*: Result<Vec<Weighted<DummyParams>>>*/ = {    
             let w1 = Particle {
