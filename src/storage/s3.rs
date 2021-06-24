@@ -1,5 +1,5 @@
 use futures::{Future, FutureExt, TryFutureExt};
-use rusoto_s3::{ListObjectsV2Request, Object, S3, S3Client,GetObjectRequest,PutObjectRequest};
+use rusoto_s3::{ListObjectsV2Request, Object, S3, S3Client,GetObjectRequest,PutObjectRequest,DeleteObjectRequest};
 use rusoto_core::Region;
 use serde::{Serialize, de::DeserializeOwned};
 use tokio::fs::read_to_string;
@@ -121,39 +121,11 @@ impl Storage for S3System {
         });
 
         let string = self.runtime.block_on(string_fut);
-
-
-        // let mut response = self.runtime.block_on(get_req).unwrap();
-        // let stream = response.body.take().unwrap();
-        // // let t = stream.to_vec();
-        // use std::io::Read;
-        // let mut string: String = String::new();
-        // let _ = stream.into_blocking_read().read_to_string(&mut string);
-        // println!(" ========> {}", string);
-
         let parsed: Generation<P> = serde_json::from_str(&string)?;
-
         println!("Parsed to {:?}", parsed);
-
         Ok(parsed)
-        
-        // let string = String::from_utf8_lossy(stream);
-        
-        // use tokio::io::AsyncReadExt;
-        // use tokio::fs::By
-        // stream.read_to_end(String::new());
-
-
-
-
-        // let mut body = stream.into_async_read();
-       // let body = body.map_ok(|b| b.to_vec()).
-
-
-    //     let gen: Generation<P> = serde_json::from_reader(reader)?;
-
-    //     Ok(gen)
     }
+
     fn save_particle<P: Serialize>(&self, w: &Particle<P>) -> Result<String>{
         let gen_no = self.check_active_gen().unwrap_or(1);
         let gen_file_dir = format!("gen_{:03}", gen_no);
@@ -262,22 +234,42 @@ mod tests {
 
     use super::*;
 
-/*     struct TmpDir(PathBuf);
-    impl TmpDir {
-        pub fn new(name: &str) -> Self {
-            let tmp_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("target").join("test_tmp").join(name);
-            if tmp_path.exists() {
-                std::fs::remove_dir_all(&tmp_path).unwrap();
-            }
-            std::fs::create_dir_all(&tmp_path).expect("failed to create");
-            TmpDir(tmp_path)
+    struct TmpBucketPrefix(String);
+    impl TmpBucketPrefix {
+        pub fn new(prefix: &str) -> Self {
+            let s3_client = S3Client::new(Region::EuWest1);
+            let storage = storage(prefix.to_string(),s3_client);
+            let prefix_cloned = storage.prefix.clone();
+            let bucket_cloned = storage.bucket.clone();
+    
+            let list_request_fut = storage.s3_client.list_objects_v2(ListObjectsV2Request{
+                bucket: String::from(bucket_cloned),
+                prefix: Some(prefix_cloned),
+                ..Default::default()
+            });
+
+            let fut = list_request_fut.map(|response| {
+                let contents = response.unwrap().contents.unwrap();
+                contents
+            });
+            let bucket_prefix_contents = storage.runtime.block_on(fut);
+
+            if !bucket_prefix_contents.is_empty() {
+            let items = bucket_prefix_contents.iter();
+            let keys = items
+                .map(|key| {
+                    let delete_object_req = DeleteObjectRequest {
+                        bucket: storage.bucket.to_owned(),
+                        key: key.key.clone().unwrap(),
+                        ..Default::default()
+                    };
+                    let req = storage.s3_client
+                        .delete_object(delete_object_req);
+            });
+        }
+         TmpBucketPrefix(prefix.to_string())
         }
     }
-    impl Drop for TmpDir {
-        fn drop(&mut self){
-            // std::fs::remove_dir_all(self.0.as_path()).unwrap();
-        }
-    } */
 
     #[derive(Serialize, Deserialize, Debug, PartialEq)]
     struct DummyParams{
@@ -295,8 +287,9 @@ mod tests {
         // } //Q is this only something related to simplelogger?
         //let config = Config::from_path(opt.config); // Leaving for now as can't read in env variables in toml file
        
-        let bucket = env::var("TEST_BUCKET").unwrap().to_string();
+        let bucket = env::var("TEST_BUCKET").unwrap().to_string(); //.expect("TEST_BUCKET not set");
         println!(" ====> bucket {}", bucket);
+        
         let runtime = Runtime::new().unwrap();
 
         S3System{
@@ -371,7 +364,7 @@ mod tests {
     fn test_retrieve_previous_gen() {
         let expected = make_dummy_generation(2);
         let s3_client = S3Client::new(Region::EuWest1);
-        let storage = storage(/*"s3-ranch-007".to_string(),*/"example".to_string(),s3_client);
+        let storage = storage("example".to_string(),s3_client);
         let result = storage.retrieve_previous_gen::<DummyParams>();
         let result = 
             storage.retrieve_previous_gen::<DummyParams>().expect(&format!("{:?}", result));
@@ -382,7 +375,9 @@ mod tests {
     #[test]
     fn test_save_particle() {
         let s3_client = S3Client::new(Region::EuWest1);
-        let storage = storage(/*"s3-ranch-007".to_string(),*/"example".to_string(),s3_client);
+        let tmp_bucket = TmpBucketPrefix::new("save_particle");
+        println!("==============================> tmp_bucket {}", tmp_bucket.0);
+        let storage = storage("save_particle".to_string(),s3_client);
 
         let p1 = DummyParams::new(1,2.);
         let w1 = Particle {
@@ -409,14 +404,14 @@ mod tests {
     #[test]
     fn test_number_particle_files() {
         let s3_client = S3Client::new(Region::EuWest1);
-        let storage = storage(/*"s3-ranch-007".to_string(),*/"example".to_string(),s3_client);
-        assert_eq!(8,storage.num_particles_available().unwrap())
+        let storage = storage("example".to_string(),s3_client);
+        assert_eq!(2,storage.num_particles_available().unwrap())
     }
 
     #[test]
     fn test_retrieve_particle_files() {
         let s3_client = S3Client::new(Region::EuWest1);
-        let storage = storage(/*"s3-ranch-007".to_string(),*/"example".to_string(),s3_client);
+        let storage = storage("example".to_string(),s3_client);
 
         let mut expected /*: Result<Vec<Weighted<DummyParams>>>*/ = {    
             let w1 = Particle {
