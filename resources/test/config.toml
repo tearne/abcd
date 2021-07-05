@@ -1,2 +1,2 @@
-[s3_params]
+//[s3_params]
 bucket = "$ABCDBucket"

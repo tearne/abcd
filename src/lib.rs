@@ -1,5 +1,6 @@
 mod error;
 mod storage;
+mod etc;
 
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
