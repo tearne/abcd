@@ -1,12 +1,12 @@
-mod storage;
 mod error;
+mod storage;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
-use std::path::{Path, PathBuf};
 use std::fmt::Debug;
+use std::path::{Path, PathBuf};
 
-pub trait Random { }
+pub trait Random {}
 
 pub trait Model {
     type Parameters;
@@ -46,10 +46,9 @@ struct Generation<P> {
     particles: Vec<Particle<P>>,
 }
 
-
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 pub struct s3_params {
-    input_data_root: PathBuf,   //TODO can we make this a Path? lifetime seems to clash
+    input_data_root: PathBuf, //TODO can we make this a Path? lifetime seems to clash
 }
 impl s3_params {
     pub fn absoluteify_root_path(&mut self, config_path: impl AsRef<Path>) {
@@ -63,10 +62,9 @@ impl s3_params {
     }
 }
 
-
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 pub struct Config {
-    pub s3_params: s3_params
+    pub s3_params: s3_params,
 }
 impl Config {
     pub fn from_path<P>(config_path: P) -> Self
@@ -80,4 +78,3 @@ impl Config {
         config
     }
 }
-

@@ -1,5 +1,5 @@
 use abcd::Model;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 struct MyParameters {
@@ -7,11 +7,11 @@ struct MyParameters {
 }
 
 #[derive(Debug)]
-struct MyModel{
+struct MyModel {
     name: String,
 }
 
-impl Model for MyModel{
+impl Model for MyModel {
     type Parameters = MyParameters;
 
     fn prior_sample<R: abcd::Random>(&self, _random: &R) -> Self::Parameters {
@@ -36,7 +36,7 @@ impl Model for MyModel{
 }
 
 fn main() {
-    let m = MyModel{
+    let m = MyModel {
         name: "Awesome Model".to_string(),
     };
 
