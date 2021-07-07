@@ -9,7 +9,8 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::env;
 use std::fmt::Debug;
 use tokio::fs::read_to_string;
-use tokio::runtime::Runtime; //For environment variables => https://doc.rust-lang.org/book/ch12-05-working-with-environment-variables.html
+use tokio::runtime::Runtime; 
+//For environment variables => https://doc.rust-lang.org/book/ch12-05-working-with-environment-variables.html
 
 use super::Storage;
 use crate::error::{Error, Result};
@@ -300,6 +301,7 @@ mod tests {
         // } //Q is this only something related to simplelogger?
         //let config = Config::from_path(opt.config); // Leaving for now as can't read in env variables in toml file
 
+        // TODO make this use the new config
         let bucket = env::var("TEST_BUCKET").unwrap().to_string(); //.expect("TEST_BUCKET not set");
         println!(" ====> bucket {}", bucket);
 
@@ -408,6 +410,10 @@ mod tests {
             weight: 1.234,
         };
 
+        // TODO fix the async problem like this:
+        // https://github.com/hyperium/hyper/issues/2112
+        // or rusoto you can create a new client https://docs.rs/rusoto_core/0.43.0/rusoto_core/request/struct.HttpClient.html 
+        // from here and then pass that into the specific service's constructor. This will avoid using the lazy_static client.
         let saved_1 = storage.save_particle(&w1).unwrap();
         let loaded: Particle<DummyParams> = load_particle_file(saved_1);
 

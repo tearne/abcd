@@ -1,1 +1,3 @@
-bucket = "ABCDBucket"
+[storage]
+location = "ABCDBucket"
+kind = "envvar"
