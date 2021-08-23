@@ -196,7 +196,7 @@ impl Storage for S3System {
         Ok(weighted_particles)
     }
 
-    fn save_new_gen<P: Serialize>(&self, g: Generation<P>) -> Result<()> {
+    fn save_new_gen<P: Serialize>(&self, g: Generation<P>) -> Result<()>{
         //unimplemented!();
         let gen_dir = format!("gen_{:03}", g.generation_number);
         let file_name = format!("gen_{:03}.json", g.generation_number);
@@ -210,13 +210,14 @@ impl Storage for S3System {
             key: filename.to_owned(),
             ..Default::default()
         };
-        println!("{:?}", &get_obj_req);
+        //println!("{:?}", &get_obj_req);
         let get_req = self.s3_client.get_object(get_obj_req);
-        let mut response = self.runtime.block_on(get_req).unwrap();
+        let mut response = self.runtime.block_on(get_req);
+    
 
-        match response.body.is_some() {
-            //Is there something there already?
-            false => {
+        match response.is_err() {
+            //Is there something there already - if there is an error then there isn't?
+            true => {
                 let pretty_json_gen = serde_json::to_string_pretty(&g);
                 let put_obj_req = PutObjectRequest {
                     bucket: bucket_cloned2,
@@ -229,7 +230,7 @@ impl Storage for S3System {
                 let mut response2 = self.runtime.block_on(put_req).unwrap();
                 Ok(())
             }
-            true => Err(Error::GenAlreadySaved(format!(
+            false => Err(Error::GenAlreadySaved(format!(
                 "Gen file already existed at {:?}",
                 filename
             ))),
@@ -267,10 +268,11 @@ mod tests {
                 contents
             });
             let bucket_prefix_contents = storage.runtime.block_on(fut);
+            println!("{:?}", &bucket_prefix_contents);
 
             if !bucket_prefix_contents.is_empty() {
                 let items = bucket_prefix_contents.iter();
-                let keys = items.map(|key| {
+                let keys_to_delete = items.map(|key| {
                     let delete_object_req = DeleteObjectRequest {
                         bucket: storage.bucket.to_owned(),
                         key: key.key.clone().unwrap(),
@@ -359,6 +361,52 @@ mod tests {
         println!(" ========> {}", string);
         let parsed: Particle<DummyParams> = serde_json::from_str(&string).unwrap();
         parsed
+    }
+
+    fn load_gen_file<'de, P>(gen_number: u16, prefix: &str) -> Result<Generation<P>>
+    where
+        P: DeserializeOwned + Debug,
+    {
+        let gen_file_dir = format!("gen_{:03}", gen_number);
+        let gen_file_name = format!("gen_{:03}.json", gen_number);
+        let s3_client = S3Client::new(Region::EuWest1);
+        let storage = storage(
+             prefix.to_string(),
+            s3_client,
+        );
+        // let separator = "/".to_string();
+        let prefix_cloned = storage.prefix.clone();
+        let filename = format!(
+            "{}/{}/{}",
+            prefix_cloned, gen_file_dir, gen_file_name
+        );
+        let bucket_cloned = storage.bucket.clone();
+        println!("Requesting {}", filename);
+        let get_obj_req = GetObjectRequest {
+            bucket: bucket_cloned,
+            key: filename.to_owned(),
+            ..Default::default()
+        };
+       // println!("{:?}", &get_obj_req);
+        let get_req = storage.s3_client.get_object(get_obj_req);
+
+        let string_fut = get_req.then(move |gor| async {
+            let mut gor = gor.unwrap();
+            let stream = gor.body.take().unwrap();
+            use tokio::io::AsyncReadExt;
+            let mut string_buf: String = String::new();
+            let outcome = stream
+                .into_async_read()
+                .read_to_string(&mut string_buf)
+                .await;
+            println!("Async read result = {:#?}", outcome);
+            string_buf
+        });
+
+        let string = storage.runtime.block_on(string_fut);
+        let parsed: Generation<P> = serde_json::from_str(&string)?;
+        println!("Parsed to {:?}", parsed);
+        Ok(parsed)
     }
 
     // #[test]
@@ -465,59 +513,32 @@ mod tests {
         assert_eq!(expected, result);
     }
 
-    // #[test]
-    // fn save_new_generation(){
-    //     // let tmp_dir = TmpDir::new("save_generation");
-    //     // let instance = storage(&tmp_dir.0);
+    #[test]
+    fn save_new_generation(){
 
-    //     //Again need to make possible temp s3 dir?
+        let expected = make_dummy_generation(3);
+        let s3_client = S3Client::new(Region::EuWest1);
+        let tmp_bucket = TmpBucketPrefix::new("save_generation"); //Clear bucket if anything there
+        let storage = storage("save_generation".to_string(), s3_client);
+        storage.save_new_gen(make_dummy_generation(3)).expect("Expected successful save");
 
-    //     let s3_client = S3Client::new(Region::EuWest1);
-    //     let storage = storage("s3-ranch-007".to_string(),"example".to_string(),s3_client);
+        let result = load_gen_file(3, "save_generation").unwrap();
+        assert_eq!(expected, result);
 
-    //     let gen = make_dummy_generation(3);
-    //     instance.save_new_gen(gen).expect("Expected successful save");
-
-    //     let expected = serde_json::json!({
-    //         "generation_number": 3,
-    //         "tolerance": 0.1234,
-    //         "acceptance": 0.7,
-    //         "particles": [
-    //             {
-    //                 "parameters" : {
-    //                     "a": 10, "b": 20.0
-    //                 },
-    //                 "scores": [1000.0, 2000.0],
-    //                 "weight": 0.234
-    //             },{
-    //                 "parameters" : {
-    //                     "a": 30, "b": 40.0
-    //                 },
-    //                 "scores": [3000.0, 4000.0],
-    //                 "weight": 0.567
-    //             }
-    //         ]
-    //     });
-
-    //     let actual = {
-
-    //     };
-
-    //     assert_eq!(expected, actual);
-    // }
+    }
 
     // #[test]
     // fn dont_save_over_existing_gen_file(){
-    //     let tmp_dir = TmpDir::new("save_over_generation");
-    //     let instance = storage(&tmp_dir.0);
+    //     let expected = make_dummy_generation(3);
+    //     let s3_client = S3Client::new(Region::EuWest1);
+    //     let tmp_bucket = TmpBucketPrefix::new("save_generation"); //Clear bucket if anything there
+    //     let storage = storage("save_generation".to_string(), s3_client);
 
     //     //1. Save an dummy gen_003 file, representing file already save by another node
-    //     std::fs::create_dir(instance.base_path.join("gen_003")).expect("Expected successful dir creation");
-    //     std::fs::write(tmp_dir.0.join("gen_003").join("gen_003.json"), "placeholder file").unwrap();
+    //     storage.save_new_gen(make_dummy_generation(3)).expect("Expected successful save");
 
     //     //2. Try to save another gen over it, pretending we didn't notice the other node save gen before us
-    //     let gen = make_dummy_generation(3);
-    //     let result = instance.save_new_gen(gen);
+    //     let result = storage.save_new_gen(make_dummy_generation(3)).expect("Expected successful save");
 
     //     //3. Test that the original file save by other node is intact and we didn't panic.
     //     let contents = std::fs::read_to_string(tmp_dir.0.join("gen_003").join("gen_003.json")).unwrap();
