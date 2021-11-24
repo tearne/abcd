@@ -14,7 +14,7 @@ use tokio::runtime::Runtime;
 
 use super::Storage;
 use crate::error::{Error, Result};
-use crate::{Config, Generation, Particle};
+use crate::{Generation, Particle};
 use std::convert::TryInto;
 use std::fs::File;
 use std::io::BufReader;
@@ -93,7 +93,7 @@ impl Storage for S3System {
         Ok(answer + 1) //Last gen with a gen file +1
     }
 
-    fn retrieve_previous_gen<'de, P>(&self) -> Result<Generation<P>>
+    fn retrieve_previous_gen<P>(&self) -> Result<Generation<P>>
     where
         P: DeserializeOwned + Debug,
     {
@@ -298,13 +298,7 @@ mod tests {
 
     //fn storage(bucket:String,prefix:String,s3_client:S3Client) -> S3System {
     fn storage(prefix: String, s3_client: S3Client) -> S3System {
-        // if !envmnt::exists("TEST_BUCKET") {
-        //     envmnt::set("TEST_BUCKET", "testBucket");
-        // } //Q is this only something related to simplelogger?
-        //let config = Config::from_path(opt.config); // Leaving for now as can't read in env variables in toml file
-
-        // TODO make this use the new config
-        let bucket = env::var("TEST_BUCKET").unwrap().to_string(); //.expect("TEST_BUCKET not set");
+         let bucket = crate::etc::config::Config::from_path("resources/test/config.toml").storage.get_path_string();
         println!(" ====> bucket {}", bucket);
 
         let runtime = Runtime::new().unwrap();

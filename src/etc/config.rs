@@ -39,7 +39,7 @@ impl Storage {
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 pub struct Config {
-    storage: Storage,
+    pub storage: Storage,
 }
 impl Config {
     pub fn from_path<P>(config_path: P) -> Self
@@ -68,10 +68,11 @@ mod tests {
         
         //TODO put in helper
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d.push("resources/test/config.toml");
+        d.push("resources/test/config_test.toml");
 
         let config = Config::from_path(d);
-
+        //TODO Want to use TEST_BUCKET for other tests - but then don't want to show value
+        //What do we do here - have two different toml files - thats whay I tried anyway.
         assert_eq!("s3://my-bucket", config.storage.get_path_string());
     }
 }
