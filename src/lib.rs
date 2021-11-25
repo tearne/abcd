@@ -2,10 +2,9 @@ mod error;
 mod storage;
 mod etc;
 
+use etc::config::Config;
 use serde::{Deserialize, Serialize};
-use std::cmp::Ordering;
 use std::fmt::Debug;
-use std::path::{Path, PathBuf};
 
 pub trait Random {}
 
@@ -20,17 +19,6 @@ pub trait Model {
 
     fn score(&self, p: Self::Parameters) -> f64;
 }
-
-// #[derive(Serialize, Deserialize, Debug, PartialEq)]
-// struct Scored<P> {
-//     parameters: P,
-//     score: f64,
-// }
-// impl<P> Scored<P> {
-//     pub fn new(parameters: P, score: f64) -> Scored<P> {
-//         Scored{parameters, score}
-//     }
-// }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 struct Particle<P> {
@@ -47,18 +35,13 @@ struct Generation<P> {
     particles: Vec<Particle<P>>,
 }
 
-#[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
-pub struct S3Params {
-    input_data_root: PathBuf, //TODO can we make this a Path? lifetime seems to clash
-}
-impl S3Params {
-    pub fn absoluteify_root_path(&mut self, config_path: impl AsRef<Path>) {
-        if !self.input_data_root.starts_with("/") {
-            self.input_data_root = config_path
-                .as_ref()
-                .parent()
-                .unwrap()
-                .join(self.input_data_root.as_path())
-        };
+pub fn run<M: Model>(m: M, config: Config) {
+    // load the prior/generation
+
+    loop {
+        // sample a (fitting) parameter set from it
+        // run the model num_reps times to get an array of scores
+        // Weigh the scores to get a particle
+        // Save the particle to storage
     }
 }
