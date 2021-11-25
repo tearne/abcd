@@ -298,7 +298,7 @@ mod tests {
 
     //fn storage(bucket:String,prefix:String,s3_client:S3Client) -> S3System {
     fn storage(prefix: String, s3_client: S3Client) -> S3System {
-         let bucket = crate::etc::config::Config::from_path("resources/test/config.toml").storage.get_path_string();
+         let bucket = crate::etc::config::Config::from_path("resources/test/config_test.toml").storage.get_path_string();
         println!(" ====> bucket {}", bucket);
 
         let runtime = Runtime::new().unwrap();
