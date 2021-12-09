@@ -3,5 +3,5 @@
         "a": 10, "b": 20
     },
     "scores": [1000, 2000],
-    "weight": 0.234
+    "weight_not_normalised": 0.234
 }

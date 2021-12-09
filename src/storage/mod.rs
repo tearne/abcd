@@ -1,17 +1,17 @@
-mod filesystem;
-mod s3;
+pub mod filesystem;
+pub mod s3;
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crate::error::Result;
-use crate::{Generation, Particle};
+use crate::{Population, Particle};
 use std::fmt::Debug;
 
-trait Storage {
+pub trait Storage {
     fn check_active_gen(&self) -> Result<u16>;
 
-    fn retrieve_previous_gen<P>(&self) -> Result<Generation<P>>
+    fn retrieve_previous_gen<P>(&self) -> Result<Population<P>>
     where
         P: DeserializeOwned + Debug;
 
@@ -25,7 +25,7 @@ trait Storage {
     where
         P: DeserializeOwned + Debug;
 
-    fn save_new_gen<P>(&self, g: Generation<P>) -> Result<()>
+    fn save_new_gen<P>(&self, g: Population<P>) -> Result<()>
     where
         P: Serialize + Debug;
 }

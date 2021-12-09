@@ -14,7 +14,7 @@ use tokio::runtime::Runtime;
 
 use super::Storage;
 use crate::error::{Error, Result};
-use crate::{Generation, Particle};
+use crate::{Population, Particle};
 use std::convert::TryInto;
 use std::fs::File;
 use std::io::BufReader;
@@ -93,7 +93,7 @@ impl Storage for S3System {
         Ok(answer + 1) //Last gen with a gen file +1
     }
 
-    fn retrieve_previous_gen<P>(&self) -> Result<Generation<P>>
+    fn retrieve_previous_gen<P>(&self) -> Result<Population<P>>
     where
         P: DeserializeOwned + Debug,
     {
@@ -130,7 +130,7 @@ impl Storage for S3System {
         });
 
         let string = self.runtime.block_on(string_fut);
-        let parsed: Generation<P> = serde_json::from_str(&string)?;
+        let parsed: Population<P> = serde_json::from_str(&string)?;
         println!("Parsed to {:?}", parsed);
         Ok(parsed)
     }
@@ -196,7 +196,7 @@ impl Storage for S3System {
         Ok(weighted_particles)
     }
 
-    fn save_new_gen<P: Serialize>(&self, g: Generation<P>) -> Result<()>{
+    fn save_new_gen<P: Serialize>(&self, g: Population<P>) -> Result<()>{
         //unimplemented!();
         let gen_dir = format!("gen_{:03}", g.generation_number);
         let file_name = format!("gen_{:03}.json", g.generation_number);
@@ -311,7 +311,7 @@ mod tests {
         }
     }
 
-    fn make_dummy_generation(gen_number: u16) -> Generation<DummyParams> {
+    fn make_dummy_generation(gen_number: u16) -> Population<DummyParams> {
         let particle_1 = Particle {
             parameters: DummyParams::new(10, 20.),
             scores: vec![1000.0, 2000.0],
@@ -324,7 +324,7 @@ mod tests {
             weight: 0.567,
         };
 
-        Generation {
+        Population {
             generation_number: gen_number,
             tolerance: 0.1234,
             acceptance: 0.7,
@@ -357,7 +357,7 @@ mod tests {
         parsed
     }
 
-    fn load_gen_file<'de, P>(gen_number: u16, prefix: &str) -> Result<Generation<P>>
+    fn load_gen_file<'de, P>(gen_number: u16, prefix: &str) -> Result<Population<P>>
     where
         P: DeserializeOwned + Debug,
     {
@@ -398,7 +398,7 @@ mod tests {
         });
 
         let string = storage.runtime.block_on(string_fut);
-        let parsed: Generation<P> = serde_json::from_str(&string)?;
+        let parsed: Population<P> = serde_json::from_str(&string)?;
         println!("Parsed to {:?}", parsed);
         Ok(parsed)
     }

@@ -1,22 +1,19 @@
-use std::{
-    fs::{DirEntry, File},
-    io::BufReader,
-    path::Path,
-};
+use std::{fs::{DirEntry, File}, io::BufReader, path::PathBuf};
 
 use regex::Regex;
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::error::Result;
-use crate::{error::Error, Generation, Particle};
+use crate::{error::Error, Population, Particle};
 use uuid::Uuid;
 
 use super::Storage;
 
-struct FileSystem<'a> {
-    base_path: &'a Path,
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
+pub struct FileSystem {
+    base_path: PathBuf,
 }
-impl<'a> FileSystem<'a> {
+impl FileSystem {
     fn get_particle_files_in_current_gen_folder(&self) -> Result<Vec<std::fs::DirEntry>> {
         //TODO test case for when returns 1?
         let gen_no = self.check_active_gen().unwrap_or(1);
@@ -45,7 +42,7 @@ impl<'a> FileSystem<'a> {
     }
 }
 
-impl Storage for FileSystem<'_> {
+impl Storage for FileSystem {
     fn check_active_gen(&self) -> Result<u16> {
         let re = Regex::new(r#"^gen_(?P<gid>\d*)$"#).unwrap();
 
@@ -70,7 +67,7 @@ impl Storage for FileSystem<'_> {
     }
 
     // fn retrieve_previous_gen<'de, P>(&self) -> Result<Generation<P>> where P: Deserialize<'de>;
-    fn retrieve_previous_gen<P>(&self) -> Result<Generation<P>>
+    fn retrieve_previous_gen<P>(&self) -> Result<Population<P>>
     where
         P: DeserializeOwned,
     {
@@ -83,7 +80,7 @@ impl Storage for FileSystem<'_> {
         //TODO why isn't our conversion in error.rs being applied?
         // let gen: Result<Generation<P>> = serde_json::from_reader(reader);
 
-        let gen: Generation<P> = serde_json::from_reader(reader)?;
+        let gen: Population<P> = serde_json::from_reader(reader)?;
 
         Ok(gen)
     }
@@ -122,7 +119,7 @@ impl Storage for FileSystem<'_> {
         Ok(weighted_particles)
     }
 
-    fn save_new_gen<P: Serialize>(&self, g: Generation<P>) -> Result<()> {
+    fn save_new_gen<P: Serialize>(&self, g: Population<P>) -> Result<()> {
         let gen_dir = self
             .base_path
             .join(format!("gen_{:03}", g.generation_number));
@@ -186,11 +183,11 @@ mod tests {
         Path::new(env!("CARGO_MANIFEST_DIR"))
     }
 
-    fn storage(p: &Path) -> FileSystem {
+    fn storage(p: PathBuf) -> FileSystem {
         FileSystem { base_path: p }
     }
 
-    fn make_dummy_generation(gen_number: u16) -> Generation<DummyParams> {
+    fn make_dummy_generation(gen_number: u16) -> Population<DummyParams> {
         let particle_1 = Particle {
             parameters: DummyParams::new(10, 20.),
             scores: vec![1000.0, 2000.0],
@@ -203,7 +200,7 @@ mod tests {
             weight: 0.567,
         };
 
-        Generation {
+        Population {
             generation_number: gen_number,
             tolerance: 0.1234,
             acceptance: 0.7,
@@ -214,14 +211,14 @@ mod tests {
     #[test]
     fn test_check_initial_active_gen() {
         let full_path = manifest_dir().join("resources/test/fs/empty");
-        let storage = storage(&full_path);
+        let storage = storage(full_path);
         assert_eq!(1, storage.check_active_gen().unwrap());
     }
 
     #[test]
     fn test_check_active_gen() {
         let full_path = manifest_dir().join("resources/test/fs/example");
-        let storage = storage(&full_path);
+        let storage = storage(full_path);
         assert_eq!(3, storage.check_active_gen().unwrap());
     }
 
@@ -230,7 +227,7 @@ mod tests {
         let expected = make_dummy_generation(2);
 
         let full_path = manifest_dir().join("resources/test/fs/example/");
-        let instance = storage(&full_path);
+        let instance = storage(full_path);
         let result = instance.retrieve_previous_gen::<DummyParams>();
         let result = instance
             .retrieve_previous_gen::<DummyParams>()
@@ -242,7 +239,7 @@ mod tests {
     #[test]
     fn test_save_particle() {
         let tmp_dir = TmpDir::new("save_particle");
-        let storage = storage(&tmp_dir.0);
+        let storage = storage(tmp_dir.0);
 
         let p1 = DummyParams::new(1, 2.);
         let p2 = DummyParams::new(3, 4.);
@@ -274,21 +271,21 @@ mod tests {
     #[test]
     fn test_no_particle_files_initially() {
         let full_path = manifest_dir().join("resources/test/fs/empty/");
-        let storage = storage(&full_path);
+        let storage = storage(full_path);
         assert_eq!(0, storage.num_particles_available().unwrap())
     }
 
     #[test]
     fn test_number_particle_files() {
         let full_path = manifest_dir().join("resources/test/fs/example/");
-        let storage = storage(&full_path);
+        let storage = storage(full_path);
         assert_eq!(2, storage.num_particles_available().unwrap())
     }
 
     #[test]
     fn test_retrieve_particle_files() {
         let full_path = manifest_dir().join("resources/test/fs/example/");
-        let instance = storage(&full_path);
+        let instance = storage(full_path);
 
         let mut expected /*: Result<Vec<Weighted<DummyParams>>>*/ = {    
             let w1 = Particle {
@@ -318,7 +315,7 @@ mod tests {
     #[test]
     fn save_new_generation() {
         let tmp_dir = TmpDir::new("save_generation");
-        let instance = storage(&tmp_dir.0);
+        let instance = storage(tmp_dir.0);
 
         let gen = make_dummy_generation(3);
         std::fs::create_dir(instance.base_path.join("gen_003"))
@@ -362,7 +359,7 @@ mod tests {
     #[test]
     fn dont_save_over_existing_gen_file() {
         let tmp_dir = TmpDir::new("save_over_generation");
-        let instance = storage(&tmp_dir.0);
+        let instance = storage(tmp_dir.0);
 
         //1. Save an dummy gen_003 file, representing file already save by another node
         std::fs::create_dir(instance.base_path.join("gen_003"))

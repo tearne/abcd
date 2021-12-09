@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
+use crate::storage::filesystem::FileSystem;
 
 // abc {
 //     job {
@@ -47,9 +48,20 @@ impl Storage {
     }
 }
 
+
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
+pub struct Job{
+    pub num_generations: u16,
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
+pub struct Algorithm{
+
+}
+
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 pub struct Config {
-    pub storage: Storage,
+    pub storage: FileSystem,
     pub job: Job,
     pub algorithm: Algorithm,
 }

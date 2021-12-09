@@ -5,6 +5,7 @@ mod etc;
 use etc::config::Config;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
+use crate::storage::Storage;
 
 pub trait Random {}
 
@@ -28,21 +29,39 @@ struct Particle<P> {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
-struct Generation<P> {
+struct Population<P> {
     generation_number: u16,
     tolerance: f64,
     acceptance: f64,
     particles: Vec<Particle<P>>,
 }
 
-pub fn run<M: Model>(m: M, config: Config) {
-    // load the prior/generation
+pub enum Generation<P> {
+    Prior,
+    Pop(Population<P>)
+}
 
-    loop { //Generation loop
+use anyhow::{Result, Context};
+
+pub fn run<M: Model>(m: M, config: Config) -> anyhow::Result<()>{
+
+    for gen_id in 0..config.job.num_generations { //Generation loop
+        // Load the previous generation
+        let mut gen = if gen_id == 0 {
+            Generation::<M::Parameters>::Prior
+        } else {
+            config.storage.retrieve_previous_gen().with_context(||format!("Failed to load previous gen {}", gen_id))?
+        };
+
+
         loop { // Particle loop
             // (B3) sample a (fitting) parameter set from it (perturb based on weights and kernel if sampling from posterior)
             // (B4) Check if prior probability is zero - if so sample again
-            // (B5a) run the model num_reps times to get an array of scores
+            loop { // Reps loop
+                // (B5a) run the model once to get a score
+                // Check with the filesystem that we are still working on the gen, else abort out to gen loop
+            }
+            // We now have an array of score for the particle
             // (B5b) Calculate f^hat by calc'ing proportion less than tolerance
             // (B6) Calculate not_normalised_weight for each particle from its f^hat (f^hat(p) * prior(p)) / denom)
             // Save the non_normalised particle to storage
