@@ -4,9 +4,9 @@ pub mod s3;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-use crate::error::Result;
 use crate::{Population, Particle};
 use std::fmt::Debug;
+use anyhow::Result;
 
 pub trait Storage {
     fn check_active_gen(&self) -> Result<u16>;

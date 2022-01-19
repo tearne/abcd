@@ -13,7 +13,7 @@ use tokio::runtime::Runtime;
 //For environment variables => https://doc.rust-lang.org/book/ch12-05-working-with-environment-variables.html
 
 use super::Storage;
-use crate::error::{Error, Result};
+use anyhow::{bail,Result};
 use crate::{Population, Particle};
 use std::convert::TryInto;
 use std::fs::File;
@@ -230,10 +230,11 @@ impl Storage for S3System {
                 let mut response2 = self.runtime.block_on(put_req).unwrap();
                 Ok(())
             }
-            false => Err(Error::GenAlreadySaved(format!(
-                "Gen file already existed at {:?}",
-                filename
-            ))),
+            false => bail!("Generation already saved"),
+            // Err(Error::GenAlreadySaved(format!(
+            //     "Gen file already existed at {:?}",
+            //     filename
+            // ))),
         }
     }
 }

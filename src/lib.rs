@@ -1,4 +1,3 @@
-mod error;
 mod storage;
 mod etc;
 
@@ -50,7 +49,7 @@ pub fn run<M: Model>(m: M, config: Config) -> anyhow::Result<()>{
         let mut gen = if gen_id == 0 {
             Generation::<M::Parameters>::Prior
         } else {
-            config.storage.retrieve_previous_gen().with_context(||format!("Failed to load previous gen {}", gen_id))?
+        config.storage.retrieve_previous_gen().with_context(||format!("Failed to load previous gen {}", gen_id))?
         };
 
 
@@ -71,4 +70,6 @@ pub fn run<M: Model>(m: M, config: Config) -> anyhow::Result<()>{
         // (B7) Normalise all the weights together
         // Save generation
     }
+
+    Ok(())
 }

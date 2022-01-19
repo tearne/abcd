@@ -3,11 +3,11 @@ use std::{fs::{DirEntry, File}, io::BufReader, path::PathBuf};
 use regex::Regex;
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::error::Result;
-use crate::{error::Error, Population, Particle};
+use crate::{Population, Particle};
 use uuid::Uuid;
 
 use super::Storage;
+use anyhow::{Result, bail};
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 pub struct FileSystem {
@@ -26,7 +26,7 @@ impl FileSystem {
 
         let r = std::fs::read_dir(dir)?
             //TODO use filter_map
-            .map(|r| r.map_err(crate::error::Error::from))
+            // .map(|r| r.map_err(crate::error::Error::from))
             .filter(|entry| {
                 let entry = entry.as_ref().unwrap();
                 let entry_path = entry.path();
@@ -131,10 +131,11 @@ impl Storage for FileSystem {
                 std::fs::write(&file_path, serialised_gen?)?;
                 Ok(())
             }
-            true => Err(Error::GenAlreadySaved(format!(
-                "Gen file already existed at {:?}",
-                file_path
-            ))),
+            true => bail!("Generation already saved"),
+            // Err(Error::GenAlreadySaved(format!(
+            //     "Gen file already existed at {:?}",
+            //     file_path
+            // ))),
         }
     }
 }
@@ -380,9 +381,9 @@ mod tests {
         assert_eq!("placeholder file", contents);
 
         //4. Test that Result is Err::GenAlreadyExists()
-        match result.unwrap_err() {
-            Error::GenAlreadySaved(_) => (),
-            other_error => panic!("Wrong error type: {}", other_error),
-        };
+        match result {
+            Ok(_) => panic!("Expected error"),
+            Err(_) => (),
+        }
     }
 }

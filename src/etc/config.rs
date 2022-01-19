@@ -1,33 +1,6 @@
 use std::fmt::Debug;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use crate::storage::filesystem::FileSystem;
-
-// abc {
-//     job {
-//         replicates = 4
-//         particles = 1000
-//         generations = 50
-//     }	
-//     algorithm {
-//         particle-retries = 100  <--- will we still want this?
-//         particle-chunk-size = 1 <--- probably don't need it
-//         tolerance-descent-percentile = 0.5
-//         fewest-accepted-local-particles = 0 <--- gone
-//     }
-//     cluster {
-            //Add the storage in here
-//         system-name: ${CLUSTER_NAME}
-//         max-particle-memory = 1000000
-//         terminate-at-target-generation = false <--- perhaps keep?
-//         futures-timeout = 90 days
-//          mixing {
-//              rate = 1 minutes
-//              num-particles = 500
-//             response-threshold = 5 seconds
-//         }
-//         size-reporting = 1 hour
-//     }
-//  }
 
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
@@ -52,16 +25,18 @@ impl Storage {
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 pub struct Job{
     pub num_generations: u16,
+    pub terminate_at_target_gen: bool,
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 pub struct Algorithm{
-
+    tolerance_descent_percentile: f32,
 }
+//TODO validate - https://crates.io/crates/validator
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
-pub struct Config {
-    pub storage: FileSystem,
+pub struct<T> Config<T> {
+    pub storage: T,
     pub job: Job,
     pub algorithm: Algorithm,
 }
