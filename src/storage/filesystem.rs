@@ -46,7 +46,7 @@ impl Storage for FileSystem {
     fn check_active_gen(&self) -> Result<u16> {
         let re = Regex::new(r#"^gen_(?P<gid>\d*)$"#).unwrap();
 
-        let entries: Vec<u16> = std::fs::read_dir(self.base_path)?
+        let entries: Vec<u16> = std::fs::read_dir(&self.base_path)?
             .filter_map(|read_dir| {
                 let path = read_dir.as_ref().unwrap().path();
                 if path.is_dir() {
@@ -240,7 +240,7 @@ mod tests {
     #[test]
     fn test_save_particle() {
         let tmp_dir = TmpDir::new("save_particle");
-        let storage = storage(tmp_dir.0);
+        let storage = storage(tmp_dir.0.clone());
 
         let p1 = DummyParams::new(1, 2.);
         let p2 = DummyParams::new(3, 4.);
@@ -316,7 +316,7 @@ mod tests {
     #[test]
     fn save_new_generation() {
         let tmp_dir = TmpDir::new("save_generation");
-        let instance = storage(tmp_dir.0);
+        let instance = storage(tmp_dir.0.clone());
 
         let gen = make_dummy_generation(3);
         std::fs::create_dir(instance.base_path.join("gen_003"))
@@ -360,7 +360,7 @@ mod tests {
     #[test]
     fn dont_save_over_existing_gen_file() {
         let tmp_dir = TmpDir::new("save_over_generation");
-        let instance = storage(tmp_dir.0);
+        let instance = storage(tmp_dir.0.clone());
 
         //1. Save an dummy gen_003 file, representing file already save by another node
         std::fs::create_dir(instance.base_path.join("gen_003"))

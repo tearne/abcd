@@ -1,5 +1,6 @@
 pub mod filesystem;
 pub mod s3;
+pub mod config;
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;

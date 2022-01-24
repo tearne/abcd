@@ -1,4 +1,5 @@
 use futures::{Future, FutureExt, TryFutureExt};
+use once_cell::unsync::OnceCell;
 use regex::Regex;
 use rusoto_core::Region;
 use rusoto_s3::{
@@ -15,20 +16,18 @@ use tokio::runtime::Runtime;
 use super::Storage;
 use anyhow::{bail,Result};
 use crate::{Population, Particle};
-use std::convert::TryInto;
-use std::fs::File;
-use std::io::BufReader;
 use std::io::Read;
 use tokio;
 use uuid::Uuid;
 
-struct S3System {
-    bucket: String,
-    prefix: String,
+
+pub struct S3Storage {
+    pub bucket: String,
+    pub prefix: String,
     s3_client: S3Client,
     runtime: Runtime,
 }
-impl S3System {
+impl S3Storage {
     fn get_particle_files_in_current_gen_folder(&self) -> Result<Vec<Object>> {
         //TODO This is where we want to loop more than 1000
         let gen_no = self.check_active_gen().unwrap_or(1);
@@ -54,7 +53,7 @@ impl S3System {
         Ok(answer)
     }
 }
-impl Storage for S3System {
+impl Storage for S3Storage {
     fn check_active_gen(&self) -> Result<u16> {
         let prefix_cloned = self.prefix.clone();
         let bucket_cloned = self.bucket.clone();
@@ -248,6 +247,8 @@ mod tests {
         path::{Path, PathBuf},
     };
 
+    use crate::etc::config::Config;
+
     use super::*;
 
     struct TmpBucketPrefix(String);
@@ -298,18 +299,19 @@ mod tests {
     }
 
     //fn storage(bucket:String,prefix:String,s3_client:S3Client) -> S3System {
-    fn storage(prefix: String, s3_client: S3Client) -> S3System {
-         let bucket = crate::etc::config::Config::from_path("resources/test/config_test.toml").storage.get_path_string();
-        println!(" ====> bucket {}", bucket);
+    fn storage(prefix: String, s3_client: S3Client) -> S3Storage {
+        Config::from_path("resources/test/config_test.toml").storage.build_s3()
+        
+        // println!(" ====> bucket {}", bucket);
 
-        let runtime = Runtime::new().unwrap();
+        // let runtime = Runtime::new().unwrap();
 
-        S3System {
-            bucket,
-            prefix,
-            s3_client,
-            runtime,
-        }
+        // S3System {
+        //     bucket,
+        //     prefix,
+        //     s3_client,
+        //     runtime,
+        // }
     }
 
     fn make_dummy_generation(gen_number: u16) -> Population<DummyParams> {

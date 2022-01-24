@@ -2,14 +2,15 @@ mod storage;
 mod etc;
 
 use etc::config::Config;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use storage::Storage;
 use std::fmt::Debug;
-use crate::storage::Storage;
+use anyhow::{Result, Context};
 
 pub trait Random {}
 
 pub trait Model {
-    type Parameters;
+    type Parameters: DeserializeOwned + Debug;
 
     fn prior_sample<R: Random>(&self, random: &R) -> Self::Parameters; //TODO check density of sampled value is NOT 0
     fn prior_density(&self, p: Self::Parameters) -> f64;
@@ -28,7 +29,7 @@ struct Particle<P> {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
-struct Population<P> {
+pub struct Population<P> {
     generation_number: u16,
     tolerance: f64,
     acceptance: f64,
@@ -37,20 +38,21 @@ struct Population<P> {
 
 pub enum Generation<P> {
     Prior,
-    Pop(Population<P>)
+    Population(Population<P>)
 }
 
-use anyhow::{Result, Context};
-
-pub fn run<M: Model>(m: M, config: Config) -> anyhow::Result<()>{
+pub fn run<M: Model, S: Storage>(model: M, config: Config, storage: S) -> Result<()>{
 
     for gen_id in 0..config.job.num_generations { //Generation loop
-        // Load the previous generation
-        let mut gen = if gen_id == 0 {
-            Generation::<M::Parameters>::Prior
-        } else {
-        config.storage.retrieve_previous_gen().with_context(||format!("Failed to load previous gen {}", gen_id))?
-        };
+        let mut gen: Generation::<M::Parameters> = 
+            if gen_id == 0 {
+                Generation::Prior
+            } else {
+                Generation::Population(
+                    storage.retrieve_previous_gen()
+                        .with_context(||format!("Failed to load gen {}.", gen_id))?
+                )
+            };
 
 
         loop { // Particle loop

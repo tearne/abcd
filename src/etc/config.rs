@@ -1,25 +1,25 @@
 use std::fmt::Debug;
 use std::path::Path;
-use crate::storage::filesystem::FileSystem;
 
+use crate::storage::config::StorageConfig;
 
-#[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
-pub struct Storage {
-    pub location: String,
-    pub kind: String,
-}
-impl Storage {
-    pub fn get_path_string(&self) -> String {
-        match self.kind.as_str() {
-            "s3" => format!("s3://{}", self.location),
-            "envvar" => {
-                println!(" --> {}", &self.location);
-                envmnt::get_or_panic(&self.location)
-            },
-            _ => unimplemented!(),
-        }
-    }
-}
+// #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
+// pub struct Storage {
+//     pub location: String,
+//     pub kind: String,
+// }
+// impl Storage {
+//     pub fn get_path_string(&self) -> String {
+//         match self.kind.as_str() {
+//             "s3" => format!("s3://{}", self.location),
+//             "envvar" => {
+//                 println!(" --> {}", &self.location);
+//                 envmnt::get_or_panic(&self.location)
+//             },
+//             _ => unimplemented!(),
+//         }
+//     }
+// }
 
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
@@ -35,8 +35,8 @@ pub struct Algorithm{
 //TODO validate - https://crates.io/crates/validator
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
-pub struct<T> Config<T> {
-    pub storage: T,
+pub struct Config {
+    pub storage: StorageConfig,
     pub job: Job,
     pub algorithm: Algorithm,
 }
@@ -70,6 +70,6 @@ mod tests {
         let config = Config::from_path(d);
         //TODO Want to use TEST_BUCKET for other tests - but then don't want to show value
         //What do we do here - have two different toml files - thats whay I tried anyway.
-        assert_eq!("s3://my-bucket", config.storage.get_path_string());
+        assert_eq!("s3://my-bucket", config.storage.build_s3().bucket);
     }
 }
