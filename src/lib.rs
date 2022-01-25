@@ -45,26 +45,25 @@ pub enum Generation<P> {
 
 pub fn run<M: Model, S: Storage>(model: M, config: Config, storage: S) -> ABCDResult<()>{
 
-    for gen_id in 0..config.job.num_generations { //Generation loop
-        let mut gen: Generation::<M::Parameters> = 
-            if gen_id == 0 {
-                Generation::Prior
-            } else {
-                Generation::Population(
-                    storage.retrieve_previous_gen()?
-                )
-            };
+    let gen: Generation::<M::Parameters> = Generation::Prior;
+        // if gen_id == 0 { Generation::Prior } 
+        // else { Generation::Population(storage.retrieve_previous_gen()?) };
 
-
+    for gen_id in 1..=config.job.num_generations { //Generation loop
         loop { // Particle loop
-            // (B3) sample a (fitting) parameter set from it (perturb based on weights and kernel if sampling from posterior)
+            // (B3) sample a (fitting) parameter set from gen (perturb based on weights and kernel if sampling from posterior)
             // (B4) Check if prior probability is zero - if so sample again
-            loop { // Reps loop
+            let p = sample_with_support(gen, model);
+            
+            let scores: Vec<f64> = (0..config.job.num_replicates).map(|_|{ // Reps loop
                 // (B5a) run the model once to get a score
                 // Check with the filesystem that we are still working on the gen, else abort out to gen loop
-            }
-            // We now have an array of score for the particle
+                todo!();
+            }).collect();
+
+            // We now have a collection of scores for the particle
             // (B5b) Calculate f^hat by calc'ing proportion less than tolerance
+            
             // (B6) Calculate not_normalised_weight for each particle from its f^hat (f^hat(p) * prior(p)) / denom)
             // Save the non_normalised particle to storage
             // Check if we now have the req'd num particles/reps, if so, break
