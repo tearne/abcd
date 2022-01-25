@@ -3,18 +3,17 @@ use std::{fs::{DirEntry, File}, io::BufReader, path::PathBuf};
 use regex::Regex;
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::{Population, Particle};
+use crate::{Population, Particle, error::{ABCDResult, ABCDError}};
 use uuid::Uuid;
 
 use super::Storage;
-use anyhow::{Result, bail};
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 pub struct FileSystem {
     base_path: PathBuf,
 }
 impl FileSystem {
-    fn get_particle_files_in_current_gen_folder(&self) -> Result<Vec<std::fs::DirEntry>> {
+    fn get_particle_files_in_current_gen_folder(&self) -> ABCDResult<Vec<std::fs::DirEntry>> {
         //TODO test case for when returns 1?
         let gen_no = self.check_active_gen().unwrap_or(1);
         println!("Active gen is {}", gen_no);
@@ -43,10 +42,10 @@ impl FileSystem {
 }
 
 impl Storage for FileSystem {
-    fn check_active_gen(&self) -> Result<u16> {
+    fn check_active_gen(&self) -> ABCDResult<u16> {
         let re = Regex::new(r#"^gen_(?P<gid>\d*)$"#).unwrap();
 
-        let entries: Vec<u16> = std::fs::read_dir(&self.base_path)?
+        let max: Option<u16> = std::fs::read_dir(&self.base_path)?
             .filter_map(|read_dir| {
                 let path = read_dir.as_ref().unwrap().path();
                 if path.is_dir() {
@@ -61,13 +60,13 @@ impl Storage for FileSystem {
                 let caps = re.captures(&dir_name).unwrap();
                 caps["gid"].parse::<u16>().ok()
             })
-            .collect();
+            .max();
 
-        Ok(entries.into_iter().max().unwrap_or(1))
+        Ok(max.unwrap_or(1))
     }
 
     // fn retrieve_previous_gen<'de, P>(&self) -> Result<Generation<P>> where P: Deserialize<'de>;
-    fn retrieve_previous_gen<P>(&self) -> Result<Population<P>>
+    fn retrieve_previous_gen<P>(&self) -> ABCDResult<Population<P>>
     where
         P: DeserializeOwned,
     {
@@ -85,7 +84,7 @@ impl Storage for FileSystem {
         Ok(gen)
     }
 
-    fn save_particle<P: Serialize>(&self, w: &Particle<P>) -> Result<String> {
+    fn save_particle<P: Serialize>(&self, w: &Particle<P>) -> ABCDResult<String> {
         let file_uuid = Uuid::new_v4();
         let file_path = self.base_path.join(file_uuid.to_string() + ".json");
 
@@ -95,7 +94,7 @@ impl Storage for FileSystem {
         Ok(file_path.to_string_lossy().into_owned())
     }
 
-    fn num_particles_available(&self) -> Result<u16> {
+    fn num_particles_available(&self) -> ABCDResult<u16> {
         let files_in_folder = self.get_particle_files_in_current_gen_folder();
 
         match files_in_folder {
@@ -105,7 +104,7 @@ impl Storage for FileSystem {
         }
     }
 
-    fn retrieve_all_particles<P: DeserializeOwned>(&self) -> Result<Vec<Particle<P>>> {
+    fn retrieve_all_particles<P: DeserializeOwned>(&self) -> ABCDResult<Vec<Particle<P>>> {
         let particle_files = self.get_particle_files_in_current_gen_folder()?;
 
         let mut weighted_particles = Vec::new();
@@ -119,7 +118,7 @@ impl Storage for FileSystem {
         Ok(weighted_particles)
     }
 
-    fn save_new_gen<P: Serialize>(&self, g: Population<P>) -> Result<()> {
+    fn save_new_gen<P: Serialize>(&self, g: Population<P>) -> ABCDResult<()> {
         let gen_dir = self
             .base_path
             .join(format!("gen_{:03}", g.generation_number));
@@ -131,11 +130,11 @@ impl Storage for FileSystem {
                 std::fs::write(&file_path, serialised_gen?)?;
                 Ok(())
             }
-            true => bail!("Generation already saved"),
-            // Err(Error::GenAlreadySaved(format!(
-            //     "Gen file already existed at {:?}",
-            //     file_path
-            // ))),
+            true => 
+                Err(ABCDError::GenAlreadySaved(format!(
+                    "Gen file already existed at {:?}",
+                    file_path
+                ))),
         }
     }
 }
@@ -145,6 +144,8 @@ mod tests {
     use serde::{Deserialize, Serialize};
     use serde_json::Value;
     use std::path::{Path, PathBuf};
+
+    use crate::error::ABCDError;
 
     use super::*;
 
@@ -232,7 +233,7 @@ mod tests {
         let result = instance.retrieve_previous_gen::<DummyParams>();
         let result = instance
             .retrieve_previous_gen::<DummyParams>()
-            .expect(&format!("{:?}", result));
+            .unwrap_or_else(|_|panic!("{:?}", result));
 
         assert_eq!(expected, result);
     }
@@ -380,10 +381,11 @@ mod tests {
             std::fs::read_to_string(tmp_dir.0.join("gen_003").join("gen_003.json")).unwrap();
         assert_eq!("placeholder file", contents);
 
-        //4. Test that Result is Err::GenAlreadyExists()
+        //4. Test that Result is Error: GenAlreadySaved
         match result {
             Ok(_) => panic!("Expected error"),
-            Err(_) => (),
+            Err(ABCDError::GenAlreadySaved(_)) => (),
+            Err(e) => panic!("Wrong error, got: {}", e)
         }
     }
 }

@@ -1,11 +1,13 @@
 mod storage;
 mod etc;
+mod error;
 
+use error::ABCDResult;
 use etc::config::Config;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use storage::Storage;
 use std::fmt::Debug;
-use anyhow::{Result, Context};
+// use anyhow::{Result, Context};
 
 pub trait Random {}
 
@@ -22,7 +24,7 @@ pub trait Model {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
-struct Particle<P> {
+pub struct Particle<P> {
     parameters: P,
     scores: Vec<f64>,
     weight: f64,
@@ -41,7 +43,7 @@ pub enum Generation<P> {
     Population(Population<P>)
 }
 
-pub fn run<M: Model, S: Storage>(model: M, config: Config, storage: S) -> Result<()>{
+pub fn run<M: Model, S: Storage>(model: M, config: Config, storage: S) -> ABCDResult<()>{
 
     for gen_id in 0..config.job.num_generations { //Generation loop
         let mut gen: Generation::<M::Parameters> = 
@@ -49,8 +51,7 @@ pub fn run<M: Model, S: Storage>(model: M, config: Config, storage: S) -> Result
                 Generation::Prior
             } else {
                 Generation::Population(
-                    storage.retrieve_previous_gen()
-                        .with_context(||format!("Failed to load gen {}.", gen_id))?
+                    storage.retrieve_previous_gen()?
                 )
             };
 

@@ -5,28 +5,27 @@ pub mod config;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-use crate::{Population, Particle};
+use crate::{Population, Particle, error::ABCDResult};
 use std::fmt::Debug;
-use anyhow::Result;
 
 pub trait Storage {
-    fn check_active_gen(&self) -> Result<u16>;
+    fn check_active_gen(&self) -> ABCDResult<u16>;
 
-    fn retrieve_previous_gen<P>(&self) -> Result<Population<P>>
+    fn retrieve_previous_gen<P>(&self) -> ABCDResult<Population<P>>
     where
         P: DeserializeOwned + Debug;
 
-    fn save_particle<P>(&self, w: &Particle<P>) -> Result<String>
+    fn save_particle<P>(&self, w: &Particle<P>) -> ABCDResult<String>
     where
         P: Serialize + Debug;
 
-    fn num_particles_available(&self) -> Result<u16>;
+    fn num_particles_available(&self) -> ABCDResult<u16>;
 
-    fn retrieve_all_particles<P>(&self) -> Result<Vec<Particle<P>>>
+    fn retrieve_all_particles<P>(&self) -> ABCDResult<Vec<Particle<P>>>
     where
         P: DeserializeOwned + Debug;
 
-    fn save_new_gen<P>(&self, g: Population<P>) -> Result<()>
+    fn save_new_gen<P>(&self, g: Population<P>) -> ABCDResult<()>
     where
         P: Serialize + Debug;
 }
