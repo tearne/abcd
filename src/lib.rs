@@ -44,20 +44,32 @@ pub enum Generation<P> {
 }
 
 pub fn run<M: Model, S: Storage>(model: M, config: Config, storage: S, random: &Random) -> ABCDResult<()>{
+    // We assume that the storage has already been 'primed' to contain either
+    // a) some kind of marker indicating that we're using a prior at gen 0
+    //   or
+    // b) a population from which we are resuming
 
-    let gen: Generation::<M::Parameters> = Generation::Prior;
+    loop {
+        generation_number = storage.check_active_gen();
+        if generation_number == config.job.num_generations && config.job.terminate_at_target_gen {
+            break;
+        }
+        let gen = storage.retrieve_previous_gen()?;
 
-    for gen_id in 1..=config.job.num_generations { //Generation loop
         loop { // Particle loop
             // TODO loop could go on forever?  Use some kind of timeout, or issue warning?
             // (B3) sample a (fitting) parameter set from gen (perturb based on weights and kernel if sampling from generation)
             // (B4) Check if prior probability is zero - if so sample again
-            let p = sample_with_support(gen, model, random);
+            let p = sample_and_perturb_with_support(gen, model, random);
             
-            let scores: Option<Vec<f64>> = (0..config.job.num_replicates).map(|_|{ // Reps loop
-                // Check with the filesystem that we are still working on the gen, else abort out to gen loop
-                // (B5a) run the model once to get a score
-                todo!();
+            let scores: Option<Vec<f64>> = (0..config.job.num_replicates).map(|rep_idx|{ // Reps loop
+                // Check with the filesystem that we are still working on the gen,
+                // else return None, causing the loop to exit.
+                if storage.check_active_gen()? != gen.generation_number { None }
+                else {
+                    // (B5a) run the model once to get a score
+                    Some(model.score(p))
+                }
             }).collect();
 
             match scores {
@@ -67,22 +79,23 @@ pub fn run<M: Model, S: Storage>(model: M, config: Config, storage: S, random: &
                     // (B6) Calculate not_normalised_weight for each particle from its f^hat (f^hat(p) * prior(p)) / denom)
                     // Save the non_normalised particle to storage
                     // Check if we now have the req'd num particles/reps, if so, break
-                    gen = weigh_and_save_new_scored_particle(scores);
-                    if gen.has_enough_particles_for_flush() { break; }
+                    weigh_and_save_new_scored_particle(scores);
+                    if storage.num_particles_available() >= config.job.num_particles { 
+                        // Load all the non_normalised particles
+                        // (B7) Normalise all the weights together
+                        // Save generation to storage
+                        flush_entire_generation();
+                    }
                 },
                 None => break, // Is this right, just go round the loop again?
             }
         }
-        // Load all the non_normalised particles
-        // (B7) Normalise all the weights together
-        // Save generation
-        gen = flush();
     }
 
     Ok(())
 }
 
-fn sample_with_support<M>(
+fn sample_and_perturb_with_support<M>(
     gen: Generation::<M::Parameters>, 
     model: M, 
     random: &Random) -> M::Parameters 
@@ -92,7 +105,8 @@ where M: Model {
             Generation::Prior => model.prior_sample(random),
             Generation::Population(pop) => {
                 //https://rust-random.github.io/rand/rand/distributions/weighted/struct.WeightedIndex.html
-                // pop.particles
+                // 1. sample a particle from the previosu population
+                // 2. perturb it with model.perturb(p)
                 todo!()
             },
         };
