@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use super::{s3::S3Storage, filesystem::FileSystem};
+use super::{filesystem::FileSystem, s3::S3System};
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 #[serde(tag = "type")]
@@ -14,7 +14,14 @@ pub enum StorageConfig {
     }
 }
 impl StorageConfig {
-    pub fn build_s3(&self) -> S3Storage {
+    pub fn get_bucket(&self) -> &str {
+        match self {
+            StorageConfig::FileSystem { base_path} => panic!("No bucket for FileSystem"),
+            StorageConfig::S3 { bucket, prefix } => bucket,
+        }
+    }
+
+    pub fn build_s3(&self) -> S3System {
         todo!()
     }
 

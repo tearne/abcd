@@ -71,6 +71,6 @@ mod tests {
         let config = Config::from_path(d);
         //TODO Want to use TEST_BUCKET for other tests - but then don't want to show value
         //What do we do here - have two different toml files - thats whay I tried anyway.
-        assert_eq!("s3://my-bucket", config.storage.build_s3().bucket);
+        assert_eq!("s3://my-bucket", config.storage.get_bucket());
     }
 }

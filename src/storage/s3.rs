@@ -1,5 +1,4 @@
 use futures::{Future, FutureExt, TryFutureExt};
-use once_cell::unsync::OnceCell;
 use regex::Regex;
 use rusoto_core::Region;
 use rusoto_s3::{
@@ -14,20 +13,22 @@ use tokio::runtime::Runtime;
 //For environment variables => https://doc.rust-lang.org/book/ch12-05-working-with-environment-variables.html
 
 use super::Storage;
-use anyhow::{bail,Result};
-use crate::{Population, Particle, error::{ABCDResult, ABCDError}};
+use crate::error::{ABCDResult, ABCDError};
+use crate::{Population, Particle};
+use std::convert::TryInto;
+use std::fs::File;
+use std::io::BufReader;
 use std::io::Read;
 use tokio;
 use uuid::Uuid;
 
-
-pub struct S3Storage {
-    pub bucket: String,
-    pub prefix: String,
+pub struct S3System {
+    bucket: String,
+    prefix: String,
     s3_client: S3Client,
     runtime: Runtime,
 }
-impl S3Storage {
+impl S3System {
     fn get_particle_files_in_current_gen_folder(&self) -> ABCDResult<Vec<Object>> {
         //TODO This is where we want to loop more than 1000
         let gen_no = self.check_active_gen().unwrap_or(1);
@@ -39,25 +40,27 @@ impl S3Storage {
         //println!("Requesting {}", gen_prefix);
 
         let list_request_fut = self.s3_client.list_objects_v2(ListObjectsV2Request {
-            bucket: bucket_cloned,
+            bucket: String::from(bucket_cloned),
             prefix: Some(gen_prefix),
             ..Default::default()
         });
 
         let current_gen_fut = list_request_fut.map(|response| {
-            response.unwrap().contents.unwrap()
+            let contents = response.unwrap().contents.unwrap();
+            //  println!("Contents ====> {:?}",&contents);
+            contents
         });
         let answer = self.runtime.block_on(current_gen_fut);
         Ok(answer)
     }
 }
-impl Storage for S3Storage {
+impl Storage for S3System {
     fn check_active_gen(&self) -> ABCDResult<u16> {
         let prefix_cloned = self.prefix.clone();
         let bucket_cloned = self.bucket.clone();
 
         let list_request_fut = self.s3_client.list_objects_v2(ListObjectsV2Request {
-            bucket: bucket_cloned,
+            bucket: String::from(bucket_cloned),
             prefix: Some(prefix_cloned),
             ..Default::default()
         });
@@ -66,12 +69,12 @@ impl Storage for S3Storage {
             let contents = response.unwrap().contents.unwrap();
             let re = Regex::new(r#"^example/gen_(?P<gid1>\d*)/gen_(?P<gid2>\d*).json"#).unwrap(); //TODO use ?
             let items = contents.iter();
-            items
+            let keys: Vec<u16> = items
                 .filter_map(|key| {
                     let key_string = key.key.as_ref().unwrap();
-                    let dir_match = re.is_match(key_string);
+                    let dir_match = re.is_match(&key_string);
                     let dir_no = match dir_match {
-                        true => re.captures(key_string).unwrap()["gid1"]
+                        true => re.captures(&key_string).unwrap()["gid1"]
                             .parse::<u16>()
                             .ok(),
                         false => None,
@@ -80,8 +83,10 @@ impl Storage for S3Storage {
                     println!("dir_no = {:?}", dir_no);
                     dir_no
                 })
-                .max()
-                .unwrap_or(0)
+                .collect();
+
+            let max_finished_gen = keys.into_iter().max().unwrap_or(0);
+            max_finished_gen
         });
 
         let answer = self.runtime.block_on(gen_number_fut);
@@ -105,7 +110,7 @@ impl Storage for S3Storage {
         println!("Requesting {}", filename);
         let get_obj_req = GetObjectRequest {
             bucket: bucket_cloned,
-            key: filename,
+            key: filename.to_owned(),
             ..Default::default()
         };
         println!("{:?}", &get_obj_req);
@@ -142,16 +147,18 @@ impl Storage for S3Storage {
         let put_obj_req = PutObjectRequest {
             bucket: bucket_cloned,
             key: s3_file_path.to_owned(),
-            body: Some(pretty_json.unwrap().into_bytes().into()),
+            body: Some(pretty_json.unwrap().to_owned().into_bytes().into()),
             acl: Some("bucket-owner-full-control".to_string()),
             ..Default::default()
         };
         let put_req = self.s3_client.put_object(put_obj_req);
-        self.runtime.block_on(put_req).unwrap();
+        let mut response = self.runtime.block_on(put_req).unwrap();
 
         Ok(s3_file_path)
+        //Ok(particle_file_name)
     }
     fn num_particles_available(&self) -> ABCDResult<u16> {
+        //unimplemented!();
         let files_in_folder = self.get_particle_files_in_current_gen_folder();
         match files_in_folder {
             Err(_) if self.check_active_gen().ok() == Some(1) => Ok(0),
@@ -164,6 +171,7 @@ impl Storage for S3Storage {
     where
         P: DeserializeOwned,
     {
+        // unimplemented!();
         let particle_files = self.get_particle_files_in_current_gen_folder()?;
         let bucket_cloned = self.bucket.clone();
         let mut weighted_particles = Vec::new();
@@ -189,6 +197,7 @@ impl Storage for S3Storage {
     }
 
     fn save_new_gen<P: Serialize>(&self, g: Population<P>) -> ABCDResult<()>{
+        //unimplemented!();
         let gen_dir = format!("gen_{:03}", g.generation_number);
         let file_name = format!("gen_{:03}.json", g.generation_number);
         let prefix_cloned = self.prefix.clone();
@@ -201,8 +210,9 @@ impl Storage for S3Storage {
             key: filename.to_owned(),
             ..Default::default()
         };
+        //println!("{:?}", &get_obj_req);
         let get_req = self.s3_client.get_object(get_obj_req);
-        let response = self.runtime.block_on(get_req);
+        let mut response = self.runtime.block_on(get_req);
     
 
         match response.is_err() {
@@ -211,13 +221,13 @@ impl Storage for S3Storage {
                 let pretty_json_gen = serde_json::to_string_pretty(&g);
                 let put_obj_req = PutObjectRequest {
                     bucket: bucket_cloned2,
-                    key: filename,
-                    body: Some(pretty_json_gen.unwrap().into_bytes().into()),
+                    key: filename.to_owned(),
+                    body: Some(pretty_json_gen.unwrap().to_owned().into_bytes().into()),
                     acl: Some("bucket-owner-full-control".to_string()),
                     ..Default::default()
                 };
                 let put_req = self.s3_client.put_object(put_obj_req);
-                self.runtime.block_on(put_req).unwrap();
+                let mut response2 = self.runtime.block_on(put_req).unwrap();
                 Ok(())
             }
             false => 
@@ -232,13 +242,11 @@ impl Storage for S3Storage {
 #[cfg(test)]
 mod tests {
     use serde::{Deserialize, Serialize};
-    use serde_json::Value;
     use std::{
         io::Read,
-        path::{Path, PathBuf},
     };
 
-    use crate::etc::config::Config;
+    use crate::{etc::config::Config, storage::config::StorageConfig};
 
     use super::*;
 
@@ -251,28 +259,27 @@ mod tests {
             let bucket_cloned = storage.bucket.clone();
 
             let list_request_fut = storage.s3_client.list_objects_v2(ListObjectsV2Request {
-                bucket: bucket_cloned,
+                bucket: String::from(bucket_cloned),
                 prefix: Some(prefix_cloned),
                 ..Default::default()
             });
 
             let fut = list_request_fut.map(|response| {
-                response.unwrap().contents.unwrap()
+                let contents = response.unwrap().contents.unwrap();
+                contents
             });
             let bucket_prefix_contents = storage.runtime.block_on(fut);
             println!("{:?}", &bucket_prefix_contents);
 
             if !bucket_prefix_contents.is_empty() {
                 let items = bucket_prefix_contents.iter();
-                items.for_each(|key| {
+                let keys_to_delete = items.map(|key| {
                     let delete_object_req = DeleteObjectRequest {
                         bucket: storage.bucket.to_owned(),
                         key: key.key.clone().unwrap(),
                         ..Default::default()
                     };
-                    storage.runtime.block_on(
-                        storage.s3_client.delete_object(delete_object_req)
-                    ).unwrap();
+                    let req = storage.s3_client.delete_object(delete_object_req);
                 });
             }
             TmpBucketPrefix(prefix.to_string())
@@ -291,19 +298,15 @@ mod tests {
     }
 
     //fn storage(bucket:String,prefix:String,s3_client:S3Client) -> S3System {
-    fn storage(prefix: String, s3_client: S3Client) -> S3Storage {
-        Config::from_path("resources/test/config_test.toml").storage.build_s3()
-        
-        // println!(" ====> bucket {}", bucket);
+    fn storage(prefix: String, s3_client: S3Client) -> S3System {
+        //Override prefix in config to use the temp one made for this test
+        let storage_config = Config::from_path("resources/test/config_test.toml").storage;
+        let storage_config = StorageConfig::S3{
+            prefix,
+            bucket: storage_config.get_bucket().into(),
+        };
 
-        // let runtime = Runtime::new().unwrap();
-
-        // S3System {
-        //     bucket,
-        //     prefix,
-        //     s3_client,
-        //     runtime,
-        // }
+        storage_config.build_s3()
     }
 
     fn make_dummy_generation(gen_number: u16) -> Population<DummyParams> {
@@ -339,7 +342,7 @@ mod tests {
         let bucket_cloned = storage.bucket.clone();
         let get_obj_req = GetObjectRequest {
             bucket: bucket_cloned,
-            key: particle_file_name,
+            key: particle_file_name.to_owned(),
             ..Default::default()
         };
         let get_req = storage.s3_client.get_object(get_obj_req);
@@ -352,7 +355,7 @@ mod tests {
         parsed
     }
 
-    fn load_gen_file<P>(gen_number: u16, prefix: &str) -> Result<Population<P>>
+    fn load_gen_file<'de, P>(gen_number: u16, prefix: &str) -> ABCDResult<Population<P>>
     where
         P: DeserializeOwned + Debug,
     {
@@ -373,7 +376,7 @@ mod tests {
         println!("Requesting {}", filename);
         let get_obj_req = GetObjectRequest {
             bucket: bucket_cloned,
-            key: filename,
+            key: filename.to_owned(),
             ..Default::default()
         };
        // println!("{:?}", &get_obj_req);
@@ -425,7 +428,7 @@ mod tests {
         let result = storage.retrieve_previous_gen::<DummyParams>();
         let result = storage
             .retrieve_previous_gen::<DummyParams>()
-            .unwrap_or_else(|_|panic!("{:?}", result));
+            .expect(&format!("{:?}", result));
 
         assert_eq!(expected, result);
     }
@@ -507,7 +510,7 @@ mod tests {
 
         let expected = make_dummy_generation(3);
         let s3_client = S3Client::new(Region::EuWest1);
-        TmpBucketPrefix::new("save_generation"); //Clear bucket if anything there
+        let tmp_bucket = TmpBucketPrefix::new("save_generation"); //Clear bucket if anything there
         let storage = storage("save_generation".to_string(), s3_client);
         storage.save_new_gen(make_dummy_generation(3)).expect("Expected successful save");
 
