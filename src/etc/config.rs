@@ -27,7 +27,7 @@ pub struct Job{
     pub num_generations: u16,
     pub terminate_at_target_gen: bool,
     pub num_replicates: u16,
-    pub num_particles: u64,
+    pub num_particles: u32,
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]

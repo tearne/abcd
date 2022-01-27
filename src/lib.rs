@@ -7,9 +7,12 @@ use etc::config::Config;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use storage::Storage;
 use std::fmt::Debug;
+use rand::prelude::*;
+use rand::distributions::WeightedIndex;
 // use anyhow::{Result, Context};
 
-pub struct Random {}
+// pub struct Random {}
+type Random = ThreadRng;
 
 pub trait Model {
     type Parameters: DeserializeOwned + Debug;
@@ -25,32 +28,49 @@ pub trait Model {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct Particle<P> {
-    parameters: P,
+    pub parameters: P,
     scores: Vec<f64>,
     weight: f64,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct Population<P> {
-    generation_number: u16,
+    // generation_number: u16,
     tolerance: f64,
     acceptance: f64,
-    particles: Vec<Particle<P>>,
+    normalised_particles: Vec<Particle<P>>,
 }
+// impl Population {
+//     pub fn new(...) -> Self {
+//         //TODO ensure the weights are normalised
+//     }
+// }
 
 pub enum Generation<P> {
     Prior,
-    Population(Population<P>)
+    Population{
+        pop: Population<P>,
+        generation_number: u16,
+    }
+}
+impl<P> Generation<P>{
+    pub fn generation_number(&self) -> u16 {
+        match self {
+            Generation::Prior => 0,
+            Generation::Population { pop, generation_number } => 
+                *generation_number,
+        }
+    }
 }
 
-pub fn run<M: Model, S: Storage>(model: M, config: Config, storage: S, random: &Random) -> ABCDResult<()>{
+pub fn run<M: Model, S: Storage>(model: M, config: Config, storage: S, random: &mut Random) -> ABCDResult<()>{
     // We assume that the storage has already been 'primed' to contain either
     // a) some kind of marker indicating that we're using a prior at gen 0
     //   or
     // b) a population from which we are resuming
 
     loop {
-        generation_number = storage.check_active_gen();
+        let generation_number = storage.check_active_gen()?;
         if generation_number == config.job.num_generations && config.job.terminate_at_target_gen {
             break;
         }
@@ -65,7 +85,7 @@ pub fn run<M: Model, S: Storage>(model: M, config: Config, storage: S, random: &
             let scores: Option<Vec<f64>> = (0..config.job.num_replicates).map(|rep_idx|{ // Reps loop
                 // Check with the filesystem that we are still working on the gen,
                 // else return None, causing the loop to exit.
-                if storage.check_active_gen()? != gen.generation_number { None }
+                if storage.check_active_gen().ok()? != gen.generation_number() { None }
                 else {
                     // (B5a) run the model once to get a score
                     Some(model.score(p))
@@ -79,12 +99,14 @@ pub fn run<M: Model, S: Storage>(model: M, config: Config, storage: S, random: &
                     // (B6) Calculate not_normalised_weight for each particle from its f^hat (f^hat(p) * prior(p)) / denom)
                     // Save the non_normalised particle to storage
                     // Check if we now have the req'd num particles/reps, if so, break
-                    weigh_and_save_new_scored_particle(scores);
-                    if storage.num_particles_available() >= config.job.num_particles { 
+                    todo!();
+                    //weigh_and_save_new_scored_particle(scores);
+                    if storage.num_particles_available()? >= config.job.num_particles { 
                         // Load all the non_normalised particles
                         // (B7) Normalise all the weights together
                         // Save generation to storage
-                        flush_entire_generation();
+                        todo!()
+                        // flush_entire_generation();
                     }
                 },
                 None => break, // Is this right, just go round the loop again?
@@ -98,16 +120,24 @@ pub fn run<M: Model, S: Storage>(model: M, config: Config, storage: S, random: &
 fn sample_and_perturb_with_support<M>(
     gen: Generation::<M::Parameters>, 
     model: M, 
-    random: &Random) -> M::Parameters 
+    random: &mut Random) -> M::Parameters 
 where M: Model {
     loop {
         let proposed: M::Parameters = match gen {
             Generation::Prior => model.prior_sample(random),
-            Generation::Population(pop) => {
+            Generation::Population{generation_number, pop} => {
                 //https://rust-random.github.io/rand/rand/distributions/weighted/struct.WeightedIndex.html
                 // 1. sample a particle from the previosu population
+                let particle_weights: Vec<f64> = pop.normalised_particles
+                    .iter()
+                    .map(|p|p.weight)
+                    .collect();
+                    
+                let dist = WeightedIndex::new(&particle_weights).unwrap();
+                let sampled_particle_index = dist.sample(random);
+                let sample_particle = pop.normalised_particles[sampled_particle_index];
                 // 2. perturb it with model.perturb(p)
-                todo!()
+                model.perturb(sample_particle.parameters)
             },
         };
 

@@ -21,7 +21,7 @@ impl FileSystem {
         let dir = self.base_path.join(gen_dir);
         println!("---> {:?}", dir);
 
-        let re = Regex::new(r#"^gen_(?P<gid>\d*)$"#).unwrap(); //TODO use ?
+        let re = Regex::new(r#"^gen_(?P<gid>\d*)$"#)?;
 
         let r = std::fs::read_dir(dir)?
             //TODO use filter_map
@@ -94,12 +94,12 @@ impl Storage for FileSystem {
         Ok(file_path.to_string_lossy().into_owned())
     }
 
-    fn num_particles_available(&self) -> ABCDResult<u16> {
+    fn num_particles_available(&self) -> ABCDResult<u32> {
         let files_in_folder = self.get_particle_files_in_current_gen_folder();
 
         match files_in_folder {
             Err(_) if self.check_active_gen().ok() == Some(1) => Ok(0),
-            Ok(files) => Ok(files.len() as u16), //TODO read dir numbers & take max //TODO safer way to do cast - Ok(u16::try_from(file.len()))
+            Ok(files) => Ok(files.len() as u32), //TODO read dir numbers & take max //TODO safer way to do cast - Ok(u16::try_from(file.len()))
             Err(e) => Err(e),
         }
     }
