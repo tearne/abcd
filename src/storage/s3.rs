@@ -157,12 +157,12 @@ impl Storage for S3System {
         Ok(s3_file_path)
         //Ok(particle_file_name)
     }
-    fn num_particles_available(&self) -> ABCDResult<u16> {
+    fn num_particles_available(&self) -> ABCDResult<u32> {
         //unimplemented!();
         let files_in_folder = self.get_particle_files_in_current_gen_folder();
         match files_in_folder {
             Err(_) if self.check_active_gen().ok() == Some(1) => Ok(0),
-            Ok(files) => Ok(files.len() as u16), //TODO read dir numbers & take max //TODO safer way to do cast - Ok(u16::try_from(file.len()))
+            Ok(files) => Ok(files.len() as u32), //TODO read dir numbers & take max //TODO safer way to do cast - Ok(u16::try_from(file.len()))
             Err(e) => Err(e),
         }
     }
@@ -196,10 +196,10 @@ impl Storage for S3System {
         Ok(weighted_particles)
     }
 
-    fn save_new_gen<P: Serialize>(&self, g: Population<P>) -> ABCDResult<()>{
+    fn save_new_gen<P: Serialize>(&self, g: Population<P>, generation_number: u16) -> ABCDResult<()>{
         //unimplemented!();
-        let gen_dir = format!("gen_{:03}", g.generation_number);
-        let file_name = format!("gen_{:03}.json", g.generation_number);
+        let gen_dir = format!("gen_{:03}", generation_number);
+        let file_name = format!("gen_{:03}.json", generation_number);
         let prefix_cloned = self.prefix.clone();
         let filename = format!("{}/{}/{}", prefix_cloned, gen_dir, file_name);
         let bucket_cloned = self.bucket.clone();
@@ -309,7 +309,7 @@ mod tests {
         storage_config.build_s3()
     }
 
-    fn make_dummy_generation(gen_number: u16) -> Population<DummyParams> {
+    fn make_dummy_generation(generation_number: u16) -> Generation<DummyParams> {
         let particle_1 = Particle {
             parameters: DummyParams::new(10, 20.),
             scores: vec![1000.0, 2000.0],
@@ -322,12 +322,15 @@ mod tests {
             weight: 0.567,
         };
 
-        Population {
-            generation_number: gen_number,
+
+        let pop = Population {
+            //generation_number: gen_number,
             tolerance: 0.1234,
             acceptance: 0.7,
-            particles: vec![particle_1, particle_2],
-        }
+            normalised_particles: vec![particle_1, particle_2],
+        };
+        let gen = Generation::Population{pop,generation_number};
+        gen
     }
 
     fn load_particle_file(particle_file_name: String) -> Particle<DummyParams> {
@@ -512,7 +515,7 @@ mod tests {
         let s3_client = S3Client::new(Region::EuWest1);
         let tmp_bucket = TmpBucketPrefix::new("save_generation"); //Clear bucket if anything there
         let storage = storage("save_generation".to_string(), s3_client);
-        storage.save_new_gen(make_dummy_generation(3)).expect("Expected successful save");
+        storage.save_new_gen(make_dummy_generation(3),3).expect("Expected successful save");
 
         let result = load_gen_file(3, "save_generation").unwrap();
         assert_eq!(expected, result);

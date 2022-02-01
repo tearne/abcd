@@ -190,7 +190,7 @@ mod tests {
         FileSystem { base_path: p }
     }
 
-    fn make_dummy_generation(gen_number: u16) -> Population<DummyParams> {
+    fn make_dummy_generation(generation_number: u16) -> Generation<DummyParams> {
         let particle_1 = Particle {
             parameters: DummyParams::new(10, 20.),
             scores: vec![1000.0, 2000.0],
@@ -203,12 +203,14 @@ mod tests {
             weight: 0.567,
         };
 
-        Population {
-            generation_number: gen_number,
+        let pop = Population {
+            //generation_number: gen_number,
             tolerance: 0.1234,
             acceptance: 0.7,
-            particles: vec![particle_1, particle_2],
-        }
+            normalised_particles: vec![particle_1, particle_2],
+        };
+        let gen = Generation::Population{pop,generation_number};
+        gen
     }
 
     #[test]
@@ -325,7 +327,7 @@ mod tests {
             .expect("Expected successful dir creation");
 
         instance
-            .save_new_gen(gen)
+            .save_new_gen(gen,3)
             .expect("Expected successful save");
 
         let expected = serde_json::json!({
@@ -375,7 +377,7 @@ mod tests {
 
         //2. Try to save another gen over it, pretending we didn't notice the other node save gen before us
         let gen = make_dummy_generation(3);
-        let result = instance.save_new_gen(gen);
+        let result = instance.save_new_gen(gen, 3);
 
         //3. Test that the original file save by other node is intact and we didn't panic.
         let contents =

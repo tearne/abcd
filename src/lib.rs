@@ -46,7 +46,7 @@ pub struct Population<P> {
 //     }
 // }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum Generation<P> {
     Prior,
     Population{
