@@ -14,7 +14,7 @@ use tokio::runtime::Runtime;
 
 use super::Storage;
 use crate::error::{ABCDResult, ABCDError};
-use crate::{Population, Particle};
+use crate::{Population, Particle, Generation};
 use std::convert::TryInto;
 use std::fs::File;
 use std::io::BufReader;
@@ -93,7 +93,7 @@ impl Storage for S3System {
         Ok(answer + 1) //Last gen with a gen file +1
     }
 
-    fn retrieve_previous_gen<P>(&self) -> ABCDResult<Population<P>>
+    fn retrieve_previous_gen<P>(&self) -> ABCDResult<Generation<P>>
     where
         P: DeserializeOwned + Debug,
     {
@@ -117,8 +117,8 @@ impl Storage for S3System {
         let get_req = self.s3_client.get_object(get_obj_req);
 
         let string_fut = get_req.then(move |gor| async {
-            let mut gor = gor.unwrap();
-            let stream = gor.body.take().unwrap();
+            let mut gor = gor.expect("No output from S3 get object request.");
+            let stream = gor.body.take().expect("S3 get object request output has no message body.");
             use tokio::io::AsyncReadExt;
             let mut string_buf: String = String::new();
             let outcome = stream
@@ -130,7 +130,7 @@ impl Storage for S3System {
         });
 
         let string = self.runtime.block_on(string_fut);
-        let parsed: Population<P> = serde_json::from_str(&string)?;
+        let parsed: Generation<P> = serde_json::from_str(&string)?;
         println!("Parsed to {:?}", parsed);
         Ok(parsed)
     }

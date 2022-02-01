@@ -3,7 +3,7 @@ use std::{fs::{DirEntry, File}, io::BufReader, path::PathBuf};
 use regex::Regex;
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::{Population, Particle, error::{ABCDResult, ABCDError}};
+use crate::{Population, Particle, error::{ABCDResult, ABCDError}, Generation};
 use uuid::Uuid;
 
 use super::Storage;
@@ -14,8 +14,7 @@ pub struct FileSystem {
 }
 impl FileSystem {
     fn get_particle_files_in_current_gen_folder(&self) -> ABCDResult<Vec<std::fs::DirEntry>> {
-        //TODO test case for when returns 1?
-        let gen_no = self.check_active_gen().unwrap_or(1);
+        let gen_no = self.check_active_gen()?;
         println!("Active gen is {}", gen_no);
         let gen_dir = format!("gen_{:03}", gen_no);
         let dir = self.base_path.join(gen_dir);
@@ -43,30 +42,32 @@ impl FileSystem {
 
 impl Storage for FileSystem {
     fn check_active_gen(&self) -> ABCDResult<u16> {
-        let re = Regex::new(r#"^gen_(?P<gid>\d*)$"#).unwrap();
+        let re = Regex::new(r#"^gen_(?P<gid>\d*)$"#)?;
 
         let max: Option<u16> = std::fs::read_dir(&self.base_path)?
             .filter_map(|read_dir| {
-                let path = read_dir.as_ref().unwrap().path();
+                let path = read_dir.as_ref().ok()?.path();
                 if path.is_dir() {
-                    path.file_name()
-                        .map(|name| name.to_string_lossy().to_string())
+                    path
+                        .file_name()
+                        .map(|name| name.to_string_lossy().to_string())   
                 } else {
                     None
                 }
             })
             .filter(|dir_name| dir_name.starts_with("gen_"))
             .filter_map(|dir_name| {
-                let caps = re.captures(&dir_name).unwrap();
-                caps["gid"].parse::<u16>().ok()
+                if let Some(caps) = re.captures(&dir_name) {
+                    caps["gid"].parse::<u16>().ok()
+                } else { None }
             })
             .max();
 
-        Ok(max.unwrap_or(1))
+        max.ok_or_else(||ABCDError::Other("Failed to find max gen.".into()))
     }
 
     // fn retrieve_previous_gen<'de, P>(&self) -> Result<Generation<P>> where P: Deserialize<'de>;
-    fn retrieve_previous_gen<P>(&self) -> ABCDResult<Population<P>>
+    fn retrieve_previous_gen<P>(&self) -> ABCDResult<Generation<P>>
     where
         P: DeserializeOwned,
     {
@@ -79,7 +80,7 @@ impl Storage for FileSystem {
         //TODO why isn't our conversion in error.rs being applied?
         // let gen: Result<Generation<P>> = serde_json::from_reader(reader);
 
-        let gen: Population<P> = serde_json::from_reader(reader)?;
+        let gen: Generation<P> = serde_json::from_reader(reader)?;
 
         Ok(gen)
     }
@@ -118,11 +119,11 @@ impl Storage for FileSystem {
         Ok(weighted_particles)
     }
 
-    fn save_new_gen<P: Serialize>(&self, g: Population<P>) -> ABCDResult<()> {
+    fn save_new_gen<P: Serialize>(&self, g: Population<P>, generation_number: u16) -> ABCDResult<()> {
         let gen_dir = self
             .base_path
-            .join(format!("gen_{:03}", g.generation_number));
-        let file_path = gen_dir.join(format!("gen_{:03}.json", g.generation_number));
+            .join(format!("gen_{:03}", generation_number));
+        let file_path = gen_dir.join(format!("gen_{:03}.json", generation_number));
 
         match file_path.exists() {
             false => {

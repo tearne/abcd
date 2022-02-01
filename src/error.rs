@@ -9,6 +9,8 @@ pub enum ABCDError {
     Parse(std::num::ParseIntError),
     Serde(serde_json::Error),
     GenAlreadySaved(String),
+    Regex(regex::Error),
+    Other(String),
 }
 
 impl fmt::Display for ABCDError {
@@ -21,6 +23,8 @@ impl fmt::Display for ABCDError {
             ABCDError::Parse(ref err) => err.fmt(f),
             ABCDError::Serde(ref err) => err.fmt(f),
             ABCDError::GenAlreadySaved(ref msg) => write!(f, "{}", msg), //f.write_str(string.as_str()),
+            ABCDError::Regex(ref err) => err.fmt(f),
+            ABCDError::Other(msg) => f.write_fmt(format_args!("ABCD error: {}", msg)),
         }
     }
 }
@@ -46,5 +50,11 @@ impl From<std::ffi::OsString> for ABCDError {
 impl From<std::num::ParseIntError> for ABCDError {
     fn from(value: std::num::ParseIntError) -> Self {
         ABCDError::Parse(value)
+    }
+}
+
+impl From<regex::Error> for ABCDError {
+    fn from(value: regex::Error) -> Self {
+        ABCDError::Regex(value)
     }
 }

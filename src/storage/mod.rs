@@ -25,7 +25,7 @@ pub trait Storage {
     where
         P: DeserializeOwned + Debug;
 
-    fn save_new_gen<P>(&self, g: Population<P>) -> ABCDResult<()>
+    fn save_new_gen<P>(&self, g: Population<P>, generation_number: u16) -> ABCDResult<()>
     where
         P: Serialize + Debug;
 }
