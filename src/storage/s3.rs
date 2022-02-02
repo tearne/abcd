@@ -1,23 +1,14 @@
-use futures::{Future, FutureExt, TryFutureExt};
+use futures::FutureExt;
 use regex::Regex;
-use rusoto_core::Region;
-use rusoto_s3::{
-    DeleteObjectRequest, GetObjectRequest, ListObjectsV2Request, Object, PutObjectRequest,
-    S3Client, S3,
-};
+use rusoto_s3::{S3Client, S3, Object, ListObjectsV2Request, GetObjectRequest, PutObjectRequest,};
 use serde::{de::DeserializeOwned, Serialize};
-use std::env;
+use std::borrow::Borrow;
 use std::fmt::Debug;
-use tokio::fs::read_to_string;
-use tokio::runtime::Runtime; 
-//For environment variables => https://doc.rust-lang.org/book/ch12-05-working-with-environment-variables.html
+use tokio::runtime::Runtime;
 
 use super::Storage;
 use crate::error::{ABCDResult, ABCDError};
 use crate::{Population, Particle, Generation};
-use std::convert::TryInto;
-use std::fs::File;
-use std::io::BufReader;
 use std::io::Read;
 use tokio;
 use uuid::Uuid;
@@ -30,28 +21,47 @@ pub struct S3System {
 }
 impl S3System {
     fn get_particle_files_in_current_gen_folder(&self) -> ABCDResult<Vec<Object>> {
-        //TODO This is where we want to loop more than 1000
-        let gen_no = self.check_active_gen().unwrap_or(1);
-        let gen_dir = format!("gen_{:03}", gen_no);
-        let prefix_cloned = self.prefix.clone();
-        let bucket_cloned = self.bucket.clone();
-        let gen_prefix = format!("{}/{}", prefix_cloned, gen_dir);
+        //
+        //Leaving this here for a bit to discuss some of the finer points with Tom
+        //
+        // let gen_no = self.check_active_gen().unwrap_or(1);
+        // let gen_dir = format!("gen_{:03}", gen_no);
+        // let prefix_cloned = self.prefix.clone();
+        // let bucket_cloned = self.bucket.clone();
+        // let gen_prefix = format!("{}/{}", prefix_cloned, gen_dir);
 
-        //println!("Requesting {}", gen_prefix);
+        // let list_request = self.s3_client
+        //     .list_objects_v2(ListObjectsV2Request {
+        //         bucket: String::from(bucket_cloned),
+        //         prefix: Some(gen_prefix),
+        //         ..Default::default()
+        //     })
+        //     .map(|response|{
+        //         let response = response?;
+        //         response.contents.ok_or_else(||ABCDError::Other("Empty response".into()))
+        //     });
 
-        let list_request_fut = self.s3_client.list_objects_v2(ListObjectsV2Request {
-            bucket: String::from(bucket_cloned),
+        // self.runtime.block_on(list_request)
+
+        let gen_prefix = {
+            let gen_no = self.check_active_gen().unwrap_or(1);
+            let gen_dir = format!("gen_{:03}", gen_no);
+            let prefix_cloned = self.prefix.clone();            
+            format!("{}/{}", prefix_cloned, gen_dir)
+        };
+
+        //TODO This is where we need to loop with continuation tokens
+        let request = self.s3_client
+        .list_objects_v2(ListObjectsV2Request {
+            bucket: self.bucket.clone(),
             prefix: Some(gen_prefix),
             ..Default::default()
         });
 
-        let current_gen_fut = list_request_fut.map(|response| {
-            let contents = response.unwrap().contents.unwrap();
-            //  println!("Contents ====> {:?}",&contents);
-            contents
-        });
-        let answer = self.runtime.block_on(current_gen_fut);
-        Ok(answer)
+        self.runtime
+            .block_on(request)?
+            .contents
+            .ok_or_else(||ABCDError::Other("Empty S3 response".into()))
     }
 }
 impl Storage for S3System {
@@ -65,32 +75,46 @@ impl Storage for S3System {
             ..Default::default()
         });
 
-        let gen_number_fut = list_request_fut.map(|response| {
-            let contents = response.unwrap().contents.unwrap();
-            let re = Regex::new(r#"^example/gen_(?P<gid1>\d*)/gen_(?P<gid2>\d*).json"#).unwrap(); //TODO use ?
-            let items = contents.iter();
-            let keys: Vec<u16> = items
-                .filter_map(|key| {
-                    let key_string = key.key.as_ref().unwrap();
-                    let dir_match = re.is_match(&key_string);
-                    let dir_no = match dir_match {
-                        true => re.captures(&key_string).unwrap()["gid1"]
-                            .parse::<u16>()
-                            .ok(),
-                        false => None,
-                    };
-                    //println!("captures = {:?}", caps["gid2"].parse::<u16>());
-                    println!("dir_no = {:?}", dir_no);
-                    dir_no
-                })
-                .collect();
+        //Leaving this here for a bit to discuss some of the finer points with Tom
+        // let gen_number_future = list_request_fut.map(|response| {
+        //     let contents = response.unwrap().contents.unwrap(); //TODO use ?
+            
+        //     let items = contents.iter();
+        //     let key_strings = items.filter_map(|obj|obj.key.as_ref());
+            
+        //     let re = Regex::new(r#"^example/gen_(?P<gid1>\d*)/gen_(?P<gid2>\d*).json"#).unwrap(); //TODO use ?
+        //     let gen_dir_numbers: Vec<u16> = key_strings
+        //         .filter_map(|key|{
+        //             re.captures(key)
+        //                 .map(|caps|caps["gid1"].parse::<u16>().ok())
+        //                 .flatten()
+        //         })
+        //         .collect();
 
-            let max_finished_gen = keys.into_iter().max().unwrap_or(0);
-            max_finished_gen
-        });
+        //     let max_completed_gen = gen_dir_numbers.into_iter().max().unwrap_or(0);
+        //     Ok(max_completed_gen + 1)
+        // });
 
-        let answer = self.runtime.block_on(gen_number_fut);
-        Ok(answer + 1) //Last gen with a gen file +1
+        // self.runtime.block_on(gen_number_future)
+
+
+        let objects = self.runtime
+            .block_on(list_request_fut)?
+            .contents
+            .ok_or_else(||ABCDError::Other("Empty S3 response".into()))?;
+
+        let re = Regex::new(r#"^example/gen_(?P<gid1>\d*)/gen_(?P<gid2>\d*).json"#)?;
+        let key_strings = objects.into_iter().filter_map(|obj|obj.key);
+        let gen_dir_numbers: Vec<u16> = key_strings
+            .filter_map(|key|{
+                re.captures(&key)
+                    .map(|caps|caps["gid1"].parse::<u16>().ok())
+                    .flatten()
+            })
+            .collect();
+
+        let max_completed_gen = gen_dir_numbers.into_iter().max().unwrap_or(0);
+        Ok(max_completed_gen + 1)
     }
 
     fn retrieve_previous_gen<P>(&self) -> ABCDResult<Generation<P>>
@@ -241,6 +265,8 @@ impl Storage for S3System {
 
 #[cfg(test)]
 mod tests {
+    use rusoto_core::Region;
+    use rusoto_s3::DeleteObjectRequest;
     use serde::{Deserialize, Serialize};
     use std::{
         io::Read,

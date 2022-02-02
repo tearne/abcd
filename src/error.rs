@@ -1,4 +1,6 @@
-use std::fmt;
+use std::error::Error;
+
+use rusoto_core::RusotoError;
 
 pub type ABCDResult<T> = std::result::Result<T, ABCDError>;
 
@@ -10,11 +12,12 @@ pub enum ABCDError {
     Serde(serde_json::Error),
     GenAlreadySaved(String),
     Regex(regex::Error),
+    RusotoError(String),
     Other(String),
 }
 
-impl fmt::Display for ABCDError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl std::fmt::Display for ABCDError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ABCDError::Io(ref err) => err.fmt(f),
             ABCDError::Os(ref original) => {
@@ -24,6 +27,7 @@ impl fmt::Display for ABCDError {
             ABCDError::Serde(ref err) => err.fmt(f),
             ABCDError::GenAlreadySaved(ref msg) => write!(f, "{}", msg), //f.write_str(string.as_str()),
             ABCDError::Regex(ref err) => err.fmt(f),
+            ABCDError::RusotoError(msg) => f.write_fmt(format_args!("Rusoto error: {}", msg)),
             ABCDError::Other(msg) => f.write_fmt(format_args!("ABCD error: {}", msg)),
         }
     }
@@ -56,5 +60,11 @@ impl From<std::num::ParseIntError> for ABCDError {
 impl From<regex::Error> for ABCDError {
     fn from(value: regex::Error) -> Self {
         ABCDError::Regex(value)
+    }
+}
+
+impl<T: 'static + Error> From<RusotoError<T>> for ABCDError {
+    fn from(value: RusotoError<T>) -> Self {
+        ABCDError::Other(value.to_string())
     }
 }
