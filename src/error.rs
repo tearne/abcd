@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::{error::Error, num::TryFromIntError};
 
 use rusoto_core::RusotoError;
 
@@ -14,6 +14,7 @@ pub enum ABCDError {
     Regex(regex::Error),
     RusotoError(String),
     Other(String),
+    CastError(TryFromIntError),
 }
 
 impl std::fmt::Display for ABCDError {
@@ -29,6 +30,7 @@ impl std::fmt::Display for ABCDError {
             ABCDError::Regex(ref err) => err.fmt(f),
             ABCDError::RusotoError(msg) => f.write_fmt(format_args!("Rusoto error: {}", msg)),
             ABCDError::Other(msg) => f.write_fmt(format_args!("ABCD error: {}", msg)),
+            ABCDError::CastError(ref err) => err.fmt(f),
         }
     }
 }
@@ -66,5 +68,11 @@ impl From<regex::Error> for ABCDError {
 impl<T: 'static + Error> From<RusotoError<T>> for ABCDError {
     fn from(value: RusotoError<T>) -> Self {
         ABCDError::Other(value.to_string())
+    }
+}
+
+impl From<TryFromIntError> for ABCDError {
+    fn from(value: TryFromIntError) -> Self {
+        ABCDError::CastError(value)
     }
 }

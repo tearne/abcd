@@ -1,8 +1,10 @@
 use futures::FutureExt;
 use regex::Regex;
-use rusoto_s3::{S3Client, S3, Object, ListObjectsV2Request, GetObjectRequest, PutObjectRequest,};
+use rusoto_core::RusotoError;
+use rusoto_s3::{S3Client, S3, Object, ListObjectsV2Request, GetObjectRequest, PutObjectRequest, GetObjectOutput,};
 use serde::{de::DeserializeOwned, Serialize};
 use std::borrow::Borrow;
+use std::convert::TryInto;
 use std::fmt::Debug;
 use tokio::runtime::Runtime;
 
@@ -63,6 +65,17 @@ impl S3System {
             .contents
             .ok_or_else(||ABCDError::Other("Empty S3 response".into()))
     }
+
+    async fn read_to_string<E: 'static + std::error::Error>(output: Result<GetObjectOutput, RusotoError<E>>) -> ABCDResult<String> {
+        let byte_stream = output?.body.ok_or_else(||ABCDError::Other("No body in S3 response.".into()))?;
+        let mut string_buf: String = String::new();
+        use tokio::io::AsyncReadExt;
+        byte_stream
+            .into_async_read()
+            .read_to_string(&mut string_buf)
+            .await?;
+        Ok(string_buf)
+    }
 }
 impl Storage for S3System {
     fn check_active_gen(&self) -> ABCDResult<u16> {
@@ -75,7 +88,28 @@ impl Storage for S3System {
             ..Default::default()
         });
 
+        let objects = self.runtime
+            .block_on(list_request_fut)?
+            .contents
+            .ok_or_else(||ABCDError::Other("Empty S3 response body".into()))?;
+
+        //TODO compile regex only once for entire struct.
+        let re = Regex::new(r#"^example/gen_(?P<gid1>\d*)/gen_(?P<gid2>\d*).json"#)?; 
+        let key_strings = objects.into_iter().filter_map(|obj|obj.key);
+        let gen_dir_numbers: Vec<u16> = key_strings
+            .filter_map(|key|{
+                re.captures(&key)
+                    .map(|caps|caps["gid1"].parse::<u16>().ok())
+                    .flatten()
+            })
+            .collect();
+
+        let max_completed_gen = gen_dir_numbers.into_iter().max().unwrap_or(0);
+        Ok(max_completed_gen + 1)
+
+        //
         //Leaving this here for a bit to discuss some of the finer points with Tom
+        //
         // let gen_number_future = list_request_fut.map(|response| {
         //     let contents = response.unwrap().contents.unwrap(); //TODO use ?
             
@@ -96,97 +130,77 @@ impl Storage for S3System {
         // });
 
         // self.runtime.block_on(gen_number_future)
-
-
-        let objects = self.runtime
-            .block_on(list_request_fut)?
-            .contents
-            .ok_or_else(||ABCDError::Other("Empty S3 response".into()))?;
-
-        let re = Regex::new(r#"^example/gen_(?P<gid1>\d*)/gen_(?P<gid2>\d*).json"#)?;
-        let key_strings = objects.into_iter().filter_map(|obj|obj.key);
-        let gen_dir_numbers: Vec<u16> = key_strings
-            .filter_map(|key|{
-                re.captures(&key)
-                    .map(|caps|caps["gid1"].parse::<u16>().ok())
-                    .flatten()
-            })
-            .collect();
-
-        let max_completed_gen = gen_dir_numbers.into_iter().max().unwrap_or(0);
-        Ok(max_completed_gen + 1)
     }
 
     fn retrieve_previous_gen<P>(&self) -> ABCDResult<Generation<P>>
     where
         P: DeserializeOwned + Debug,
     {
-        let prev_gen_no = self.check_active_gen().unwrap_or(1) - 1;
-        let prev_gen_file_dir = format!("gen_{:03}", prev_gen_no);
-        let prev_gen_file_name = format!("gen_{:03}.json", prev_gen_no);
-        // let separator = "/".to_string();
-        let prefix_cloned = self.prefix.clone();
-        let filename = format!(
-            "{}/{}/{}",
-            prefix_cloned, prev_gen_file_dir, prev_gen_file_name
-        );
-        let bucket_cloned = self.bucket.clone();
-        println!("Requesting {}", filename);
+        let object_key = {
+            let prev_gen_no = self.check_active_gen().unwrap_or(1) - 1;
+            let prev_gen_file_dir = format!("gen_{:03}", prev_gen_no);
+            let prev_gen_file_name = format!("gen_{:03}.json", prev_gen_no);
+
+            format!(
+                "{}/{}/{}",
+                self.prefix.clone(), 
+                prev_gen_file_dir, 
+                prev_gen_file_name
+            )
+        };
+
         let get_obj_req = GetObjectRequest {
-            bucket: bucket_cloned,
-            key: filename.to_owned(),
+            bucket: self.bucket.clone(),
+            key: object_key,
             ..Default::default()
         };
-        println!("{:?}", &get_obj_req);
-        let get_req = self.s3_client.get_object(get_obj_req);
+        
+        let object_string_future = self.s3_client
+            .get_object(get_obj_req)
+            .then(Self::read_to_string);
 
-        let string_fut = get_req.then(move |gor| async {
-            let mut gor = gor.expect("No output from S3 get object request.");
-            let stream = gor.body.take().expect("S3 get object request output has no message body.");
-            use tokio::io::AsyncReadExt;
-            let mut string_buf: String = String::new();
-            let outcome = stream
-                .into_async_read()
-                .read_to_string(&mut string_buf)
-                .await;
-            println!("Async read result = {:#?}", outcome);
-            string_buf
-        });
-
-        let string = self.runtime.block_on(string_fut);
+        let string = self.runtime.block_on(object_string_future)?;
         let parsed: Generation<P> = serde_json::from_str(&string)?;
-        println!("Parsed to {:?}", parsed);
         Ok(parsed)
     }
 
     fn save_particle<P: Serialize>(&self, w: &Particle<P>) -> ABCDResult<String> {
-        let gen_no = self.check_active_gen().unwrap_or(1);
-        let gen_file_dir = format!("gen_{:03}", gen_no);
-        let file_uuid = Uuid::new_v4();
-        let particle_file_name = file_uuid.to_string() + ".json";
-        let prefix_cloned = self.prefix.clone();
-        let s3_file_path = format!("{}/{}/{}", prefix_cloned, gen_file_dir, particle_file_name);
-        let bucket_cloned = self.bucket.clone();
-        let pretty_json = serde_json::to_string_pretty(w);
+        let s3_object_path = {
+            let gen_no = self.check_active_gen().unwrap_or(1);
+            let gen_file_dir = format!("gen_{:03}", gen_no);
+            let file_uuid = Uuid::new_v4();
+            let particle_file_name = file_uuid.to_string() + ".json";
+            let prefix_cloned = self.prefix.clone();
+
+            format!(
+                "{}/{}/{}", 
+                prefix_cloned, 
+                gen_file_dir, 
+                particle_file_name
+            )
+        };
+
+        let pretty_json = serde_json::to_string_pretty(w)?;
+
         let put_obj_req = PutObjectRequest {
-            bucket: bucket_cloned,
-            key: s3_file_path.to_owned(),
-            body: Some(pretty_json.unwrap().to_owned().into_bytes().into()),
+            bucket: self.bucket.clone(),
+            key: s3_object_path.to_owned(),
+            body: Some(pretty_json.to_owned().into_bytes().into()),
             acl: Some("bucket-owner-full-control".to_string()),
             ..Default::default()
         };
-        let put_req = self.s3_client.put_object(put_obj_req);
-        let mut response = self.runtime.block_on(put_req).unwrap();
 
-        Ok(s3_file_path)
-        //Ok(particle_file_name)
+        let put_future = self.s3_client.put_object(put_obj_req);
+        self.runtime.block_on(put_future)?;
+
+        Ok(s3_object_path)
     }
+
     fn num_particles_available(&self) -> ABCDResult<u32> {
-        //unimplemented!();
         let files_in_folder = self.get_particle_files_in_current_gen_folder();
         match files_in_folder {
-            Err(_) if self.check_active_gen().ok() == Some(1) => Ok(0),
-            Ok(files) => Ok(files.len() as u32), //TODO read dir numbers & take max //TODO safer way to do cast - Ok(u16::try_from(file.len()))
+            // Err(_) if self.check_active_gen().ok() == Some(1) => Ok(0),
+            Ok(files) => Ok(files.len().try_into()?), //TODO read dir numbers & take max
             Err(e) => Err(e),
         }
     }
@@ -195,29 +209,55 @@ impl Storage for S3System {
     where
         P: DeserializeOwned,
     {
-        // unimplemented!();
-        let particle_files = self.get_particle_files_in_current_gen_folder()?;
-        let bucket_cloned = self.bucket.clone();
-        let mut weighted_particles = Vec::new();
-        for entry in particle_files {
-            let particle_filename = entry.key.unwrap();
-            let get_obj_req = GetObjectRequest {
-                bucket: bucket_cloned.to_owned(),
-                key: particle_filename.to_owned(),
-                ..Default::default()
-            };
-            //println!("{:?}",&get_obj_req);
-            let get_req = self.s3_client.get_object(get_obj_req);
-            let mut response = self.runtime.block_on(get_req).unwrap();
-            let stream = response.body.take().unwrap();
-            // let t = stream.to_vec();
-            let mut string: String = String::new();
-            let _ = stream.into_blocking_read().read_to_string(&mut string);
-            let wp: Particle<P> = serde_json::from_str(&string)?;
-            weighted_particles.push(wp);
-        }
+        let object_names = self.get_particle_files_in_current_gen_folder()?
+            .into_iter()
+            .map(|t|t.key)
+            .collect::<Option<Vec<String>>>()
+            .ok_or_else(||ABCDError::Other("failed to identify all particle file names".into()))?;
 
-        Ok(weighted_particles)
+        let particle_futures = object_names.into_iter()
+            .map(|filename| { 
+                let get_obj_req = GetObjectRequest {
+                    bucket: self.bucket.clone(),
+                    key: filename,
+                    ..Default::default()
+                };
+                self.s3_client
+                    .get_object(get_obj_req)
+                    .then(Self::read_to_string)
+                    .map(|res| 
+                        res.and_then(|s|{
+                            serde_json::from_str::<Particle<P>>(&s)
+                                .map_err(|_|ABCDError::Other("badness".into()))
+                        })
+                    )
+            });
+        
+        let joined = futures::future::join_all(particle_futures);
+        let particle_futures: Vec<Result<Particle<P>, ABCDError>> = self.runtime.block_on(joined);
+        let result_of_vec: ABCDResult<Vec<Particle<P>>> = particle_futures.into_iter().collect();
+        result_of_vec
+        
+        // let mut weighted_particles = Vec::new();
+        // for entry in particle_files {
+        //     let particle_filename = entry.key.unwrap();
+        //     let get_obj_req = GetObjectRequest {
+        //         bucket: self.bucket.clone(),
+        //         key: particle_filename.to_owned(),
+        //         ..Default::default()
+        //     };
+            
+        //     let get_req = self.s3_client.get_object(get_obj_req);
+        //     let mut response = self.runtime.block_on(get_req).unwrap();
+        //     let stream = response.body.take().unwrap();
+        //     // let t = stream.to_vec();
+        //     let mut string: String = String::new();
+        //     let _ = stream.into_blocking_read().read_to_string(&mut string);
+        //     let wp: Particle<P> = serde_json::from_str(&string)?;
+        //     weighted_particles.push(wp);
+        // }
+
+        // Ok(weighted_particles)
     }
 
     fn save_new_gen<P: Serialize>(&self, g: Population<P>, generation_number: u16) -> ABCDResult<()>{
