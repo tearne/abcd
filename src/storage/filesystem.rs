@@ -213,6 +213,27 @@ mod tests {
         gen
     }
 
+        fn make_dummy_population() -> Population<DummyParams> {
+        let particle_1 = Particle {
+            parameters: DummyParams::new(10, 20.),
+            scores: vec![1000.0, 2000.0],
+            weight: 0.234,
+        };
+
+        let particle_2 = Particle {
+            parameters: DummyParams::new(30, 40.),
+            scores: vec![3000.0, 4000.0],
+            weight: 0.567,
+        };
+
+        let pop = Population {
+            tolerance: 0.1234,
+            acceptance: 0.7,
+            normalised_particles: vec![particle_1, particle_2],
+        };
+        pop
+    }
+
     #[test]
     fn test_check_initial_active_gen() {
         let full_path = manifest_dir().join("resources/test/fs/empty");
@@ -322,12 +343,12 @@ mod tests {
         let tmp_dir = TmpDir::new("save_generation");
         let instance = storage(tmp_dir.0.clone());
 
-        let gen = make_dummy_generation(3);
+        let pop = make_dummy_population();
         std::fs::create_dir(instance.base_path.join("gen_003"))
             .expect("Expected successful dir creation");
 
         instance
-            .save_new_gen(gen,3)
+            .save_new_gen(pop,3)
             .expect("Expected successful save");
 
         let expected = serde_json::json!({
@@ -376,8 +397,8 @@ mod tests {
         .unwrap();
 
         //2. Try to save another gen over it, pretending we didn't notice the other node save gen before us
-        let gen = make_dummy_generation(3);
-        let result = instance.save_new_gen(gen, 3);
+        let pop = make_dummy_population();
+        let result = instance.save_new_gen(pop, 3);
 
         //3. Test that the original file save by other node is intact and we didn't panic.
         let contents =

@@ -29,3 +29,18 @@ impl StorageConfig {
         todo!()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::StorageConfig;
+
+    #[test]
+    fn test_something() {
+        let config = StorageConfig::S3{
+            bucket: "myBucket".into(),
+            prefix: "myPrefix".into()
+        };
+
+        println!("{}",toml::to_string_pretty(&config).unwrap());
+    }
+}
