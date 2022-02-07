@@ -18,12 +18,12 @@ pub trait Model {
     type Parameters: DeserializeOwned + Debug;
 
     fn prior_sample(&self, random: &Random) -> Self::Parameters; //TODO check density of sampled value is NOT 0
-    fn prior_density(&self, p: Self::Parameters) -> f64;
+    fn prior_density(&self, p: &Self::Parameters) -> f64;
 
-    fn perturb(&self, p: Self::Parameters) -> Self::Parameters;
+    fn perturb(&self, p: &Self::Parameters) -> Self::Parameters;
     fn pert_density(&self, a: Self::Parameters, b: Self::Parameters) -> f64;
 
-    fn score(&self, p: Self::Parameters) -> f64;
+    fn score(&self, p: &Self::Parameters) -> f64;
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -58,13 +58,13 @@ impl<P> Generation<P>{
     pub fn generation_number(&self) -> u16 {
         match self {
             Generation::Prior => 0,
-            Generation::Population { pop, gen_number } => 
+            Generation::Population { gen_number, pop:_ } => 
                 *gen_number,
         }
     }
 }
 
-pub fn run<M: Model + Copy, S: Storage>(model: M, config: Config, storage: S, random: &mut Random) -> ABCDResult<()>{
+pub fn run<M: Model, S: Storage>(model: M, config: Config, storage: S, random: &mut Random) -> ABCDResult<()>{
     // We assume that the storage has already been 'primed' to contain either
     // a) some kind of marker indicating that we're using a prior at gen 0
     //   or
@@ -81,7 +81,7 @@ pub fn run<M: Model + Copy, S: Storage>(model: M, config: Config, storage: S, ra
             // TODO loop could go on forever?  Use some kind of timeout, or issue warning?
             // (B3) sample a (fitting) parameter set from gen (perturb based on weights and kernel if sampling from generation)
             // (B4) Check if prior probability is zero - if so sample again
-            let p = sample_and_perturb_with_support(gen, model, random);
+            let p = sample_and_perturb_with_support(&gen, &model, random);
             
             let scores: Option<Vec<f64>> = (0..config.job.num_replicates).map(|rep_idx|{ // Reps loop
                 // Check with the filesystem that we are still working on the gen,
@@ -89,7 +89,7 @@ pub fn run<M: Model + Copy, S: Storage>(model: M, config: Config, storage: S, ra
                 if storage.check_active_gen().ok()? != gen.generation_number() { None }
                 else {
                     // (B5a) run the model once to get a score
-                    Some(model.score(p))
+                    Some(model.score(&p))
                 }
             }).collect();
 
@@ -119,8 +119,8 @@ pub fn run<M: Model + Copy, S: Storage>(model: M, config: Config, storage: S, ra
 }
 
 fn sample_and_perturb_with_support<M>(
-    gen: Generation::<M::Parameters>, 
-    model: M, 
+    gen: &Generation::<M::Parameters>, 
+    model: &M, 
     random: &mut Random) -> M::Parameters 
 where M: Model {
     loop {
@@ -138,11 +138,11 @@ where M: Model {
                 let sampled_particle_index = dist.sample(random);
                 let sample_particle = &pop.normalised_particles[sampled_particle_index];
                 // 2. perturb it with model.perturb(p)
-                model.perturb(sample_particle.parameters)
+                model.perturb(&sample_particle.parameters)
             },
         };
 
-        if model.prior_density(proposed) > 0.0 {
+        if model.prior_density(&proposed) > 0.0 {
             return proposed;
         }
         //TODO warn if loop too many times
