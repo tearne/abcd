@@ -12,7 +12,7 @@ use storage::Storage;
 // use anyhow::{Result, Context};
 
 // pub struct Random {}
-type Random = ThreadRng;
+pub type Random = ThreadRng;
 
 pub trait Model {
     type Parameters: DeserializeOwned + Debug;

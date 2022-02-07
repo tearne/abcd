@@ -1,3 +1,4 @@
 [storage]
-location = "ABCDBucket"
-kind = "envvar"
+type = 'S3'
+bucket = 'myBucket'
+prefix = 'myPrefix'

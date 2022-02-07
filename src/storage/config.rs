@@ -15,6 +15,12 @@ impl StorageConfig {
             StorageConfig::S3 { bucket, prefix } => bucket,
         }
     }
+        pub fn get_prefix(&self) -> &str {
+            match self {
+                StorageConfig::FileSystem { base_path } => panic!("No prefix for FileSystem"),
+                StorageConfig::S3 { bucket, prefix } => prefix,
+            }
+    }
 
     pub fn build_s3(&self) -> S3System {
         todo!()
@@ -28,14 +34,22 @@ impl StorageConfig {
 #[cfg(test)]
 mod tests {
     use super::StorageConfig;
+    use std::path::PathBuf;
 
     #[test]
     fn test_something() {
-        let config = StorageConfig::S3 {
-            bucket: "myBucket".into(),
-            prefix: "myPrefix".into(),
-        };
+        // let config = StorageConfig::S3 {
+        //     bucket: "myBucket".into(),
+        //     prefix: "myPrefix".into(),
+        // };
 
-        println!("{}", toml::to_string_pretty(&config).unwrap());
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.push("resources/test/config_test.toml");
+        let config = StorageConfig::build_s3(d);
+
+        assert_eq!("myBucket",config.get_bucket());
+        assert_eq!("myPrefix",config.get_prefix());
+
+        //println!("{}", toml::to_string_pretty(&config).unwrap());
     }
 }
