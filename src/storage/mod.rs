@@ -1,11 +1,11 @@
+pub mod config;
 pub mod filesystem;
 pub mod s3;
-pub mod config;
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-use crate::{Population, Particle, error::ABCDResult, Generation};
+use crate::{error::ABCDResult, Generation, Particle, Population};
 use std::fmt::Debug;
 
 pub trait Storage {
@@ -25,7 +25,7 @@ pub trait Storage {
     where
         P: DeserializeOwned + Debug;
 
-    fn save_new_gen<P>(&self, g: Population<P>, generation_number: u16) -> ABCDResult<()>
+    fn save_new_gen<P>(&self, g: &Population<P>, generation_number: u16) -> ABCDResult<()>
     where
         P: Serialize + Debug;
 }

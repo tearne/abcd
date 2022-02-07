@@ -1,5 +1,5 @@
 use abcd::Model;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct MyParameters {

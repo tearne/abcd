@@ -1,7 +1,9 @@
 use futures::FutureExt;
 use regex::Regex;
 use rusoto_core::RusotoError;
-use rusoto_s3::{S3Client, S3, Object, ListObjectsV2Request, GetObjectRequest, PutObjectRequest, GetObjectOutput,};
+use rusoto_s3::{
+    GetObjectOutput, GetObjectRequest, ListObjectsV2Request, Object, PutObjectRequest, S3Client, S3,
+};
 use serde::{de::DeserializeOwned, Serialize};
 use std::borrow::Borrow;
 use std::convert::TryInto;
@@ -9,8 +11,8 @@ use std::fmt::Debug;
 use tokio::runtime::Runtime;
 
 use super::Storage;
-use crate::error::{ABCDResult, ABCDError};
-use crate::{Population, Particle, Generation};
+use crate::error::{ABCDError, ABCDResult};
+use crate::{Generation, Particle, Population};
 use std::io::Read;
 use tokio;
 use uuid::Uuid;
@@ -48,13 +50,12 @@ impl S3System {
         let gen_prefix = {
             let gen_no = self.check_active_gen().unwrap_or(1);
             let gen_dir = format!("gen_{:03}", gen_no);
-            let prefix_cloned = self.prefix.clone();            
+            let prefix_cloned = self.prefix.clone();
             format!("{}/{}", prefix_cloned, gen_dir)
         };
 
         //TODO This is where we need to loop with continuation tokens
-        let request = self.s3_client
-        .list_objects_v2(ListObjectsV2Request {
+        let request = self.s3_client.list_objects_v2(ListObjectsV2Request {
             bucket: self.bucket.clone(),
             prefix: Some(gen_prefix),
             ..Default::default()
@@ -63,11 +64,15 @@ impl S3System {
         self.runtime
             .block_on(request)?
             .contents
-            .ok_or_else(||ABCDError::Other("Empty S3 response".into()))
+            .ok_or_else(|| ABCDError::Other("Empty S3 response".into()))
     }
 
-    pub async fn read_to_string<E: 'static + std::error::Error>(output: Result<GetObjectOutput, RusotoError<E>>) -> ABCDResult<String> {
-        let byte_stream = output?.body.ok_or_else(||ABCDError::Other("No body in S3 response.".into()))?;
+    pub async fn read_to_string<E: 'static + std::error::Error>(
+        output: Result<GetObjectOutput, RusotoError<E>>,
+    ) -> ABCDResult<String> {
+        let byte_stream = output?
+            .body
+            .ok_or_else(|| ABCDError::Other("No body in S3 response.".into()))?;
         let mut string_buf: String = String::new();
         use tokio::io::AsyncReadExt;
         byte_stream
@@ -88,18 +93,19 @@ impl Storage for S3System {
             ..Default::default()
         });
 
-        let objects = self.runtime
+        let objects = self
+            .runtime
             .block_on(list_request_fut)?
             .contents
-            .ok_or_else(||ABCDError::Other("Empty S3 response body".into()))?;
+            .ok_or_else(|| ABCDError::Other("Empty S3 response body".into()))?;
 
         //TODO compile regex only once for entire struct.
-        let re = Regex::new(r#"^example/gen_(?P<gid1>\d*)/gen_(?P<gid2>\d*).json"#)?; 
-        let key_strings = objects.into_iter().filter_map(|obj|obj.key);
+        let re = Regex::new(r#"^example/gen_(?P<gid1>\d*)/gen_(?P<gid2>\d*).json"#)?;
+        let key_strings = objects.into_iter().filter_map(|obj| obj.key);
         let gen_dir_numbers: Vec<u16> = key_strings
-            .filter_map(|key|{
+            .filter_map(|key| {
                 re.captures(&key)
-                    .map(|caps|caps["gid1"].parse::<u16>().ok())
+                    .map(|caps| caps["gid1"].parse::<u16>().ok())
                     .flatten()
             })
             .collect();
@@ -112,10 +118,10 @@ impl Storage for S3System {
         //
         // let gen_number_future = list_request_fut.map(|response| {
         //     let contents = response.unwrap().contents.unwrap(); //TODO use ?
-            
+
         //     let items = contents.iter();
         //     let key_strings = items.filter_map(|obj|obj.key.as_ref());
-            
+
         //     let re = Regex::new(r#"^example/gen_(?P<gid1>\d*)/gen_(?P<gid2>\d*).json"#).unwrap(); //TODO use ?
         //     let gen_dir_numbers: Vec<u16> = key_strings
         //         .filter_map(|key|{
@@ -143,8 +149,8 @@ impl Storage for S3System {
 
             format!(
                 "{}/{}/{}",
-                self.prefix.clone(), 
-                prev_gen_file_dir, 
+                self.prefix.clone(),
+                prev_gen_file_dir,
                 prev_gen_file_name
             )
         };
@@ -154,8 +160,9 @@ impl Storage for S3System {
             key: object_key,
             ..Default::default()
         };
-        
-        let object_string_future = self.s3_client
+
+        let object_string_future = self
+            .s3_client
             .get_object(get_obj_req)
             .then(Self::read_to_string);
 
@@ -172,12 +179,7 @@ impl Storage for S3System {
             let particle_file_name = file_uuid.to_string() + ".json";
             let prefix_cloned = self.prefix.clone();
 
-            format!(
-                "{}/{}/{}", 
-                prefix_cloned, 
-                gen_file_dir, 
-                particle_file_name
-            )
+            format!("{}/{}/{}", prefix_cloned, gen_file_dir, particle_file_name)
         };
 
         let pretty_json = serde_json::to_string_pretty(w)?;
@@ -209,35 +211,35 @@ impl Storage for S3System {
     where
         P: DeserializeOwned,
     {
-        let object_names = self.get_particle_files_in_current_gen_folder()?
+        let object_names = self
+            .get_particle_files_in_current_gen_folder()?
             .into_iter()
-            .map(|t|t.key)
+            .map(|t| t.key)
             .collect::<Option<Vec<String>>>()
-            .ok_or_else(||ABCDError::Other("failed to identify all particle file names".into()))?;
+            .ok_or_else(|| ABCDError::Other("failed to identify all particle file names".into()))?;
 
-        let particle_futures = object_names.into_iter()
-            .map(|filename| { 
-                let get_obj_req = GetObjectRequest {
-                    bucket: self.bucket.clone(),
-                    key: filename,
-                    ..Default::default()
-                };
-                self.s3_client
-                    .get_object(get_obj_req)
-                    .then(Self::read_to_string)
-                    .map(|res| 
-                        res.and_then(|s|{
-                            serde_json::from_str::<Particle<P>>(&s)
-                                .map_err(|_|ABCDError::Other("badness".into()))
-                        })
-                    )
-            });
-        
+        let particle_futures = object_names.into_iter().map(|filename| {
+            let get_obj_req = GetObjectRequest {
+                bucket: self.bucket.clone(),
+                key: filename,
+                ..Default::default()
+            };
+            self.s3_client
+                .get_object(get_obj_req)
+                .then(Self::read_to_string)
+                .map(|res| {
+                    res.and_then(|s| {
+                        serde_json::from_str::<Particle<P>>(&s)
+                            .map_err(|_| ABCDError::Other("badness".into()))
+                    })
+                })
+        });
+
         let joined = futures::future::join_all(particle_futures);
         let particle_futures: Vec<Result<Particle<P>, ABCDError>> = self.runtime.block_on(joined);
         let result_of_vec: ABCDResult<Vec<Particle<P>>> = particle_futures.into_iter().collect();
         result_of_vec
-        
+
         // let mut weighted_particles = Vec::new();
         // for entry in particle_files {
         //     let particle_filename = entry.key.unwrap();
@@ -246,7 +248,7 @@ impl Storage for S3System {
         //         key: particle_filename.to_owned(),
         //         ..Default::default()
         //     };
-            
+
         //     let get_req = self.s3_client.get_object(get_obj_req);
         //     let mut response = self.runtime.block_on(get_req).unwrap();
         //     let stream = response.body.take().unwrap();
@@ -260,7 +262,11 @@ impl Storage for S3System {
         // Ok(weighted_particles)
     }
 
-    fn save_new_gen<P: Serialize>(&self, g: Population<P>, generation_number: u16) -> ABCDResult<()>{
+    fn save_new_gen<P: Serialize>(
+        &self,
+        g: &Population<P>,
+        generation_number: u16,
+    ) -> ABCDResult<()> {
         //unimplemented!();
         let gen_dir = format!("gen_{:03}", generation_number);
         let file_name = format!("gen_{:03}.json", generation_number);
@@ -277,7 +283,6 @@ impl Storage for S3System {
         //println!("{:?}", &get_obj_req);
         let get_req = self.s3_client.get_object(get_obj_req);
         let mut response = self.runtime.block_on(get_req);
-    
 
         match response.is_err() {
             //Is there something there already - if there is an error then there isn't?
@@ -285,20 +290,19 @@ impl Storage for S3System {
                 let pretty_json_gen = serde_json::to_string_pretty(&g);
                 let put_obj_req = PutObjectRequest {
                     bucket: bucket_cloned2,
-                    key: filename.to_owned(),
-                    body: Some(pretty_json_gen.unwrap().to_owned().into_bytes().into()),
+                    key: filename,
+                    body: Some(pretty_json_gen.unwrap().into_bytes().into()),
                     acl: Some("bucket-owner-full-control".to_string()),
                     ..Default::default()
                 };
                 let put_req = self.s3_client.put_object(put_obj_req);
-                let mut response2 = self.runtime.block_on(put_req).unwrap();
+                self.runtime.block_on(put_req)?;
                 Ok(())
             }
-            false => 
-                Err(ABCDError::GenAlreadySaved(format!(
-                    "Gen file already existed at {:?}",
-                    filename
-                ))),
+            false => Err(ABCDError::GenAlreadySaved(format!(
+                "Gen file already existed at {:?}",
+                filename
+            ))),
         }
     }
 }
@@ -309,9 +313,7 @@ mod tests {
     use rusoto_s3::DeleteObjectRequest;
     use serde::{Deserialize, Serialize};
     use serde_json::Value;
-    use std::{
-        io::Read,
-    };
+    use std::io::Read;
 
     use crate::{etc::config::Config, storage::config::StorageConfig};
 
@@ -368,7 +370,7 @@ mod tests {
     fn storage(prefix: String, s3_client: S3Client) -> S3System {
         //Override prefix in config to use the temp one made for this test
         let storage_config = Config::from_path("resources/test/config_test.toml").storage;
-        let storage_config = StorageConfig::S3{
+        let storage_config = StorageConfig::S3 {
             prefix,
             bucket: storage_config.get_bucket().into(),
         };
@@ -388,7 +390,6 @@ mod tests {
             scores: vec![3000.0, 4000.0],
             weight: 0.567,
         };
-
 
         Population {
             tolerance: 0.1234,
@@ -423,37 +424,40 @@ mod tests {
     }
 
     fn load_object(bucket: &str, key: &str) -> String {
-    //     let gen_file_dir = format!("gen_{:03}", gen_number);
-    //     let gen_file_name = format!("gen_{:03}.json", gen_number);
-    //     let s3_client = S3Client::new(Region::EuWest1);
-    //     let storage = storage(
-    //          prefix.to_string(),
-    //         s3_client,
-    //     );
-    //     // let separator = "/".to_string();
-    //     let prefix_cloned = storage.prefix.clone();
-    //     let filename = format!(
-    //         "{}/{}/{}",
-    //         prefix_cloned, gen_file_dir, gen_file_name
-    //     );
-    //     let bucket_cloned = storage.bucket.clone();
-    //     println!("Requesting {}", filename);
+        //     let gen_file_dir = format!("gen_{:03}", gen_number);
+        //     let gen_file_name = format!("gen_{:03}.json", gen_number);
+        //     let s3_client = S3Client::new(Region::EuWest1);
+        //     let storage = storage(
+        //          prefix.to_string(),
+        //         s3_client,
+        //     );
+        //     // let separator = "/".to_string();
+        //     let prefix_cloned = storage.prefix.clone();
+        //     let filename = format!(
+        //         "{}/{}/{}",
+        //         prefix_cloned, gen_file_dir, gen_file_name
+        //     );
+        //     let bucket_cloned = storage.bucket.clone();
+        //     println!("Requesting {}", filename);
         // let get_req = GetObjectRequest {
         //     bucket: bucket.into(),
         //     key: key.into(),
         //     ..Default::default()
         // };
-       // println!("{:?}", &get_obj_req);
+        // println!("{:?}", &get_obj_req);
 
         let s3_client = S3Client::new(Region::EuWest1);
-        let request = s3_client.get_object(
-            GetObjectRequest {
+        let request = s3_client
+            .get_object(GetObjectRequest {
                 bucket: bucket.into(),
                 key: key.into(),
                 ..Default::default()
             })
             .then(S3System::read_to_string);
-        tokio::runtime::Runtime::new().unwrap().block_on(request).unwrap()
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(request)
+            .unwrap()
     }
 
     // #[test]
@@ -478,7 +482,7 @@ mod tests {
     #[test]
     fn test_retrieve_previous_gen() {
         let gen_number = 3;
-        let expected = Generation::Population{
+        let expected = Generation::Population {
             pop: make_dummy_population(),
             gen_number,
         };
@@ -513,7 +517,7 @@ mod tests {
 
         // TODO fix the async problem like this:
         // https://github.com/hyperium/hyper/issues/2112
-        // or rusoto you can create a new client https://docs.rs/rusoto_core/0.43.0/rusoto_core/request/struct.HttpClient.html 
+        // or rusoto you can create a new client https://docs.rs/rusoto_core/0.43.0/rusoto_core/request/struct.HttpClient.html
         // from here and then pass that into the specific service's constructor. This will avoid using the lazy_static client.
         let saved_1 = storage.save_particle(&w1).unwrap();
         let loaded: Particle<DummyParams> = load_particle_file(saved_1);
@@ -541,15 +545,15 @@ mod tests {
         let s3_client = S3Client::new(Region::EuWest1);
         let storage = storage("example".to_string(), s3_client);
 
-        let mut expected /*: Result<Vec<Weighted<DummyParams>>>*/ = {    
+        let mut expected = {
             let w1 = Particle {
-                parameters: DummyParams::new(1,2.),
+                parameters: DummyParams::new(1, 2.),
                 scores: vec![100.0, 200.0],
                 weight: 1.234,
             };
-    
+
             let w2 = Particle {
-                parameters: DummyParams::new(3,4.),
+                parameters: DummyParams::new(3, 4.),
                 scores: vec![300.0, 400.0],
                 weight: 1.567,
             };
@@ -567,32 +571,30 @@ mod tests {
     }
 
     #[test]
-    fn save_and_load_generation(){
+    fn save_and_load_generation() {
         let gen_number = 3;
         let dummy_population = make_dummy_population();
-        
+
         let s3_client = S3Client::new(Region::EuWest1);
         let tmp_bucket = TmpBucketPrefix::new("save_generation"); //Clear bucket if anything there
         let storage = storage("save_generation".to_string(), s3_client);
-        storage.save_new_gen(dummy_population,3).expect("Expected successful save");
-        
-        let expected: Value = serde_json::to_value(
-            Generation::Population{
-                pop: dummy_population,
-                gen_number,
-            })
-            .unwrap();
+        storage
+            .save_new_gen(&dummy_population, 3)
+            .expect("Expected successful save");
 
-        let actual: Value = serde_json::from_str(
-                &load_object(
-                    &storage.bucket,
-                    &format!("gen_{:03}/gen_{:03}.json", gen_number, gen_number)
-                )
-            )
-            .unwrap();
+        let expected: Value = serde_json::to_value(Generation::Population {
+            pop: dummy_population,
+            gen_number,
+        })
+        .unwrap();
+
+        let actual: Value = serde_json::from_str(&load_object(
+            &storage.bucket,
+            &format!("gen_{:03}/gen_{:03}.json", gen_number, gen_number),
+        ))
+        .unwrap();
 
         assert_eq!(expected, actual);
-
     }
 
     // #[test]
