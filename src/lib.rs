@@ -58,13 +58,13 @@ impl<P> Generation<P>{
     pub fn generation_number(&self) -> u16 {
         match self {
             Generation::Prior => 0,
-            Generation::Population { pop, generation_number } => 
-                *generation_number,
+            Generation::Population { pop, gen_number } => 
+                *gen_number,
         }
     }
 }
 
-pub fn run<M: Model, S: Storage>(model: M, config: Config, storage: S, random: &mut Random) -> ABCDResult<()>{
+pub fn run<M: Model + Copy, S: Storage>(model: M, config: Config, storage: S, random: &mut Random) -> ABCDResult<()>{
     // We assume that the storage has already been 'primed' to contain either
     // a) some kind of marker indicating that we're using a prior at gen 0
     //   or
@@ -126,7 +126,7 @@ where M: Model {
     loop {
         let proposed: M::Parameters = match gen {
             Generation::Prior => model.prior_sample(random),
-            Generation::Population{generation_number, pop} => {
+            Generation::Population{gen_number, ref pop} => {
                 //https://rust-random.github.io/rand/rand/distributions/weighted/struct.WeightedIndex.html
                 // 1. sample a particle from the previosu population
                 let particle_weights: Vec<f64> = pop.normalised_particles
@@ -136,7 +136,7 @@ where M: Model {
                     
                 let dist = WeightedIndex::new(&particle_weights).unwrap();
                 let sampled_particle_index = dist.sample(random);
-                let sample_particle = pop.normalised_particles[sampled_particle_index];
+                let sample_particle = &pop.normalised_particles[sampled_particle_index];
                 // 2. perturb it with model.perturb(p)
                 model.perturb(sample_particle.parameters)
             },

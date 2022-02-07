@@ -231,9 +231,7 @@ mod tests {
 
         let full_path = manifest_dir().join("resources/test/fs/example/");
         let instance = storage(full_path);
-        
-        let exp
-        
+                
         let actual = instance.retrieve_previous_gen::<DummyParams>().unwrap();
 
 
