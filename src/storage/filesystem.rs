@@ -190,7 +190,7 @@ mod tests {
         FileSystem { base_path: p }
     }
 
-    fn make_dummy_generation(generation_number: u16) -> Generation<DummyParams> {
+    fn make_dummy_population() -> Population<DummyParams> {
         let particle_1 = Particle {
             parameters: DummyParams::new(10, 20.),
             scores: vec![1000.0, 2000.0],
@@ -203,35 +203,12 @@ mod tests {
             weight: 0.567,
         };
 
-        let pop = Population {
-            //generation_number: gen_number,
+
+        Population {
             tolerance: 0.1234,
             acceptance: 0.7,
             normalised_particles: vec![particle_1, particle_2],
-        };
-        let gen = Generation::Population{pop,generation_number};
-        gen
-    }
-
-        fn make_dummy_population() -> Population<DummyParams> {
-        let particle_1 = Particle {
-            parameters: DummyParams::new(10, 20.),
-            scores: vec![1000.0, 2000.0],
-            weight: 0.234,
-        };
-
-        let particle_2 = Particle {
-            parameters: DummyParams::new(30, 40.),
-            scores: vec![3000.0, 4000.0],
-            weight: 0.567,
-        };
-
-        let pop = Population {
-            tolerance: 0.1234,
-            acceptance: 0.7,
-            normalised_particles: vec![particle_1, particle_2],
-        };
-        pop
+        }
     }
 
     #[test]
@@ -254,10 +231,11 @@ mod tests {
 
         let full_path = manifest_dir().join("resources/test/fs/example/");
         let instance = storage(full_path);
-        let result = instance.retrieve_previous_gen::<DummyParams>();
-        let result = instance
-            .retrieve_previous_gen::<DummyParams>()
-            .unwrap_or_else(|_|panic!("{:?}", result));
+        
+        let exp
+        
+        let actual = instance.retrieve_previous_gen::<DummyParams>().unwrap();
+
 
         assert_eq!(expected, result);
     }

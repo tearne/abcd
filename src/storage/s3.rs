@@ -66,7 +66,7 @@ impl S3System {
             .ok_or_else(||ABCDError::Other("Empty S3 response".into()))
     }
 
-    async fn read_to_string<E: 'static + std::error::Error>(output: Result<GetObjectOutput, RusotoError<E>>) -> ABCDResult<String> {
+    pub async fn read_to_string<E: 'static + std::error::Error>(output: Result<GetObjectOutput, RusotoError<E>>) -> ABCDResult<String> {
         let byte_stream = output?.body.ok_or_else(||ABCDError::Other("No body in S3 response.".into()))?;
         let mut string_buf: String = String::new();
         use tokio::io::AsyncReadExt;
@@ -308,6 +308,7 @@ mod tests {
     use rusoto_core::Region;
     use rusoto_s3::DeleteObjectRequest;
     use serde::{Deserialize, Serialize};
+    use serde_json::Value;
     use std::{
         io::Read,
     };
@@ -375,7 +376,7 @@ mod tests {
         storage_config.build_s3()
     }
 
-    fn make_dummy_generation(generation_number: u16) -> Generation<DummyParams> {
+    fn make_dummy_population() -> Population<DummyParams> {
         let particle_1 = Particle {
             parameters: DummyParams::new(10, 20.),
             scores: vec![1000.0, 2000.0],
@@ -389,14 +390,11 @@ mod tests {
         };
 
 
-        let pop = Population {
-            //generation_number: gen_number,
+        Population {
             tolerance: 0.1234,
             acceptance: 0.7,
             normalised_particles: vec![particle_1, particle_2],
-        };
-        let gen = Generation::Population{pop,generation_number};
-        gen
+        }
     }
 
     fn load_particle_file(particle_file_name: String) -> Particle<DummyParams> {
@@ -424,50 +422,38 @@ mod tests {
         parsed
     }
 
-    fn load_gen_file<'de, P>(gen_number: u16, prefix: &str) -> ABCDResult<Population<P>>
-    where
-        P: DeserializeOwned + Debug,
-    {
-        let gen_file_dir = format!("gen_{:03}", gen_number);
-        let gen_file_name = format!("gen_{:03}.json", gen_number);
-        let s3_client = S3Client::new(Region::EuWest1);
-        let storage = storage(
-             prefix.to_string(),
-            s3_client,
-        );
-        // let separator = "/".to_string();
-        let prefix_cloned = storage.prefix.clone();
-        let filename = format!(
-            "{}/{}/{}",
-            prefix_cloned, gen_file_dir, gen_file_name
-        );
-        let bucket_cloned = storage.bucket.clone();
-        println!("Requesting {}", filename);
-        let get_obj_req = GetObjectRequest {
-            bucket: bucket_cloned,
-            key: filename.to_owned(),
-            ..Default::default()
-        };
+    fn load_object(bucket: &str, key: &str) -> String {
+    //     let gen_file_dir = format!("gen_{:03}", gen_number);
+    //     let gen_file_name = format!("gen_{:03}.json", gen_number);
+    //     let s3_client = S3Client::new(Region::EuWest1);
+    //     let storage = storage(
+    //          prefix.to_string(),
+    //         s3_client,
+    //     );
+    //     // let separator = "/".to_string();
+    //     let prefix_cloned = storage.prefix.clone();
+    //     let filename = format!(
+    //         "{}/{}/{}",
+    //         prefix_cloned, gen_file_dir, gen_file_name
+    //     );
+    //     let bucket_cloned = storage.bucket.clone();
+    //     println!("Requesting {}", filename);
+        // let get_req = GetObjectRequest {
+        //     bucket: bucket.into(),
+        //     key: key.into(),
+        //     ..Default::default()
+        // };
        // println!("{:?}", &get_obj_req);
-        let get_req = storage.s3_client.get_object(get_obj_req);
 
-        let string_fut = get_req.then(move |gor| async {
-            let mut gor = gor.unwrap();
-            let stream = gor.body.take().unwrap();
-            use tokio::io::AsyncReadExt;
-            let mut string_buf: String = String::new();
-            let outcome = stream
-                .into_async_read()
-                .read_to_string(&mut string_buf)
-                .await;
-            println!("Async read result = {:#?}", outcome);
-            string_buf
-        });
-
-        let string = storage.runtime.block_on(string_fut);
-        let parsed: Population<P> = serde_json::from_str(&string)?;
-        println!("Parsed to {:?}", parsed);
-        Ok(parsed)
+        let s3_client = S3Client::new(Region::EuWest1);
+        let request = s3_client.get_object(
+            GetObjectRequest {
+                bucket: bucket.into(),
+                key: key.into(),
+                ..Default::default()
+            })
+            .then(S3System::read_to_string);
+        tokio::runtime::Runtime::new().unwrap().block_on(request).unwrap()
     }
 
     // #[test]
@@ -491,9 +477,15 @@ mod tests {
 
     #[test]
     fn test_retrieve_previous_gen() {
-        let expected = make_dummy_generation(2);
+        let gen_number = 3;
+        let expected = Generation::Population{
+            pop: make_dummy_population(),
+            gen_number,
+        };
         let s3_client = S3Client::new(Region::EuWest1);
+        //TODO call make storage
         let storage = storage("example".to_string(), s3_client);
+
         let result = storage.retrieve_previous_gen::<DummyParams>();
         let result = storage
             .retrieve_previous_gen::<DummyParams>()
@@ -575,16 +567,31 @@ mod tests {
     }
 
     #[test]
-    fn save_new_generation(){
-
-        let expected = make_dummy_generation(3);
+    fn save_and_load_generation(){
+        let gen_number = 3;
+        let dummy_population = make_dummy_population();
+        
         let s3_client = S3Client::new(Region::EuWest1);
         let tmp_bucket = TmpBucketPrefix::new("save_generation"); //Clear bucket if anything there
         let storage = storage("save_generation".to_string(), s3_client);
-        storage.save_new_gen(make_dummy_generation(3),3).expect("Expected successful save");
+        storage.save_new_gen(dummy_population,3).expect("Expected successful save");
+        
+        let expected: Value = serde_json::to_value(
+            Generation::Population{
+                pop: dummy_population,
+                gen_number,
+            })
+            .unwrap();
 
-        let result = load_gen_file(3, "save_generation").unwrap();
-        assert_eq!(expected, result);
+        let actual: Value = serde_json::from_str(
+                &load_object(
+                    &storage.bucket,
+                    &format!("gen_{:03}/gen_{:03}.json", gen_number, gen_number)
+                )
+            )
+            .unwrap();
+
+        assert_eq!(expected, actual);
 
     }
 

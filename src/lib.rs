@@ -51,7 +51,7 @@ pub enum Generation<P> {
     Prior,
     Population{
         pop: Population<P>,
-        generation_number: u16,
+        gen_number: u16,
     }
 }
 impl<P> Generation<P>{
