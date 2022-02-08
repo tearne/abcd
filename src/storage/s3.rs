@@ -5,7 +5,6 @@ use rusoto_s3::{
     GetObjectOutput, GetObjectRequest, ListObjectsV2Request, Object, PutObjectRequest, S3Client, S3,
 };
 use serde::{de::DeserializeOwned, Serialize};
-use std::borrow::Borrow;
 use std::convert::TryInto;
 use std::fmt::Debug;
 use tokio::runtime::Runtime;
@@ -13,40 +12,17 @@ use tokio::runtime::Runtime;
 use super::Storage;
 use crate::error::{ABCDError, ABCDResult};
 use crate::{Generation, Particle, Population};
-use std::io::Read;
 use tokio;
 use uuid::Uuid;
 
 pub struct S3System {
-    bucket: String,
-    prefix: String,
+    pub bucket: String,
+    pub prefix: String,
     s3_client: S3Client,
     runtime: Runtime,
 }
 impl S3System {
     fn get_particle_files_in_current_gen_folder(&self) -> ABCDResult<Vec<Object>> {
-        //
-        //Leaving this here for a bit to discuss some of the finer points with Tom
-        //
-        // let gen_no = self.check_active_gen().unwrap_or(1);
-        // let gen_dir = format!("gen_{:03}", gen_no);
-        // let prefix_cloned = self.prefix.clone();
-        // let bucket_cloned = self.bucket.clone();
-        // let gen_prefix = format!("{}/{}", prefix_cloned, gen_dir);
-
-        // let list_request = self.s3_client
-        //     .list_objects_v2(ListObjectsV2Request {
-        //         bucket: String::from(bucket_cloned),
-        //         prefix: Some(gen_prefix),
-        //         ..Default::default()
-        //     })
-        //     .map(|response|{
-        //         let response = response?;
-        //         response.contents.ok_or_else(||ABCDError::Other("Empty response".into()))
-        //     });
-
-        // self.runtime.block_on(list_request)
-
         let gen_prefix = {
             let gen_no = self.check_active_gen().unwrap_or(1);
             let gen_dir = format!("gen_{:03}", gen_no);
@@ -54,7 +30,7 @@ impl S3System {
             format!("{}/{}", prefix_cloned, gen_dir)
         };
 
-        //TODO This is where we need to loop with continuation tokens
+        //TODO potential loop with continuation tokens
         let request = self.s3_client.list_objects_v2(ListObjectsV2Request {
             bucket: self.bucket.clone(),
             prefix: Some(gen_prefix),
@@ -112,30 +88,6 @@ impl Storage for S3System {
 
         let max_completed_gen = gen_dir_numbers.into_iter().max().unwrap_or(0);
         Ok(max_completed_gen + 1)
-
-        //
-        //Leaving this here for a bit to discuss some of the finer points with Tom
-        //
-        // let gen_number_future = list_request_fut.map(|response| {
-        //     let contents = response.unwrap().contents.unwrap(); //TODO use ?
-
-        //     let items = contents.iter();
-        //     let key_strings = items.filter_map(|obj|obj.key.as_ref());
-
-        //     let re = Regex::new(r#"^example/gen_(?P<gid1>\d*)/gen_(?P<gid2>\d*).json"#).unwrap(); //TODO use ?
-        //     let gen_dir_numbers: Vec<u16> = key_strings
-        //         .filter_map(|key|{
-        //             re.captures(key)
-        //                 .map(|caps|caps["gid1"].parse::<u16>().ok())
-        //                 .flatten()
-        //         })
-        //         .collect();
-
-        //     let max_completed_gen = gen_dir_numbers.into_iter().max().unwrap_or(0);
-        //     Ok(max_completed_gen + 1)
-        // });
-
-        // self.runtime.block_on(gen_number_future)
     }
 
     fn retrieve_previous_gen<P>(&self) -> ABCDResult<Generation<P>>
@@ -187,7 +139,7 @@ impl Storage for S3System {
         let put_obj_req = PutObjectRequest {
             bucket: self.bucket.clone(),
             key: s3_object_path.to_owned(),
-            body: Some(pretty_json.to_owned().into_bytes().into()),
+            body: Some(pretty_json.into_bytes().into()),
             acl: Some("bucket-owner-full-control".to_string()),
             ..Default::default()
         };
@@ -239,27 +191,6 @@ impl Storage for S3System {
         let particle_futures: Vec<Result<Particle<P>, ABCDError>> = self.runtime.block_on(joined);
         let result_of_vec: ABCDResult<Vec<Particle<P>>> = particle_futures.into_iter().collect();
         result_of_vec
-
-        // let mut weighted_particles = Vec::new();
-        // for entry in particle_files {
-        //     let particle_filename = entry.key.unwrap();
-        //     let get_obj_req = GetObjectRequest {
-        //         bucket: self.bucket.clone(),
-        //         key: particle_filename.to_owned(),
-        //         ..Default::default()
-        //     };
-
-        //     let get_req = self.s3_client.get_object(get_obj_req);
-        //     let mut response = self.runtime.block_on(get_req).unwrap();
-        //     let stream = response.body.take().unwrap();
-        //     // let t = stream.to_vec();
-        //     let mut string: String = String::new();
-        //     let _ = stream.into_blocking_read().read_to_string(&mut string);
-        //     let wp: Particle<P> = serde_json::from_str(&string)?;
-        //     weighted_particles.push(wp);
-        // }
-
-        // Ok(weighted_particles)
     }
 
     fn save_new_gen<P: Serialize>(
@@ -267,7 +198,6 @@ impl Storage for S3System {
         g: &Population<P>,
         generation_number: u16,
     ) -> ABCDResult<()> {
-        //unimplemented!();
         let gen_dir = format!("gen_{:03}", generation_number);
         let file_name = format!("gen_{:03}.json", generation_number);
         let prefix_cloned = self.prefix.clone();
@@ -366,16 +296,15 @@ mod tests {
         }
     }
 
-    //fn storage(bucket:String,prefix:String,s3_client:S3Client) -> S3System {
     fn storage(prefix: String, s3_client: S3Client) -> S3System {
-        //Override prefix in config to use the temp one made for this test
-        let storage_config = Config::from_path("resources/test/config_test.toml").storage;
-        let storage_config = StorageConfig::S3 {
-            prefix,
-            bucket: storage_config.get_bucket().into(),
-        };
+        let path = crate::test_helper::local_test_file_path(
+            "resources/test/config_test.toml");
+        let storage_config = Config::from_path(path).storage;
+        let mut storage_system = storage_config.build_s3();
 
-        storage_config.build_s3()
+        //overried prefix for our test
+        storage_system.prefix = prefix;
+        storage_system
     }
 
     fn make_dummy_population() -> Population<DummyParams> {

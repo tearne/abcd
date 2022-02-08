@@ -9,19 +9,6 @@ pub enum StorageConfig {
     S3 { bucket: String, prefix: String },
 }
 impl StorageConfig {
-    pub fn get_bucket(&self) -> &str {
-        match self {
-            StorageConfig::FileSystem { base_path } => panic!("No bucket for FileSystem"),
-            StorageConfig::S3 { bucket, prefix } => bucket,
-        }
-    }
-        pub fn get_prefix(&self) -> &str {
-            match self {
-                StorageConfig::FileSystem { base_path } => panic!("No prefix for FileSystem"),
-                StorageConfig::S3 { bucket, prefix } => prefix,
-            }
-    }
-
     pub fn build_s3(&self) -> S3System {
         todo!()
     }
@@ -34,22 +21,15 @@ impl StorageConfig {
 #[cfg(test)]
 mod tests {
     use super::StorageConfig;
-    use std::path::PathBuf;
+    use crate::test_helper::local_test_file_path;
 
     #[test]
-    fn test_something() {
-        // let config = StorageConfig::S3 {
-        //     bucket: "myBucket".into(),
-        //     prefix: "myPrefix".into(),
-        // };
+    fn build_s3_storage_properties_from_config() {
+        let path = local_test_file_path("resources/test/config_test.toml");
+        let config: StorageConfig = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let storage = config.build_s3();
 
-        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d.push("resources/test/config_test.toml");
-        let config = StorageConfig::build_s3(d);
-
-        assert_eq!("myBucket",config.get_bucket());
-        assert_eq!("myPrefix",config.get_prefix());
-
-        //println!("{}", toml::to_string_pretty(&config).unwrap());
+        assert_eq!("myBucket", storage.bucket);
+        assert_eq!("myPrefix", storage.prefix);
     }
 }

@@ -58,19 +58,18 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::Config;
-    use std::path::PathBuf;
+    use crate::test_helper::local_test_file_path;
 
     #[test]
     fn load_from_env_var() {
         envmnt::set("ABCDBucket", "s3://my-bucket");
 
-        //TODO put in helper
-        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d.push("resources/test/config_test.toml");
+        let path = local_test_file_path("resources/test/config_test.toml");
 
-        let config = Config::from_path(d);
+        let config = Config::from_path(path);
+        
         //TODO Want to use TEST_BUCKET for other tests - but then don't want to show value
         //What do we do here - have two different toml files - thats whay I tried anyway.
-        assert_eq!("s3://my-bucket", config.storage.get_bucket());
+        assert_eq!("s3://my-bucket", config.storage.build_s3().bucket);
     }
 }
