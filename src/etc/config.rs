@@ -61,15 +61,17 @@ mod tests {
     use crate::test_helper::local_test_file_path;
 
     #[test]
-    fn load_from_env_var() {
-        envmnt::set("ABCDBucket", "s3://my-bucket");
+    fn load_with_env_var_override() {
+        envmnt::set("ABCDBucket", "s3://my-env-var-bucket");
 
         let path = local_test_file_path("resources/test/config_test.toml");
-
         let config = Config::from_path(path);
-        
-        //TODO Want to use TEST_BUCKET for other tests - but then don't want to show value
-        //What do we do here - have two different toml files - thats whay I tried anyway.
-        assert_eq!("s3://my-bucket", config.storage.build_s3().bucket);
+
+        let bucket = match config.storage {
+            crate::storage::config::StorageConfig::FileSystem { base_path:_ } => panic!("expected S3 config"),
+            crate::storage::config::StorageConfig::S3 { bucket, prefix:_ } => bucket,
+        };
+
+        assert_eq!("s3://my-env-var-bucket", bucket);
     }
 }
