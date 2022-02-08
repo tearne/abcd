@@ -21,7 +21,7 @@ pub trait Model {
     fn prior_density(&self, p: &Self::Parameters) -> f64;
 
     fn perturb(&self, p: &Self::Parameters) -> Self::Parameters;
-    fn pert_density(&self, a: Self::Parameters, b: Self::Parameters) -> f64;
+    fn pert_density(&self, a: &Self::Parameters, b: &Self::Parameters) -> f64;
 
     fn score(&self, p: &Self::Parameters) -> f64;
 }
@@ -156,5 +156,17 @@ where
             return proposed;
         }
         //TODO warn if loop too many times
+    }
+}
+
+
+#[cfg(test)]
+pub mod test_helper {
+    use std::path::PathBuf;
+
+    pub fn local_test_file_path(string_path: &str) -> PathBuf {
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.push(string_path);
+        d
     }
 }
