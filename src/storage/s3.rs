@@ -87,6 +87,7 @@ impl Storage for S3System {
             .collect();
 
         let max_completed_gen = gen_dir_numbers.into_iter().max().unwrap_or(0);
+        //NOTE Do we want to change this to handle first gen (gen 0) - where nothing exists yet?
         Ok(max_completed_gen + 1)
     }
 
