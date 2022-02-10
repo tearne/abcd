@@ -212,15 +212,9 @@ mod tests {
     }
 
     fn make_dummy_generation(pop:Population<DummyParams>, gen_number: u16) -> Generation<DummyParams>{
-       Generation::Population {gen_number,pop}
+       Generation{gen_number,pop}
     }
 
-    #[test]
-    fn test_check_initial_active_gen() {
-        let full_path = manifest_dir().join("resources/test/fs/empty");
-        let storage = storage(full_path);
-        assert_eq!(1, storage.check_active_gen().unwrap());
-    }
 
     #[test]
     fn test_check_active_gen() {
@@ -275,11 +269,60 @@ mod tests {
         assert_eq!(w1, loaded);
     }
 
-    #[test]
-    fn test_no_particle_files_initially() {
+
+    //test_ask_question_of_empty_dir_exception
+    //  - num_particles_available
+    //  - retrieve_current
+    //  - check active gen
+    //  - ... others
+
+    //expection if 
+    // - try to save gen but there's a higher number gen in there already
+    // - gen already exists
+
+
+
+     #[test]
+    fn test_no_particle_files_exception() {
         let full_path = manifest_dir().join("resources/test/fs/empty/");
         let storage = storage(full_path);
-        assert_eq!(0, storage.num_particles_available().unwrap())
+        let result = storage.num_particles_available();
+        let expected_message = "Failed to find max gen."; //Should this not be coming from num particles
+
+                match result {
+                    Ok(_) => panic!("Expected error"),
+                    Err(ABCDError::Other(expected_message)) => (),
+                    Err(e) => panic!("Wrong error, got: {}", e)
+                };
+    }
+
+         #[test]
+        fn test_check_active_gen_exception() {
+        let full_path = manifest_dir().join("resources/test/fs/empty/");
+        let storage = storage(full_path);
+        let result = storage.check_active_gen();
+        let expected_message = "Failed to find max gen.";
+
+                match result {
+                    Ok(_) => panic!("Expected error"),
+                    Err(ABCDError::Other(expected_message)) => (),
+                    Err(e) => panic!("Wrong error, got: {}", e)
+                };
+    }
+
+
+         #[test]
+        fn test_retreive_current_gen_exception() {
+        let full_path = manifest_dir().join("resources/test/fs/empty/");
+        let storage = storage(full_path);
+        let result = storage.retrieve_previous_gen::<DummyParams>();
+        let expected_message = "No such file or directory (os error 2)"; //Need better error!
+
+                match result {
+                    Ok(_) => panic!("Expected error"),
+                    Err(ABCDError::Io(expected_message)) => (),
+                    Err(e) => panic!("Wrong error, got: {}", e)
+                };
     }
 
     #[test]
@@ -333,10 +376,10 @@ mod tests {
             .expect("Expected successful save");
 
         let expected = serde_json::json!({
-            "generation_number": 3,
+            //"generation_number": 3,
             "tolerance": 0.1234,
             "acceptance": 0.7,
-            "particles": [
+            "normalised_particles": [
                 {
                     "parameters" : {
                         "a": 10, "b": 20.0

@@ -47,17 +47,9 @@ pub struct Population<P> {
 // }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
-pub enum Generation<P> {
-    Prior,
-    Population { pop: Population<P>, gen_number: u16 },
-}
-impl<P> Generation<P> {
-    pub fn generation_number(&self) -> u16 {
-        match self {
-            Generation::Prior => 0,
-            Generation::Population { gen_number, pop: _ } => *gen_number,
-        }
-    }
+pub struct Generation<P> { 
+    pop: Population<P>, 
+    gen_number: u16,
 }
 
 pub fn run<M: Model, S: Storage>(
@@ -90,7 +82,7 @@ pub fn run<M: Model, S: Storage>(
                     // Reps loop
                     // Check with the filesystem that we are still working on the gen,
                     // else return None, causing the loop to exit.
-                    if storage.check_active_gen().ok()? != gen.generation_number() {
+                    if storage.check_active_gen().ok()? != gen.gen_number {
                         None
                     } else {
                         // (B5a) run the model once to get a score
@@ -133,23 +125,24 @@ where
     M: Model,
 {
     loop {
-        let proposed: M::Parameters = match gen {
-            Generation::Prior => model.prior_sample(random),
-            Generation::Population {
-                gen_number,
-                ref pop,
-            } => {
+        let proposed: M::Parameters = {
+        //  gen match {
+            //Generation::Prior => model.prior_sample(random),
+            // Generation::Population {
+            //     gen_number,
+            //     ref pop,
+            // } => {
                 //https://rust-random.github.io/rand/rand/distributions/weighted/struct.WeightedIndex.html
                 // 1. sample a particle from the previosu population
                 let particle_weights: Vec<f64> =
-                    pop.normalised_particles.iter().map(|p| p.weight).collect();
+                    gen.pop.normalised_particles.iter().map(|p| p.weight).collect();
 
                 let dist = WeightedIndex::new(&particle_weights).unwrap();
                 let sampled_particle_index = dist.sample(random);
-                let sample_particle = &pop.normalised_particles[sampled_particle_index];
+                let sample_particle = &gen.pop.normalised_particles[sampled_particle_index];
                 // 2. perturb it with model.perturb(p)
                 model.perturb(&sample_particle.parameters)
-            }
+            
         };
 
         if model.prior_density(&proposed) > 0.0 {

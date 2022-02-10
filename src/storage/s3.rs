@@ -412,7 +412,7 @@ mod tests {
     #[test]
     fn test_retrieve_previous_gen() {
         let gen_number = 3;
-        let expected = Generation::Population {
+        let expected = Generation {
             pop: make_dummy_population(),
             gen_number,
         };
@@ -512,7 +512,7 @@ mod tests {
             .save_new_gen(&dummy_population, 3)
             .expect("Expected successful save");
 
-        let expected: Value = serde_json::to_value(Generation::Population {
+        let expected: Value = serde_json::to_value(Generation {
             pop: dummy_population,
             gen_number,
         })
