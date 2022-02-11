@@ -156,7 +156,7 @@ impl Storage for FileSystem {
 mod tests {
     use serde::{Deserialize, Serialize};
     use serde_json::Value;
-    use std::path::{Path, PathBuf};
+    use std::{path::{Path, PathBuf}, io::ErrorKind};
 
     use crate::error::ABCDError;
 
@@ -298,7 +298,7 @@ mod tests {
 
         match result {
             Ok(_) => panic!("Expected error"),
-            Err(ABCDError::Other(expected_message)) => (),
+            Err(ABCDError::Other(msg)) if msg == expected_message=> (),
             Err(e) => panic!("Wrong error, got: {}", e),
         };
     }
@@ -318,15 +318,14 @@ mod tests {
     }
 
     #[test]
-    fn test_retreive_current_gen_exception() {
+    fn test_retreive_current_gen_empty() {
         let full_path = manifest_dir().join("resources/test/fs/empty/");
         let storage = FileSystem::new(full_path);
         let result = storage.retrieve_previous_gen::<DummyParams>();
-        let expected_message = "No such file or directory (os error 2)"; //Need better error!
 
         match result {
             Ok(_) => panic!("Expected error"),
-            Err(ABCDError::Io(msg)) if msg == expected_message => (),
+            Err(ABCDError::Io(err)) if err.kind() == ErrorKind::NotFound => (),
             Err(e) => panic!("Wrong error, got: {}", e),
         };
     }
