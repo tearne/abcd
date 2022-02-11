@@ -1,9 +1,16 @@
-use std::{fs::{DirEntry, File}, io::BufReader, path::PathBuf};
+use std::{
+    fs::{DirEntry, File},
+    io::BufReader,
+    path::PathBuf,
+};
 
 use regex::Regex;
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::{Population, Particle, error::{ABCDResult, ABCDError}, Generation};
+use crate::{
+    error::{ABCDError, ABCDResult},
+    Generation, Particle, Population,
+};
 use uuid::Uuid;
 
 use super::Storage;
@@ -13,6 +20,10 @@ pub struct FileSystem {
     base_path: PathBuf,
 }
 impl FileSystem {
+    pub fn new(base_path: PathBuf) -> Self {
+        Self { base_path }
+    }
+
     fn get_particle_files_in_current_gen_folder(&self) -> ABCDResult<Vec<std::fs::DirEntry>> {
         let gen_no = self.check_active_gen()?;
         println!("Active gen is {}", gen_no);
@@ -30,8 +41,7 @@ impl FileSystem {
                 let entry_path = entry.path();
                 let filename = entry_path.file_name().unwrap();
                 let file_name_as_str = filename.to_string_lossy();
-                let not_gen_match = !re.is_match(&file_name_as_str);
-                not_gen_match
+                !re.is_match(&file_name_as_str)
             })
             .filter_map(Result::ok)
             .collect::<Vec<DirEntry>>();
@@ -48,9 +58,8 @@ impl Storage for FileSystem {
             .filter_map(|read_dir| {
                 let path = read_dir.as_ref().ok()?.path();
                 if path.is_dir() {
-                    path
-                        .file_name()
-                        .map(|name| name.to_string_lossy().to_string())   
+                    path.file_name()
+                        .map(|name| name.to_string_lossy().to_string())
                 } else {
                     None
                 }
@@ -59,11 +68,13 @@ impl Storage for FileSystem {
             .filter_map(|dir_name| {
                 if let Some(caps) = re.captures(&dir_name) {
                     caps["gid"].parse::<u16>().ok()
-                } else { None }
+                } else {
+                    None
+                }
             })
             .max();
-            //NOTE Do we want to change this to handle first gen (gen 0) - where no directory exists
-        max.ok_or_else(||ABCDError::Other("Failed to find max gen.".into()))
+        //NOTE Do we want to change this to handle first gen (gen 0) - where no directory exists
+        max.ok_or_else(|| ABCDError::Other("Failed to find max gen.".into()))
     }
 
     // fn retrieve_previous_gen<'de, P>(&self) -> Result<Generation<P>> where P: Deserialize<'de>;
@@ -119,10 +130,12 @@ impl Storage for FileSystem {
         Ok(weighted_particles)
     }
 
-    fn save_new_gen<P: Serialize>(&self, g: &Population<P>, generation_number: u16) -> ABCDResult<()> {
-        let gen_dir = self
-            .base_path
-            .join(format!("gen_{:03}", generation_number));
+    fn save_new_gen<P: Serialize>(
+        &self,
+        g: &Population<P>,
+        generation_number: u16,
+    ) -> ABCDResult<()> {
+        let gen_dir = self.base_path.join(format!("gen_{:03}", generation_number));
         let file_path = gen_dir.join(format!("gen_{:03}.json", generation_number));
 
         match file_path.exists() {
@@ -131,11 +144,10 @@ impl Storage for FileSystem {
                 std::fs::write(&file_path, serialised_gen?)?;
                 Ok(())
             }
-            true => 
-                Err(ABCDError::GenAlreadySaved(format!(
-                    "Gen file already existed at {:?}",
-                    file_path
-                ))),
+            true => Err(ABCDError::GenAlreadySaved(format!(
+                "Gen file already existed at {:?}",
+                file_path
+            ))),
         }
     }
 }
@@ -150,23 +162,31 @@ mod tests {
 
     use super::*;
 
-    struct TmpDir(PathBuf);
+    struct TmpDir {
+        path: PathBuf,
+        delete_on_drop: bool,
+    }
     impl TmpDir {
-        pub fn new(name: &str) -> Self {
-            let tmp_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        pub fn new(name: &str, delete_on_drop: bool) -> Self {
+            let path = Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("target")
                 .join("test_tmp")
                 .join(name);
-            if tmp_path.exists() {
-                std::fs::remove_dir_all(&tmp_path).unwrap();
+            if path.exists() {
+                std::fs::remove_dir_all(&path).unwrap();
             }
-            std::fs::create_dir_all(&tmp_path).expect("failed to create");
-            TmpDir(tmp_path)
+            std::fs::create_dir_all(&path).expect("failed to create");
+            TmpDir {
+                path,
+                delete_on_drop,
+            }
         }
     }
     impl Drop for TmpDir {
         fn drop(&mut self) {
-            // std::fs::remove_dir_all(self.0.as_path()).unwrap();
+            if self.delete_on_drop {
+                std::fs::remove_dir_all(&self.path).unwrap();
+            }
         }
     }
 
@@ -186,10 +206,6 @@ mod tests {
         Path::new(env!("CARGO_MANIFEST_DIR"))
     }
 
-    fn storage(p: PathBuf) -> FileSystem {
-        FileSystem { base_path: p }
-    }
-
     fn make_dummy_population() -> Population<DummyParams> {
         let particle_1 = Particle {
             parameters: DummyParams::new(10, 20.),
@@ -203,7 +219,6 @@ mod tests {
             weight: 0.567,
         };
 
-
         Population {
             tolerance: 0.1234,
             acceptance: 0.7,
@@ -211,36 +226,33 @@ mod tests {
         }
     }
 
-    fn make_dummy_generation(pop:Population<DummyParams>, gen_number: u16) -> Generation<DummyParams>{
-       Generation{gen_number,pop}
-    }
-
 
     #[test]
     fn test_check_active_gen() {
-        let full_path = manifest_dir().join("resources/test/fs/example");
-        let storage = storage(full_path);
+        let base_path = manifest_dir().join("resources/test/fs/example");
+        let storage = FileSystem::new(base_path);
         assert_eq!(3, storage.check_active_gen().unwrap());
     }
 
     #[test]
     fn test_retrieve_previous_gen() {
-        let pop = make_dummy_population();
-        let expected = make_dummy_generation(pop,2);
+        let expected = Generation {
+            gen_number: 2,
+            pop: make_dummy_population(),
+        };
 
-        let full_path = manifest_dir().join("resources/test/fs/example/");
-        let instance = storage(full_path);
-                
-        let actual = instance.retrieve_previous_gen::<DummyParams>().unwrap();
+        let base_path = manifest_dir().join("resources/test/fs/example/");
+        let instance = FileSystem::new(base_path);
 
+        let result = instance.retrieve_previous_gen::<DummyParams>().unwrap();
 
-        assert_eq!(expected, actual);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_save_particle() {
-        let tmp_dir = TmpDir::new("save_particle");
-        let storage = storage(tmp_dir.0.clone());
+        let tmp_dir = TmpDir::new("save_particle", true);
+        let storage = FileSystem::new(tmp_dir.path.clone());
 
         let p1 = DummyParams::new(1, 2.);
         let p2 = DummyParams::new(3, 4.);
@@ -258,17 +270,14 @@ mod tests {
         };
 
         let saved_1 = storage.save_particle(&w1).unwrap();
-        // println!("File was saved to {}", saved_1);
         let _saved_2 = storage.save_particle(&w2).unwrap();
 
-        let file = std::fs::File::open(tmp_dir.0.clone().join(saved_1)).unwrap();
-        // println!("About to try and load from {:?}", file);
+        let file = std::fs::File::open(tmp_dir.path.clone().join(saved_1)).unwrap();
         let loaded: Particle<DummyParams> =
             serde_json::from_reader(std::io::BufReader::new(file)).unwrap();
 
         assert_eq!(w1, loaded);
     }
-
 
     //test_ask_question_of_empty_dir_exception
     //  - num_particles_available
@@ -276,76 +285,73 @@ mod tests {
     //  - check active gen
     //  - ... others
 
-    //expection if 
+    //expection if
     // - try to save gen but there's a higher number gen in there already
     // - gen already exists
 
-
-
-     #[test]
+    #[test]
     fn test_no_particle_files_exception() {
         let full_path = manifest_dir().join("resources/test/fs/empty/");
-        let storage = storage(full_path);
+        let storage = FileSystem::new(full_path);
         let result = storage.num_particles_available();
         let expected_message = "Failed to find max gen."; //Should this not be coming from num particles
 
-                match result {
-                    Ok(_) => panic!("Expected error"),
-                    Err(ABCDError::Other(expected_message)) => (),
-                    Err(e) => panic!("Wrong error, got: {}", e)
-                };
+        match result {
+            Ok(_) => panic!("Expected error"),
+            Err(ABCDError::Other(expected_message)) => (),
+            Err(e) => panic!("Wrong error, got: {}", e),
+        };
     }
 
-         #[test]
-        fn test_check_active_gen_exception() {
+    #[test]
+    fn test_check_active_gen_exception() {
         let full_path = manifest_dir().join("resources/test/fs/empty/");
-        let storage = storage(full_path);
+        let storage = FileSystem::new(full_path);
         let result = storage.check_active_gen();
         let expected_message = "Failed to find max gen.";
 
-                match result {
-                    Ok(_) => panic!("Expected error"),
-                    Err(ABCDError::Other(expected_message)) => (),
-                    Err(e) => panic!("Wrong error, got: {}", e)
-                };
+        match result {
+            Ok(_) => panic!("Expected error"),
+            Err(ABCDError::Other(msg)) if msg == expected_message => (),
+            Err(e) => panic!("Wrong error, got: {}", e),
+        };
     }
 
-
-         #[test]
-        fn test_retreive_current_gen_exception() {
+    #[test]
+    fn test_retreive_current_gen_exception() {
         let full_path = manifest_dir().join("resources/test/fs/empty/");
-        let storage = storage(full_path);
+        let storage = FileSystem::new(full_path);
         let result = storage.retrieve_previous_gen::<DummyParams>();
         let expected_message = "No such file or directory (os error 2)"; //Need better error!
 
-                match result {
-                    Ok(_) => panic!("Expected error"),
-                    Err(ABCDError::Io(expected_message)) => (),
-                    Err(e) => panic!("Wrong error, got: {}", e)
-                };
+        match result {
+            Ok(_) => panic!("Expected error"),
+            Err(ABCDError::Io(msg)) if msg == expected_message => (),
+            Err(e) => panic!("Wrong error, got: {}", e),
+        };
     }
 
     #[test]
     fn test_number_particle_files() {
         let full_path = manifest_dir().join("resources/test/fs/example/");
-        let storage = storage(full_path);
+        let storage = FileSystem::new(full_path);
         assert_eq!(2, storage.num_particles_available().unwrap())
     }
 
     #[test]
     fn test_retrieve_particle_files() {
         let full_path = manifest_dir().join("resources/test/fs/example/");
-        let instance = storage(full_path);
+        let instance = FileSystem::new(full_path);
 
-        let mut expected /*: Result<Vec<Weighted<DummyParams>>>*/ = {    
+        let mut expected = {
             let w1 = Particle {
-                parameters: DummyParams::new(1,2.),
+                parameters: DummyParams::new(1, 2.),
                 scores: vec![100.0, 200.0],
                 weight: 1.234,
             };
-    
+
             let w2 = Particle {
-                parameters: DummyParams::new(3,4.),
+                parameters: DummyParams::new(3, 4.),
                 scores: vec![300.0, 400.0],
                 weight: 1.567,
             };
@@ -364,22 +370,22 @@ mod tests {
 
     #[test]
     fn save_new_generation() {
-        let tmp_dir = TmpDir::new("save_generation");
-        let instance = storage(tmp_dir.0.clone());
+        let tmp_dir = TmpDir::new("save_generation", true);
+        let instance = FileSystem::new(tmp_dir.path.clone());
 
         let pop = make_dummy_population();
         std::fs::create_dir(instance.base_path.join("gen_003"))
             .expect("Expected successful dir creation");
 
         instance
-            .save_new_gen(&pop,3)
+            .save_new_gen(&pop, 3)
             .expect("Expected successful save");
 
         let expected = serde_json::json!({
-            //"generation_number": 3,
+            "generation_number": 3,
             "tolerance": 0.1234,
             "acceptance": 0.7,
-            "normalised_particles": [
+            "particles": [
                 {
                     "parameters" : {
                         "a": 10, "b": 20.0
@@ -397,7 +403,7 @@ mod tests {
         });
 
         let actual = {
-            let file = File::open(&tmp_dir.0.join("gen_003").join("gen_003.json")).unwrap();
+            let file = File::open(&tmp_dir.path.join("gen_003").join("gen_003.json")).unwrap();
             println!("Trying to load gen from {:?}", file);
             let reader = BufReader::new(file);
             serde_json::from_reader::<_, Value>(reader).unwrap()
@@ -408,14 +414,14 @@ mod tests {
 
     #[test]
     fn dont_save_over_existing_gen_file() {
-        let tmp_dir = TmpDir::new("save_over_generation");
-        let instance = storage(tmp_dir.0.clone());
+        let tmp_dir = TmpDir::new("save_over_generation", true);
+        let instance = FileSystem::new(tmp_dir.path.clone());
 
         //1. Save an dummy gen_003 file, representing file already save by another node
         std::fs::create_dir(instance.base_path.join("gen_003"))
             .expect("Expected successful dir creation");
         std::fs::write(
-            tmp_dir.0.join("gen_003").join("gen_003.json"),
+            tmp_dir.path.join("gen_003").join("gen_003.json"),
             "placeholder file",
         )
         .unwrap();
@@ -426,14 +432,14 @@ mod tests {
 
         //3. Test that the original file save by other node is intact and we didn't panic.
         let contents =
-            std::fs::read_to_string(tmp_dir.0.join("gen_003").join("gen_003.json")).unwrap();
+            std::fs::read_to_string(tmp_dir.path.join("gen_003").join("gen_003.json")).unwrap();
         assert_eq!("placeholder file", contents);
 
         //4. Test that Result is Error: GenAlreadySaved
         match result {
             Ok(_) => panic!("Expected error"),
             Err(ABCDError::GenAlreadySaved(_)) => (),
-            Err(e) => panic!("Wrong error, got: {}", e)
+            Err(e) => panic!("Wrong error, got: {}", e),
         }
     }
 }
