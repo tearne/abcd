@@ -2,7 +2,7 @@ use futures::FutureExt;
 use regex::Regex;
 use rusoto_core::RusotoError;
 use rusoto_s3::{
-    GetObjectOutput, GetObjectRequest, ListObjectsV2Request, Object, PutObjectRequest, S3Client, S3,
+    GetObjectOutput, GetObjectRequest, ListObjectsV2Request, Object, PutObjectRequest, S3Client, S3, GetObjectError,
 };
 use serde::{de::DeserializeOwned, Serialize};
 use std::convert::TryInto;
@@ -211,13 +211,14 @@ impl Storage for S3System {
             key: filename.to_owned(),
             ..Default::default()
         };
-        //println!("{:?}", &get_obj_req);
-        let get_req = self.s3_client.get_object(get_obj_req);
-        let mut response = self.runtime.block_on(get_req);
 
-        match response.is_err() {
-            //Is there something there already - if there is an error then there isn't?
-            true => {
+        //Test if the file is somehow already there
+        let get_req = self.s3_client.get_object(get_obj_req);
+        let response = self.runtime.block_on(get_req);
+
+        match response {
+            Err(RusotoError::Service(GetObjectError::NoSuchKey(_))) => {
+                //This is good, means we're not writing over existing gen
                 let pretty_json_gen = serde_json::to_string_pretty(&g);
                 let put_obj_req = PutObjectRequest {
                     bucket: bucket_cloned2,
@@ -229,11 +230,14 @@ impl Storage for S3System {
                 let put_req = self.s3_client.put_object(put_obj_req);
                 self.runtime.block_on(put_req)?;
                 Ok(())
-            }
-            false => Err(ABCDError::GenAlreadySaved(format!(
-                "Gen file already existed at {:?}",
-                filename
-            ))),
+            },
+            _ => {
+                //This is bad, the file shouldn't exist beofre we've saved it!
+                Err(ABCDError::GenAlreadySaved(format!(
+                    "Gen file already existed at {:?}",
+                    filename
+                )))
+            },
         }
     }
 }
@@ -246,43 +250,59 @@ mod tests {
     use serde_json::Value;
     use std::io::Read;
 
-    use crate::{etc::config::Config, storage::config::StorageConfig};
+    use crate::etc::config::Config;
 
     use super::*;
 
-    struct TmpBucketPrefix(String);
+    struct TmpBucketPrefix{
+        bucket: String,
+        prefix: String,
+        delete_on_drop: bool,
+        s3_client: S3Client,
+        runtime: Runtime,
+    }
     impl TmpBucketPrefix {
-        pub fn new(prefix: &str) -> Self {
+        pub fn new(bucket: &str, prefix: &str, delete_on_drop: bool) -> Self {
             let s3_client = S3Client::new(Region::EuWest1);
-            let storage = storage(prefix.to_string(), s3_client);
-            let prefix_cloned = storage.prefix.clone();
-            let bucket_cloned = storage.bucket.clone();
-
-            let list_request_fut = storage.s3_client.list_objects_v2(ListObjectsV2Request {
-                bucket: String::from(bucket_cloned),
-                prefix: Some(prefix_cloned),
-                ..Default::default()
-            });
-
-            let fut = list_request_fut.map(|response| {
-                let contents = response.unwrap().contents.unwrap();
-                contents
-            });
-            let bucket_prefix_contents = storage.runtime.block_on(fut);
-            println!("{:?}", &bucket_prefix_contents);
-
-            if !bucket_prefix_contents.is_empty() {
-                let items = bucket_prefix_contents.iter();
-                let keys_to_delete = items.map(|key| {
-                    let delete_object_req = DeleteObjectRequest {
-                        bucket: storage.bucket.to_owned(),
-                        key: key.key.clone().unwrap(),
-                        ..Default::default()
-                    };
-                    let req = storage.s3_client.delete_object(delete_object_req);
-                });
+           
+            TmpBucketPrefix{
+                bucket: bucket.into(),
+                prefix: prefix.into(),
+                delete_on_drop,
+                s3_client: S3Client::new(Region::EuWest1),
+                runtime: Runtime::new().unwrap(),
             }
-            TmpBucketPrefix(prefix.to_string())
+        }
+    }
+    impl Drop for TmpBucketPrefix {
+        fn drop(&mut self) {
+            if self.delete_on_drop {
+
+                let list_request_fut = self.s3_client.list_objects_v2(ListObjectsV2Request {
+                    bucket: self.bucket.clone(),
+                    prefix: Some(self.prefix.clone()),
+                    ..Default::default()
+                });
+    
+                let fut = list_request_fut.map(|response| {
+                    response.unwrap().contents.unwrap()
+                });
+                let bucket_prefix_contents = self.runtime.block_on(fut);
+                println!("Stuff to clean up: {:?}", &bucket_prefix_contents);
+    
+                if !bucket_prefix_contents.is_empty() {
+                    let items = bucket_prefix_contents.iter();
+                    items.for_each(|key| {
+                        let delete_object_req = DeleteObjectRequest {
+                            bucket: self.bucket.clone(),
+                            key: key.key.clone().unwrap(),
+                            ..Default::default()
+                        };
+                        self.runtime.block_on(self.s3_client.delete_object(delete_object_req)).unwrap();
+                        println!("Cleaned up: {:?}", key);
+                    });
+                }
+            }
         }
     }
 
@@ -297,7 +317,7 @@ mod tests {
         }
     }
 
-    fn storage(prefix: String, s3_client: S3Client) -> S3System {
+    fn storage(prefix: String) -> S3System {
         let path = crate::test_helper::local_test_file_path(
             "resources/test/config_test.toml");
         let storage_config = Config::from_path(path).storage;
@@ -332,8 +352,8 @@ mod tests {
         let s3_client = S3Client::new(Region::EuWest1);
         //let storage = storage("s3-ranch-007".to_string(),"save_particle".to_string(),s3_client);
         let storage = storage(
-            /*"s3-ranch-007".to_string(),*/ "example".to_string(),
-            s3_client,
+            //TODO
+            /*"s3-ranch-007".to_string(),*/ "example".to_string()
         );
         //let particle_file_dir = storage.prefix.clone();
         //let filename =  format!("{}/{}", particle_file_dir,particle_file_name);
@@ -403,7 +423,6 @@ mod tests {
         let s3_client = S3Client::new(Region::EuWest1);
         let storage = storage(
             /*"s3-ranch-007".to_string(),*/ "example/".to_string(),
-            s3_client,
         );
 
         assert_eq!(3, storage.check_active_gen().unwrap());
@@ -418,7 +437,7 @@ mod tests {
         };
         let s3_client = S3Client::new(Region::EuWest1);
         //TODO call make storage
-        let storage = storage("example".to_string(), s3_client);
+        let storage = storage("example".to_string());
 
         let result = storage.retrieve_previous_gen::<DummyParams>();
         let result = storage
@@ -431,12 +450,8 @@ mod tests {
     #[test]
     fn test_save_particle() {
         let s3_client = S3Client::new(Region::EuWest1);
-        let tmp_bucket = TmpBucketPrefix::new("save_particle");
-        println!(
-            "==============================> tmp_bucket {}",
-            tmp_bucket.0
-        );
-        let storage = storage("save_particle".to_string(), s3_client);
+        let storage = storage("save_particle".to_string());
+        let tmp_prefix = TmpBucketPrefix::new(&storage.bucket, "save_particle", true);
 
         let p1 = DummyParams::new(1, 2.);
         let w1 = Particle {
@@ -465,15 +480,13 @@ mod tests {
 
     #[test]
     fn test_number_particle_files() {
-        let s3_client = S3Client::new(Region::EuWest1);
-        let storage = storage("example".to_string(), s3_client);
+        let storage = storage("example".to_string());
         assert_eq!(2, storage.num_particles_available().unwrap())
     }
 
     #[test]
     fn test_retrieve_particle_files() {
-        let s3_client = S3Client::new(Region::EuWest1);
-        let storage = storage("example".to_string(), s3_client);
+        let storage = storage("example".to_string());
 
         let mut expected = {
             let w1 = Particle {
@@ -505,9 +518,9 @@ mod tests {
         let gen_number = 3;
         let dummy_population = make_dummy_population();
 
-        let s3_client = S3Client::new(Region::EuWest1);
-        let tmp_bucket = TmpBucketPrefix::new("save_generation"); //Clear bucket if anything there
-        let storage = storage("save_generation".to_string(), s3_client);
+        let storage = storage("save_generation".to_string());
+        let tmp_prefix = TmpBucketPrefix::new(&storage.bucket, "save_generation", true); //Clears bucket if anything there
+        
         storage
             .save_new_gen(&dummy_population, 3)
             .expect("Expected successful save");
