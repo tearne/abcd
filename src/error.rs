@@ -1,6 +1,7 @@
 use std::{error::Error, num::TryFromIntError};
 
-use rusoto_core::RusotoError;
+use aws_sdk_s3::{SdkError, error::GetObjectError};
+use aws_smithy_http::operation::Response;
 
 pub type ABCDResult<T> = std::result::Result<T, ABCDError>;
 
@@ -12,7 +13,7 @@ pub enum ABCDError {
     Serde(serde_json::Error),
     GenAlreadySaved(String),
     Regex(regex::Error),
-    RusotoError(String),
+    S3GetError(SdkError<GetObjectError, Response>),
     Other(String),
     CastError(TryFromIntError),
 }
@@ -26,9 +27,9 @@ impl std::fmt::Display for ABCDError {
             }
             ABCDError::Parse(ref err) => err.fmt(f),
             ABCDError::Serde(ref err) => err.fmt(f),
-            ABCDError::GenAlreadySaved(ref msg) => write!(f, "{}", msg), //f.write_str(string.as_str()),
+            ABCDError::GenAlreadySaved(ref msg) => write!(f, "{}", msg),
             ABCDError::Regex(ref err) => err.fmt(f),
-            ABCDError::RusotoError(msg) => f.write_fmt(format_args!("Rusoto error: {}", msg)),
+            ABCDError::S3GetErrorError(ref err) => err.fmt(f),
             ABCDError::Other(msg) => f.write_fmt(format_args!("ABCD error: {}", msg)),
             ABCDError::CastError(ref err) => err.fmt(f),
         }
@@ -65,8 +66,8 @@ impl From<regex::Error> for ABCDError {
     }
 }
 
-impl<T: 'static + Error> From<RusotoError<T>> for ABCDError {
-    fn from(value: RusotoError<T>) -> Self {
+impl<E: 'static + Error, R = Response> From<SdkError<E, R>> for ABCDError {
+    fn from(value: SdkError<E,R>) -> Self {
         ABCDError::Other(value.to_string())
     }
 }
