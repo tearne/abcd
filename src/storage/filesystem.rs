@@ -73,7 +73,10 @@ impl Storage for FileSystem {
                 }
             })
             .max();
-        //NOTE Do we want to change this to handle first gen (gen 0) - where no directory exists
+        //TODO change this to handle first gen (gen 0) - where no directory exists
+        // How do we tell the difference between not having started yet, vs having given the wrong storage location?
+        // Do we need a marker?  Like some kind of `gen_0` thing?
+        //TODO need to make sure that storage refuses to work if gen_000 is missing?  Add new tests?
         max.ok_or_else(|| ABCDError::Other("Failed to find max gen.".into()))
     }
 

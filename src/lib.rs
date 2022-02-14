@@ -58,62 +58,76 @@ pub fn run<M: Model, S: Storage>(
     storage: S,
     random: &mut Random,
 ) -> ABCDResult<()> {
-    // We assume that the storage has already been 'primed' to contain either
-    // a) some kind of marker indicating that we're using a prior at gen 0
-    //   or
-    // b) a population from which we are resuming
+    do_first_gen(storage, model, config, random);
 
     loop {
-        let generation_number = storage.check_active_gen()?;
-        if generation_number == config.job.num_generations && config.job.terminate_at_target_gen {
+        let gen = do_next_gen(storage, model, config, random)?;
+        if gen.gen_number == config.job.num_generations && config.job.terminate_at_target_gen {
             break;
-        }
-        let gen = storage.retrieve_previous_gen()?;
-
-        loop {
-            // Particle loop
-            // TODO loop could go on forever?  Use some kind of timeout, or issue warning?
-            // (B3) sample a (fitting) parameter set from gen (perturb based on weights and kernel if sampling from generation)
-            // (B4) Check if prior probability is zero - if so sample again
-            let p = sample_and_perturb_with_support(&gen, &model, random);
-
-            let scores: Option<Vec<f64>> = (0..config.job.num_replicates)
-                .map(|rep_idx| {
-                    // Reps loop
-                    // Check with the filesystem that we are still working on the gen,
-                    // else return None, causing the loop to exit.
-                    if storage.check_active_gen().ok()? != gen.gen_number {
-                        None
-                    } else {
-                        // (B5a) run the model once to get a score
-                        Some(model.score(&p))
-                    }
-                })
-                .collect();
-
-            match scores {
-                Some(scores) => {
-                    // We now have a collection of scores for the particle
-                    // (B5b) Calculate f^hat by calc'ing proportion less than tolerance
-                    // (B6) Calculate not_normalised_weight for each particle from its f^hat (f^hat(p) * prior(p)) / denom)
-                    // Save the non_normalised particle to storage
-                    // Check if we now have the req'd num particles/reps, if so, break
-                    todo!();
-                    //weigh_and_save_new_scored_particle(scores);
-                    if storage.num_particles_available()? >= config.job.num_particles {
-                        // Load all the non_normalised particles
-                        // (B7) Normalise all the weights together
-                        // Save generation to storage
-                        todo!()
-                        // flush_entire_generation();
-                    }
-                }
-                None => break, // Is this right, just go round the loop again?
-            }
         }
     }
 
-    Ok(())
+    todo!()
+}
+
+
+fn do_first_gen<M: Model, S: Storage>(storage: S, model: M, config: Config, random: &mut Random){
+    // loop {
+    //     let p = model.prior_sample(random);//TODO are we meant to perturb?  Check with paper and Sampler
+    //     let scores: Option<Vec<f64>> = (0..config.job.num_replicates)
+    //         .map(|rep_idx| {
+    //             if storage.check_active_gen().ok()? != 0 {
+    //                 return Err(WasWorkingOnAnOldGeneration)
+    //             } else {
+    //                 // (B5a) run the model once to get a score
+    //                 Some(model.score(&p))
+    //             }
+    //         })
+    //         .collect();
+    // }
+}
+
+fn do_next_gen<M: Model, S: Storage>(storage: S, model: M, config: Config, random: &mut Random) -> ABCDResult<u16> {
+    // let gen = storage.retrieve_previous_gen()?;
+
+    // loop {
+    //     // Particle loop
+    //     // TODO loop could go on forever?  Use some kind of timeout, or issue warning?
+    //     // (B3) sample a (fitting) parameter set from gen (perturb based on weights and kernel if sampling from generation)
+    //     // (B4) Check if prior probability is zero - if so sample again
+    //     let p = sample_and_perturb_with_support(&gen, &model, random);
+
+    //     let scores: Option<Vec<f64>> = (0..config.job.num_replicates)
+    //         .map(|rep_idx| {
+    //             // Reps loop
+    //             // Check with the filesystem that we are still working on the gen,
+    //             // else return None, causing the loop to exit.
+    //             if storage.check_active_gen().ok()? != gen.gen_number {
+    //                 return Err(WasWorkingOnAnOldGeneration)
+    //             } else {
+    //                 // (B5a) run the model once to get a score
+    //                 Some(model.score(&p))
+    //             }
+    //         })
+    //         .collect();
+
+    //     if let Some(scores) = scores {
+    //         // We now have a collection of scores for the particle
+    //         // (B5b) Calculate f^hat by calc'ing proportion less than tolerance
+    //         // (B6) Calculate not_normalised_weight for each particle from its f^hat (f^hat(p) * prior(p)) / denom)
+    //         // Save the non_normalised particle to storage
+    //         // Check if we now have the req'd num particles/reps, if so, break
+    //         todo!();
+    //         //weigh_and_save_new_scored_particle(scores);
+    //         if storage.num_particles_available()? >= config.job.num_particles {
+    //             // Load all the non_normalised particles
+    //             // (B7) Normalise all the weights together
+    //             // Save generation to storage
+    //             let gen_number_flushed = todo!();// flush_entire_generation();
+    //             return Ok(gen_number_flushed)
+    //         }
+    //     }
+    }
 }
 
 fn sample_and_perturb_with_support<M>(
