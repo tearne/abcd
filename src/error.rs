@@ -13,7 +13,9 @@ pub enum ABCDError {
     Serde(serde_json::Error),
     GenAlreadySaved(String),
     Regex(regex::Error),
-    S3GetError(SdkError<GetObjectError, Response>),
+    S3GetError(aws_sdk_s3::SdkError<aws_sdk_s3::error::GetObjectError>),
+    S3ListError(aws_sdk_s3::SdkError<aws_sdk_s3::error::ListObjectsV2Error>),
+    S3PutError(aws_sdk_s3::SdkError<aws_sdk_s3::error::PutObjectError>),
     Other(String),
     CastError(TryFromIntError),
 }
@@ -29,12 +31,16 @@ impl std::fmt::Display for ABCDError {
             ABCDError::Serde(ref err) => err.fmt(f),
             ABCDError::GenAlreadySaved(ref msg) => write!(f, "{}", msg),
             ABCDError::Regex(ref err) => err.fmt(f),
-            ABCDError::S3GetErrorError(ref err) => err.fmt(f),
+            ABCDError::S3GetError(ref err) => err.fmt(f),
+            ABCDError::S3ListError(ref err) => err.fmt(f),
+            ABCDError::S3PutError(ref err) => err.fmt(f),
             ABCDError::Other(msg) => f.write_fmt(format_args!("ABCD error: {}", msg)),
             ABCDError::CastError(ref err) => err.fmt(f),
         }
     }
 }
+
+impl std::error::Error for ABCDError {}
 
 impl From<serde_json::Error> for ABCDError {
     fn from(value: serde_json::Error) -> Self {
@@ -66,9 +72,27 @@ impl From<regex::Error> for ABCDError {
     }
 }
 
-impl<E: 'static + Error, R = Response> From<SdkError<E, R>> for ABCDError {
-    fn from(value: SdkError<E,R>) -> Self {
-        ABCDError::Other(value.to_string())
+// impl<E: 'static + Error, R = Response> From<SdkError<E, R>> for ABCDError {
+//     fn from(value: SdkError<E,R>) -> Self {
+//         ABCDError::Other(value.to_string())
+//     }
+// }
+
+impl From<aws_sdk_s3::SdkError<aws_sdk_s3::error::GetObjectError>> for ABCDError {
+    fn from(value: aws_sdk_s3::SdkError<aws_sdk_s3::error::GetObjectError>) -> Self {
+        ABCDError::S3GetError(value)
+    }
+}
+
+impl From<aws_sdk_s3::SdkError<aws_sdk_s3::error::ListObjectsV2Error>> for ABCDError {
+    fn from(value: aws_sdk_s3::SdkError<aws_sdk_s3::error::ListObjectsV2Error>) -> Self {
+        ABCDError::S3ListError(value)
+    }
+}
+
+impl From<aws_sdk_s3::SdkError<aws_sdk_s3::error::PutObjectError>> for ABCDError {
+    fn from(value: aws_sdk_s3::SdkError<aws_sdk_s3::error::PutObjectError>) -> Self {
+        ABCDError::S3PutError(value)
     }
 }
 

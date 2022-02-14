@@ -1,8 +1,9 @@
-use aws_sdk_s3::error::GetObjectAclError;
-use aws_sdk_s3::{Client, SdkError};
+use aws_sdk_s3::error::{GetObjectAclError, ListObjectsV2Error};
+use aws_sdk_s3::{Client, SdkError, ByteStream};
 use aws_sdk_s3::model::{Object, ObjectCannedAcl};
-use aws_sdk_s3::output::{GetObjectOutput, PutObjectAclOutput};
-use futures::{FutureExt, Future};
+use aws_sdk_s3::output::{GetObjectOutput, PutObjectOutput, ListObjectsV2Output};
+use bytes::Bytes;
+use futures::{FutureExt, Future, TryFutureExt};
 use regex::Regex;
 use serde::{de::DeserializeOwned, Serialize};
 use std::convert::TryInto;
@@ -23,17 +24,42 @@ pub struct S3System {
 }
 impl S3System {
     fn list_objects_v2(&self, prefix: &str) -> ABCDResult<Vec<Object>> {
-        //TODO potential loop with continuation tokens
-        let request = self.client
-            .list_objects_v2()
-            .bucket(self.bucket)
-            .prefix(&prefix)
-            .send();
+        // let acc: Vec<Object> = Vec::new();
 
-        self.runtime
-            .block_on(request)?
-            .contents
-            .ok_or_else(|| ABCDError::Other("Empty S3 response".into()))
+        // let get = |c_tok: Option<String>| -> ABCDResult<ListObjectsV2Output> {
+        //     let request = self.client
+        //         .list_objects_v2()
+        //         .bucket(&self.bucket)
+        //         .prefix(prefix)
+        //         .set_continuation_token(c_tok)
+        //         .send();
+
+        //     self.runtime
+        //         .block_on(request)
+        //         .into()
+
+        //     // Ok(t)
+        //         // .contents
+        //         // .ok_or_else(|| ABCDError::Other("Empty S3 response".into()))
+        // };
+
+        // loop {
+        //     let r = get()?;
+        //     match r.continuation_token {
+        //         Some(token) => {
+        //             todo!()
+        //         },
+        //         None => break,
+        //     }
+        // }
+
+        // let r = get();
+        // let t = r?;
+        // acc.append(t);
+
+
+        //TODO potential loop with continuation tokens
+        todo!();
     }
 
     //TODO rename ...in_active_gen...
@@ -44,58 +70,62 @@ impl S3System {
             format!("{}/{}", self.prefix.clone(), gen_dir)
         };
 
-        self.list_objects_v2(gen_prefix)
+        self.list_objects_v2(&gen_prefix)
     }
 
     pub async fn read_to_string<E: 'static + std::error::Error>(
-        output: Result<GetObjectOutput, SdkError<E>>,
-    ) -> ABCDResult<String> {
-        let byte_stream = output?
+        output: Result<GetObjectOutput, E>,
+    ) -> Result<String, E> {
+        use futures::TryStreamExt;
+
+        let bytes = output?
             .body
-            .ok_or_else(|| ABCDError::Other("No body in S3 response.".into()))?;
-        let mut string_buf: String = String::new();
-        use tokio::io::AsyncReadExt;
-        byte_stream
-            .into_async_read()
-            .read_to_string(&mut string_buf)
-            .await?;
-        Ok(string_buf)
+            .try_next()
+            .await
+            .unwrap()   //TODO
+            .unwrap();  //TODO
+
+        let string = std::str::from_utf8(&bytes).unwrap();
+        Ok(string.into())
     }
 
-    pub fn get_object_future(&self, key: &str) -> impl Future<Output = String> {
+    pub fn get_object_future(&self, key: &str) -> impl Future<Output = ABCDResult<GetObjectOutput>> {
         self.client
             .get_object()
-            .bucket(self.bucket)
+            .bucket(&self.bucket)
             .key(key)
             .send()
+            .map_err(Into::<ABCDError>::into)
     }
 
-    pub fn put_object_future(&self, key: &str, body: &str) -> impl Future<Output = PutObjectAclOutput>{
+    pub fn put_object_future(&self, key: &str, body: &str) -> impl Future<Output = ABCDResult<PutObjectOutput>> {        
+        let bytes = ByteStream::from(Bytes::from(body.to_string()));
+        
         self.client
             .put_object()
-            .bucket(self.bucket)
+            .bucket(&self.bucket)
             .key(key)
-            .body(body.into_bytes().into())
+            .body(bytes)
             .acl(ObjectCannedAcl::BucketOwnerFullControl)
             .send()
+            .map_err(Into::<ABCDError>::into)
     }
 }
 impl Storage for S3System {
     fn check_active_gen(&self) -> ABCDResult<u16> {
-        let objects = self.list_objects_v2(self.prefix);
+        let objects = self.list_objects_v2(&self.prefix)?;
 
         //TODO compile regex only once for entire struct.
         let re = Regex::new(r#"^example/gen_(?P<gid1>\d*)/gen_(?P<gid2>\d*).json"#)?;
         let key_strings = objects.into_iter().filter_map(|obj| obj.key);
-        let gen_dir_numbers: Vec<u16> = key_strings
+        let gen_dir_numbers = key_strings
             .filter_map(|key| {
                 re.captures(&key)
                     .map(|caps| caps["gid1"].parse::<u16>().ok())
                     .flatten()
-            })
-            .collect();
+            });
 
-        let max_completed_gen = gen_dir_numbers.into_iter().max().unwrap_or(0);
+        let max_completed_gen = gen_dir_numbers.max().unwrap_or(0);
         //NOTE Do we want to change this to handle first gen (gen 0) - where nothing exists yet?
         Ok(max_completed_gen + 1)
     }
@@ -117,7 +147,7 @@ impl Storage for S3System {
             )
         };
 
-        let string_fut = self.get_object_as_string_future(object_key);
+        let string_fut = self.get_object_future(&object_key).then(Self::read_to_string);
         let string = self.runtime.block_on(string_fut)?;
         let parsed: Generation<P> = serde_json::from_str(&string)?;
         Ok(parsed)
@@ -137,8 +167,8 @@ impl Storage for S3System {
         let pretty_json = serde_json::to_string_pretty(w)?;
 
         let request = self.put_object_future(
-            object_path, 
-            pretty_json.into_bytes().into()
+            &object_path, 
+            &pretty_json
         );
 
         self.runtime.block_on(request)?;
@@ -167,9 +197,14 @@ impl Storage for S3System {
             .ok_or_else(|| ABCDError::Other("failed to identify all particle file names".into()))?;
 
         let particle_futures = object_names.into_iter().map(|filename| {
-            self.get_object_future(filename)
+            self.get_object_future(&filename)
                 .then(Self::read_to_string)
-                .and_then(serde_json::from_str::<Particle<P>>)
+                .map(|res| {    //TODO better
+                    res.and_then(|s| {
+                        serde_json::from_str::<Particle<P>>(&s)
+                            .map_err(|_| ABCDError::Other("badness".into()))
+                    })
+                })
         });
 
         let joined = futures::future::join_all(particle_futures);
@@ -180,7 +215,7 @@ impl Storage for S3System {
 
     fn save_new_gen<P: Serialize>(
         &self,
-        g: &Population<P>,
+        pop: &Population<P>,
         generation_number: u16,
     ) -> ABCDResult<()> {
         let gen_dir = format!("gen_{:03}", generation_number);
@@ -191,19 +226,19 @@ impl Storage for S3System {
         //Test if the file is somehow already there
         let request = self.client
             .get_object_acl()
-            .bucket(self.bucket)
-            .key(object_path)
+            .bucket(&self.bucket)
+            .key(&object_path)
             .send();
 
         match self.runtime.block_on(request) {
             Err(SdkError::ServiceError{
-                err: GetObjectAclError{kind, meta},
-                raw,
+                err: GetObjectAclError{..},
+                raw: _,
             }) => {
                 //This is good, means we're not writing over existing gen
                 let request = self.put_object_future(
-                    object_path,
-                    serde_json::to_string_pretty(&g)
+                    &object_path,
+                    &serde_json::to_string_pretty(pop)?
                 );
                 self.runtime.block_on(request)?;
                 Ok(())
