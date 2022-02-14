@@ -24,42 +24,36 @@ pub struct S3System {
 }
 impl S3System {
     fn list_objects_v2(&self, prefix: &str) -> ABCDResult<Vec<Object>> {
-        // let acc: Vec<Object> = Vec::new();
+        let mut acc: Vec<Object> = Vec::new();
 
-        // let get = |c_tok: Option<String>| -> ABCDResult<ListObjectsV2Output> {
-        //     let request = self.client
-        //         .list_objects_v2()
-        //         .bucket(&self.bucket)
-        //         .prefix(prefix)
-        //         .set_continuation_token(c_tok)
-        //         .send();
+        let next_page = |c_tok: Option<String>| -> ABCDResult<ListObjectsV2Output> {
+            let request = self.client
+                .list_objects_v2()
+                .bucket(&self.bucket)
+                .prefix(prefix)
+                .set_continuation_token(c_tok)
+                .send();
 
-        //     self.runtime
-        //         .block_on(request)
-        //         .into()
+            self.runtime
+                .block_on(request)
+                .map_err(|e|e.into())
+        };
 
-        //     // Ok(t)
-        //         // .contents
-        //         // .ok_or_else(|| ABCDError::Other("Empty S3 response".into()))
-        // };
+        let c_token = None;
+        loop {
+            let list_output = next_page(c_token)?;
+            if let Some(mut items) = list_output.contents {
+                acc.append(&mut items);
+            }
+            match list_output.continuation_token {
+                Some(token) => {
+                    todo!()
+                },
+                None => break,
+            }
+        }
 
-        // loop {
-        //     let r = get()?;
-        //     match r.continuation_token {
-        //         Some(token) => {
-        //             todo!()
-        //         },
-        //         None => break,
-        //     }
-        // }
-
-        // let r = get();
-        // let t = r?;
-        // acc.append(t);
-
-
-        //TODO potential loop with continuation tokens
-        todo!();
+        Ok(acc)
     }
 
     //TODO rename ...in_active_gen...
