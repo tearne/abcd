@@ -58,14 +58,14 @@ pub fn run<M: Model, S: Storage>(
     storage: S,
     random: &mut Random,
 ) -> ABCDResult<()> {
-    do_first_gen(storage, model, config, random);
+    // do_first_gen(storage, model, config, random);
 
-    loop {
-        let gen = do_next_gen(storage, model, config, random)?;
-        if gen.gen_number == config.job.num_generations && config.job.terminate_at_target_gen {
-            break;
-        }
-    }
+    // loop {
+    //     let gen = do_next_gen(storage, model, config, random)?;
+    //     if gen == config.job.num_generations && config.job.terminate_at_target_gen {
+    //         break;
+    //     }
+    // }
 
     todo!()
 }
@@ -127,7 +127,9 @@ fn do_next_gen<M: Model, S: Storage>(storage: S, model: M, config: Config, rando
     //             return Ok(gen_number_flushed)
     //         }
     //     }
-    }
+    // }
+
+    todo!()
 }
 
 fn sample_and_perturb_with_support<M>(
