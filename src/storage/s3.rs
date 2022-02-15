@@ -1,5 +1,5 @@
 use aws_sdk_s3::error::GetObjectAclError;
-use aws_sdk_s3::{Client, SdkError, ByteStream};
+use aws_sdk_s3::{Client, SdkError, ByteStream, Region};
 use aws_sdk_s3::model::{Object, ObjectCannedAcl};
 use aws_sdk_s3::output::{GetObjectOutput, PutObjectOutput, ListObjectsV2Output};
 use bytes::Bytes;
@@ -23,6 +23,23 @@ pub struct S3System {
     runtime: Runtime,
 }
 impl S3System {
+    pub fn new(bucket: &str, prefix: &str) -> Self {
+        let runtime = Runtime::new().unwrap();
+        let client = {
+            let config = runtime.block_on(
+                aws_config::from_env().region(Region::new("eu-west-1")).load()
+            );
+            Client::new(&config)
+        };
+
+        S3System {
+            bucket: bucket.into(),
+            prefix: prefix.into(),
+            client,
+            runtime,
+        }
+    }
+
     fn list_objects_v2(&self, prefix: &str) -> ABCDResult<Vec<Object>> {
         let mut acc: Vec<Object> = Vec::new();
 
@@ -371,6 +388,7 @@ mod tests {
     #[test]
     fn test_check_active_gen() {
         let storage = storage("example/".into());
+        println!("----> {}", &storage.bucket);
         assert_eq!(3, storage.check_active_gen().unwrap());
     }
 

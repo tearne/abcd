@@ -13,23 +13,12 @@ pub enum StorageConfig {
 }
 impl StorageConfig {
     pub fn build_s3(&self) -> S3System {
-        todo!();
-        // let runtime = Runtime::new().unwrap(); //TODO don't unwrap
-        // let config = runtime.block_on(
-        //     aws_config::from_env().region(Region::new("eu-west-1")).load()
-        // );
-        // let client = Client::new(&config);
-
-        // match self {
-        //     StorageConfig::FileSystem { base_path } => panic!("Can't build FileSystem from S3 config"),
-        //     StorageConfig::S3{bucket, prefix} => {
-        //         S3System {
-        //             bucket: bucket,
-        //             prefix: prefix,
-        //             client,
-        //             runtime: Runtime,
-        //         }
-        //     }
+        match self {
+            StorageConfig::FileSystem { base_path: _ } => panic!("Can't build FileSystem from S3 config"),
+            StorageConfig::S3{bucket, prefix} => {
+                S3System::new(bucket, prefix)
+            }
+        }
     }
 
     pub fn build_fs(&self) -> FileSystem {
