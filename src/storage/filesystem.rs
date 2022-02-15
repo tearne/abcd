@@ -56,7 +56,7 @@ impl Storage for FileSystem {
     fn check_active_gen(&self) -> ABCDResult<u16> {
         let re = Regex::new(r#"^gen_(?P<gid>\d*)$"#)?;
 
-        let gen_dirs = std::fs::read_dir(&self.base_path)?
+        let gen_dirs: Vec<u16> = std::fs::read_dir(&self.base_path)?
             .filter_map(|read_dir| {
                 let path = read_dir.as_ref().ok()?.path();
                 if path.is_dir() {
@@ -73,21 +73,18 @@ impl Storage for FileSystem {
                 } else {
                     None
                 }
-            });
-            
-            let max_with_gen_0_check = if gen_dirs.collect::<Vec<u16>>().contains(&0) {
-                &gen_dirs.max()
-            } else {
-                //return Err(ABCDError::NoGenZeroDirExists("No Gen Zero Directory Exists".to_string())); //Should throw helpful exception here to point out no gen 0 available?
-                None 
-            };
-        
-            
-        //TODO change this to handle first gen (gen 0) - where no directory exists
-        // How do we tell the difference between not having started yet, vs having given the wrong storage location?
-        // Do we need a marker?  Like some kind of `gen_0` thing?
-        //TODO need to make sure that storage refuses to work if gen_000 is missing?  Add new tests?
-        max_with_gen_0_check.ok_or_else(|| ABCDError::Other("Failed to find max gen.".into()))
+            })
+            .collect();
+
+        //TODO need the equiv in the S3 Storage module
+        if !gen_dirs.contains(&0) {
+            Err(ABCDError::NoGenZeroDirExists("No Gen Zero Directory Exists".into()))
+        } else {
+            gen_dirs.iter()
+                .max()
+                .copied()
+                .ok_or_else(|| ABCDError::Other("Failed to find max gen".into()))
+        }
     }
 
     // fn retrieve_previous_gen<'de, P>(&self) -> Result<Generation<P>> where P: Deserialize<'de>;

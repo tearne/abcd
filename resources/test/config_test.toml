@@ -1,6 +1,6 @@
 [storage]
 type = 'S3'
-bucket = 's3://my-env-var-bucket'
+bucket = 's3://some-bucket'
 prefix = 'myPrefix'
 
 [job]
