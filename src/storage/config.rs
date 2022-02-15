@@ -1,5 +1,8 @@
 use std::path::PathBuf;
 
+use aws_sdk_s3::{Region, Client};
+use tokio::runtime::Runtime;
+
 use super::{filesystem::FileSystem, s3::S3System};
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
@@ -10,7 +13,23 @@ pub enum StorageConfig {
 }
 impl StorageConfig {
     pub fn build_s3(&self) -> S3System {
-        todo!()
+        todo!();
+        // let runtime = Runtime::new().unwrap(); //TODO don't unwrap
+        // let config = runtime.block_on(
+        //     aws_config::from_env().region(Region::new("eu-west-1")).load()
+        // );
+        // let client = Client::new(&config);
+
+        // match self {
+        //     StorageConfig::FileSystem { base_path } => panic!("Can't build FileSystem from S3 config"),
+        //     StorageConfig::S3{bucket, prefix} => {
+        //         S3System {
+        //             bucket: bucket,
+        //             prefix: prefix,
+        //             client,
+        //             runtime: Runtime,
+        //         }
+        //     }
     }
 
     pub fn build_fs(&self) -> FileSystem {

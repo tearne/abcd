@@ -1,4 +1,4 @@
-use aws_sdk_s3::error::{GetObjectAclError, ListObjectsV2Error};
+use aws_sdk_s3::error::GetObjectAclError;
 use aws_sdk_s3::{Client, SdkError, ByteStream};
 use aws_sdk_s3::model::{Object, ObjectCannedAcl};
 use aws_sdk_s3::output::{GetObjectOutput, PutObjectOutput, ListObjectsV2Output};
@@ -12,7 +12,7 @@ use tokio::runtime::Runtime;
 
 use super::Storage;
 use crate::error::{ABCDError, ABCDResult};
-use crate::{Generation, Particle, Population};
+use crate::{Generation, Particle};
 use tokio;
 use uuid::Uuid;
 
@@ -39,25 +39,21 @@ impl S3System {
                 .map_err(|e|e.into())
         };
 
-        let c_token = None;
+        let mut c_token = None;
         loop {
             let list_output = next_page(c_token)?;
             if let Some(mut items) = list_output.contents {
                 acc.append(&mut items);
             }
-            match list_output.continuation_token {
-                Some(token) => {
-                    todo!()
-                },
-                None => break,
-            }
+            
+            c_token = list_output.continuation_token;
+            if c_token.is_none() { break; }
         }
 
         Ok(acc)
     }
 
-    //TODO rename ...in_active_gen...
-    fn get_particle_files_in_current_gen_folder(&self) -> ABCDResult<Vec<Object>> {
+    fn get_particle_files_in_active_gen(&self) -> ABCDResult<Vec<Object>> {
         let gen_prefix = {
             let gen_no = self.check_active_gen().unwrap_or(1);
             let gen_dir = format!("gen_{:03}", gen_no);
@@ -171,7 +167,7 @@ impl Storage for S3System {
     }
 
     fn num_particles_available(&self) -> ABCDResult<u32> {
-        let files_in_folder = self.get_particle_files_in_current_gen_folder();
+        let files_in_folder = self.get_particle_files_in_active_gen();
         match files_in_folder {
             // Err(_) if self.check_active_gen().ok() == Some(1) => Ok(0),
             Ok(files) => Ok(files.len().try_into()?), //TODO read dir numbers & take max
@@ -184,7 +180,7 @@ impl Storage for S3System {
         P: DeserializeOwned,
     {
         let object_names = self
-            .get_particle_files_in_current_gen_folder()?
+            .get_particle_files_in_active_gen()?
             .into_iter()
             .map(|t| t.key)
             .collect::<Option<Vec<String>>>()
@@ -209,11 +205,10 @@ impl Storage for S3System {
 
     fn save_new_gen<P: Serialize>(
         &self,
-        pop: &Population<P>,
-        generation_number: u16,
+        gen: &Generation<P>
     ) -> ABCDResult<()> {
-        let gen_dir = format!("gen_{:03}", generation_number);
-        let object_name = format!("gen_{:03}.json", generation_number);
+        let gen_dir = format!("gen_{:03}", gen.gen_number);
+        let object_name = format!("gen_{:03}.json", gen.gen_number);
         let prefix_cloned = self.prefix.clone();
         let object_path = format!("{}/{}/{}", prefix_cloned, gen_dir, object_name);
         
@@ -232,7 +227,7 @@ impl Storage for S3System {
                 //This is good, means we're not writing over existing gen
                 let request = self.put_object_future(
                     &object_path,
-                    &serde_json::to_string_pretty(pop)?
+                    &serde_json::to_string_pretty(gen)?
                 );
                 self.runtime.block_on(request)?;
                 Ok(())
@@ -250,323 +245,263 @@ impl Storage for S3System {
 
 #[cfg(test)]
 mod tests {
-//     use rusoto_core::Region;
-//     use rusoto_s3::DeleteObjectRequest;
-//     use serde::{Deserialize, Serialize};
-//     use serde_json::Value;
-//     use std::io::Read;
+    use aws_sdk_s3::{Region, model::{Delete, ObjectIdentifier}};
+    use futures::TryStreamExt;
+    use serde_json::Value;
 
-//     use crate::etc::config::Config;
+    use crate::{etc::config::Config, storage::test_helper::{make_dummy_generation, DummyParams}};
 
-//     use super::*;
+    use super::*;
 
-//     struct TmpBucketPrefix{
-//         bucket: String,
-//         prefix: String,
-//         delete_on_drop: bool,
-//         s3_client: S3Client,
-//         runtime: Runtime,
-//     }
-//     impl TmpBucketPrefix {
-//         pub fn new(bucket: &str, prefix: &str, delete_on_drop: bool) -> Self {
-//             let s3_client = S3Client::new(Region::EuWest1);
-           
-//             TmpBucketPrefix{
-//                 bucket: bucket.into(),
-//                 prefix: prefix.into(),
-//                 delete_on_drop,
-//                 s3_client: S3Client::new(Region::EuWest1),
-//                 runtime: Runtime::new().unwrap(),
-//             }
-//         }
-//     }
-//     impl Drop for TmpBucketPrefix {
-//         fn drop(&mut self) {
-//             if self.delete_on_drop {
+    struct TestStorage{
+        bucket: String,
+        prefix: String,
+        delete_on_drop: bool,
+        client: Client,
+        runtime: Runtime,
+    }
+    impl TestStorage {
+        pub fn new(bucket: &str, prefix: &str, delete_on_drop: bool) -> Self {
+            let runtime = Runtime::new().unwrap();
 
-//                 let list_request_fut = self.s3_client.list_objects_v2(ListObjectsV2Request {
-//                     bucket: self.bucket.clone(),
-//                     prefix: Some(self.prefix.clone()),
-//                     ..Default::default()
-//                 });
+            let config = runtime.block_on(
+                aws_config::from_env().region(Region::new("eu-west-1")).load()
+            );
+            let client = Client::new(&config);
+
+            TestStorage{
+                bucket: bucket.into(),
+                prefix: prefix.into(),
+                delete_on_drop,
+                client,
+                runtime,
+            }
+        }
+
+        fn load_object(&self, key: &str) -> String {
+            self.runtime.block_on(async{
+                let bytes = self.client
+                    .get_object()
+                    .bucket(&self.bucket)
+                    .key(key)
+                    .send()
+                    .await
+                    .unwrap()
+                    .body
+                    .try_next()
+                    .await
+                    .unwrap()
+                    .unwrap();
     
-//                 let fut = list_request_fut.map(|response| {
-//                     response.unwrap().contents.unwrap()
-//                 });
-//                 let bucket_prefix_contents = self.runtime.block_on(fut);
-//                 println!("Stuff to clean up: {:?}", &bucket_prefix_contents);
+                std::str::from_utf8(&bytes).unwrap().into()
+            })
+        }
+
+        fn load_particle(&self, key: &str) -> Particle<DummyParams> {
+            let string = self.load_object(key);
+            serde_json::from_str(&string).unwrap()
+        }
+    }
+    impl Drop for TestStorage {
+        fn drop(&mut self) {
+            if self.delete_on_drop {
+
+                self.runtime.block_on(async {
+                    let object_identifiers = self.client
+                        .list_objects_v2()
+                        .bucket(&self.bucket)
+                        .prefix(&self.prefix)
+                        .send()
+                        .map(|response| {
+                            response.unwrap().contents.unwrap()
+                        })
+                        .await
+                        .into_iter()
+                        .map(|o|{
+                            ObjectIdentifier::builder().set_key(o.key).build()
+                        })
+                        .collect();
+                        
+                    println!("Stuff to clean up: {:?}", &object_identifiers);
     
-//                 if !bucket_prefix_contents.is_empty() {
-//                     let items = bucket_prefix_contents.iter();
-//                     items.for_each(|key| {
-//                         let delete_object_req = DeleteObjectRequest {
-//                             bucket: self.bucket.clone(),
-//                             key: key.key.clone().unwrap(),
-//                             ..Default::default()
-//                         };
-//                         self.runtime.block_on(self.s3_client.delete_object(delete_object_req)).unwrap();
-//                         println!("Cleaned up: {:?}", key);
-//                     });
-//                 }
-//             }
-//         }
-//     }
+                    self.client
+                        .delete_objects()
+                        .bucket(&self.bucket)
+                        .delete(Delete::builder().set_objects(Some(object_identifiers)).build())
+                        .send()
+                        .await
+                        .unwrap();
 
-//     #[derive(Serialize, Deserialize, Debug, PartialEq)]
-//     struct DummyParams {
-//         a: u16,
-//         b: f32,
-//     }
-//     impl DummyParams {
-//         pub fn new(a: u16, b: f32) -> Self {
-//             DummyParams { a, b }
-//         }
-//     }
+                    let remaining = self.client
+                        .list_objects_v2()
+                        .bucket(&self.bucket)
+                        .prefix(&self.prefix)
+                        .send()
+                        .await
+                        .unwrap();
 
-//     fn storage(prefix: String) -> S3System {
-//         let path = crate::test_helper::local_test_file_path(
-//             "resources/test/config_test.toml");
-//         let storage_config = Config::from_path(path).storage;
-//         let mut storage_system = storage_config.build_s3();
+                    match remaining.key_count {
+                        0 => (),
+                        _ => panic!("Failed to delete all objects")
+                    };
+                })
+            }
+        }
+    }
 
-//         //overried prefix for our test
-//         storage_system.prefix = prefix;
-//         storage_system
-//     }
+    fn storage(prefix: String) -> S3System {
+        let path = crate::test_helper::local_test_file_path(
+            "resources/test/config_test.toml");
+        let storage_config = Config::from_path(path).storage;
+        let mut storage_system = storage_config.build_s3();
 
-//     fn make_dummy_population() -> Population<DummyParams> {
-//         let particle_1 = Particle {
-//             parameters: DummyParams::new(10, 20.),
-//             scores: vec![1000.0, 2000.0],
-//             weight: 0.234,
-//         };
-
-//         let particle_2 = Particle {
-//             parameters: DummyParams::new(30, 40.),
-//             scores: vec![3000.0, 4000.0],
-//             weight: 0.567,
-//         };
-
-//         Population {
-//             tolerance: 0.1234,
-//             acceptance: 0.7,
-//             normalised_particles: vec![particle_1, particle_2],
-//         }
-//     }
-
-//     fn load_particle_file(particle_file_name: String) -> Particle<DummyParams> {
-//         let s3_client = S3Client::new(Region::EuWest1);
-//         //let storage = storage("s3-ranch-007".to_string(),"save_particle".to_string(),s3_client);
-//         let storage = storage(
-//             //TODO
-//             /*"s3-ranch-007".to_string(),*/ "example".to_string()
-//         );
-//         //let particle_file_dir = storage.prefix.clone();
-//         //let filename =  format!("{}/{}", particle_file_dir,particle_file_name);
-//         let bucket_cloned = storage.bucket.clone();
-//         let get_obj_req = GetObjectRequest {
-//             bucket: bucket_cloned,
-//             key: particle_file_name.to_owned(),
-//             ..Default::default()
-//         };
-//         let get_req = storage.s3_client.get_object(get_obj_req);
-//         let mut response = storage.runtime.block_on(get_req).unwrap();
-//         let stream = response.body.take().unwrap();
-//         let mut string: String = String::new();
-//         let _ = stream.into_blocking_read().read_to_string(&mut string);
-//         println!(" ========> {}", string);
-//         let parsed: Particle<DummyParams> = serde_json::from_str(&string).unwrap();
-//         parsed
-//     }
-
-//     fn load_object(bucket: &str, key: &str) -> String {
-//         //     let gen_file_dir = format!("gen_{:03}", gen_number);
-//         //     let gen_file_name = format!("gen_{:03}.json", gen_number);
-//         //     let s3_client = S3Client::new(Region::EuWest1);
-//         //     let storage = storage(
-//         //          prefix.to_string(),
-//         //         s3_client,
-//         //     );
-//         //     // let separator = "/".to_string();
-//         //     let prefix_cloned = storage.prefix.clone();
-//         //     let filename = format!(
-//         //         "{}/{}/{}",
-//         //         prefix_cloned, gen_file_dir, gen_file_name
-//         //     );
-//         //     let bucket_cloned = storage.bucket.clone();
-//         //     println!("Requesting {}", filename);
-//         // let get_req = GetObjectRequest {
-//         //     bucket: bucket.into(),
-//         //     key: key.into(),
-//         //     ..Default::default()
-//         // };
-//         // println!("{:?}", &get_obj_req);
-
-//         let s3_client = S3Client::new(Region::EuWest1);
-//         let request = s3_client
-//             .get_object(GetObjectRequest {
-//                 bucket: bucket.into(),
-//                 key: key.into(),
-//                 ..Default::default()
-//             })
-//             .then(S3System::read_to_string);
-//         tokio::runtime::Runtime::new()
-//             .unwrap()
-//             .block_on(request)
-//             .unwrap()
-//     }
-
-//     // #[test]
-//     // fn test_check_initial_active_gen() {
-//     //     let full_path = manifest_dir().join("resources/test/fs/empty");
-//     //     let storage = storage(&full_path);
-//     //     assert_eq!(1, storage.check_active_gen().unwrap());
-//     // }
-
-//     // #[test
-//     #[test]
-//     fn test_check_active_gen() {
-//         let s3_client = S3Client::new(Region::EuWest1);
-//         let storage = storage(
-//             /*"s3-ranch-007".to_string(),*/ "example/".to_string(),
-//         );
-
-//         assert_eq!(3, storage.check_active_gen().unwrap());
-//     }
-
-//     #[test]
-//     fn test_retrieve_previous_gen() {
-//         let gen_number = 3;
-//         let expected = Generation {
-//             pop: make_dummy_population(),
-//             gen_number,
-//         };
-//         let s3_client = S3Client::new(Region::EuWest1);
-//         //TODO call make storage
-//         let storage = storage("example".to_string());
-
-//         let result = storage.retrieve_previous_gen::<DummyParams>();
-//         let result = storage
-//             .retrieve_previous_gen::<DummyParams>()
-//             .expect(&format!("{:?}", result));
-
-//         assert_eq!(expected, result);
-//     }
-
-//     #[test]
-//     fn test_save_particle() {
-//         let s3_client = S3Client::new(Region::EuWest1);
-//         let storage = storage("save_particle".to_string());
-//         let tmp_prefix = TmpBucketPrefix::new(&storage.bucket, "save_particle", true);
-
-//         let p1 = DummyParams::new(1, 2.);
-//         let w1 = Particle {
-//             parameters: p1,
-//             scores: vec![100.0, 200.0],
-//             weight: 1.234,
-//         };
-
-//         // TODO fix the async problem like this:
-//         // https://github.com/hyperium/hyper/issues/2112
-//         // or rusoto you can create a new client https://docs.rs/rusoto_core/0.43.0/rusoto_core/request/struct.HttpClient.html
-//         // from here and then pass that into the specific service's constructor. This will avoid using the lazy_static client.
-//         let saved_1 = storage.save_particle(&w1).unwrap();
-//         let loaded: Particle<DummyParams> = load_particle_file(saved_1);
-
-//         assert_eq!(w1, loaded);
-//         //If possible delete file that has just been saved - as it screws up later number of particles test - maybe implement temp dir in bucket
-//     }
-
-//     // #[test]
-//     // fn test_no_particle_files_initially() {
-//     //     let full_path = manifest_dir().join("resources/test/fs/empty/");
-//     //     let storage = storage(&full_path);
-//     //     assert_eq!(0,storage.num_particles_available().unwrap())
-//     // }
-
-//     #[test]
-//     fn test_number_particle_files() {
-//         let storage = storage("example".to_string());
-//         assert_eq!(2, storage.num_particles_available().unwrap())
-//     }
-
-//     #[test]
-//     fn test_retrieve_particle_files() {
-//         let storage = storage("example".to_string());
-
-//         let mut expected = {
-//             let w1 = Particle {
-//                 parameters: DummyParams::new(1, 2.),
-//                 scores: vec![100.0, 200.0],
-//                 weight: 1.234,
-//             };
-
-//             let w2 = Particle {
-//                 parameters: DummyParams::new(3, 4.),
-//                 scores: vec![300.0, 400.0],
-//                 weight: 1.567,
-//             };
-
-//             vec![w1, w2]
-//         };
-
-//         let mut result: Vec<Particle<DummyParams>> = storage.retrieve_all_particles().unwrap();
-
-//         //Sort by weight for easy comparison
-//         expected.sort_by(|a, b| a.weight.partial_cmp(&b.weight).unwrap());
-//         result.sort_by(|a, b| a.weight.partial_cmp(&b.weight).unwrap());
-
-//         assert_eq!(expected, result);
-//     }
-
-//     #[test]
-//     fn save_and_load_generation() {
-//         let gen_number = 3;
-//         let dummy_population = make_dummy_population();
-
-//         let storage = storage("save_generation".to_string());
-//         let tmp_prefix = TmpBucketPrefix::new(&storage.bucket, "save_generation", true); //Clears bucket if anything there
-        
-//         storage
-//             .save_new_gen(&dummy_population, 3)
-//             .expect("Expected successful save");
-
-//         let expected: Value = serde_json::to_value(Generation {
-//             pop: dummy_population,
-//             gen_number,
-//         })
-//         .unwrap();
-
-//         let actual: Value = serde_json::from_str(&load_object(
-//             &storage.bucket,
-//             &format!("gen_{:03}/gen_{:03}.json", gen_number, gen_number),
-//         ))
-//         .unwrap();
-
-//         assert_eq!(expected, actual);
-//     }
+        //overried prefix for our test
+        storage_system.prefix = prefix;
+        storage_system
+    }
 
     // #[test]
-    // fn dont_save_over_existing_gen_file(){
-    //     let expected = make_dummy_generation(3);
-    //     let s3_client = S3Client::new(Region::EuWest1);
-    //     let tmp_bucket = TmpBucketPrefix::new("save_generation"); //Clear bucket if anything there
-    //     let storage = storage("save_generation".to_string(), s3_client);
-
-    //     //1. Save an dummy gen_003 file, representing file already save by another node
-    //     storage.save_new_gen(make_dummy_generation(3)).expect("Expected successful save");
-
-    //     //2. Try to save another gen over it, pretending we didn't notice the other node save gen before us
-    //     let result = storage.save_new_gen(make_dummy_generation(3)).expect("Expected successful save");
-
-    //     //3. Test that the original file save by other node is intact and we didn't panic.
-    //     let contents = std::fs::read_to_string(tmp_dir.0.join("gen_003").join("gen_003.json")).unwrap();
-    //     assert_eq!("placeholder file", contents);
-
-    //     //4. Test that Result is Err::GenAlreadyExists()
-    //     match result.unwrap_err(){
-    //         Error::GenAlreadySaved(_) => (),
-    //         other_error => panic!("Wrong error type: {}", other_error),
-    //     };
+    // fn test_check_initial_active_gen() {
+    //     let full_path = manifest_dir().join("resources/test/fs/empty");
+    //     let storage = storage(&full_path);
+    //     assert_eq!(1, storage.check_active_gen().unwrap());
     // }
+
+    // #[test
+    #[test]
+    fn test_check_active_gen() {
+        let storage = storage("example/".into());
+        assert_eq!(3, storage.check_active_gen().unwrap());
+    }
+
+    #[test]
+    fn test_retrieve_previous_gen() {
+        let gen_number = 3;
+        let expected = make_dummy_generation(gen_number, 0.3);
+        let storage = storage("example".into());
+
+        let result = storage
+            .retrieve_previous_gen::<DummyParams>()
+            .unwrap();
+
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn test_save_particle() {
+        // let s3_client = S3Client::new(Region::EuWest1);
+        let storage = storage("save_particle".into());
+        let test_storage = TestStorage::new(&storage.bucket, "save_particle", true);
+
+        let p1 = DummyParams::new(1, 2.);
+        let w1 = Particle {
+            parameters: p1,
+            scores: vec![100.0, 200.0],
+            weight: 1.234,
+        };
+
+        // TODO fix the async problem like this:
+        // https://github.com/hyperium/hyper/issues/2112
+        // or rusoto you can create a new client https://docs.rs/rusoto_core/0.43.0/rusoto_core/request/struct.HttpClient.html
+        // from here and then pass that into the specific service's constructor. This will avoid using the lazy_static client.
+        let saved_1 = storage.save_particle(&w1).unwrap();
+        let loaded: Particle<DummyParams> = test_storage.load_particle(&saved_1);
+
+        assert_eq!(w1, loaded);
+        //If possible delete file that has just been saved - as it screws up later number of particles test - maybe implement temp dir in bucket
+    }
+
+    // #[test]
+    // fn test_no_particle_files_initially() {
+    //     let full_path = manifest_dir().join("resources/test/fs/empty/");
+    //     let storage = storage(&full_path);
+    //     assert_eq!(0,storage.num_particles_available().unwrap())
+    // }
+
+    #[test]
+    fn test_number_particle_files() {
+        let storage = storage("example".to_string());
+        assert_eq!(2, storage.num_particles_available().unwrap())
+    }
+
+    #[test]
+    fn test_retrieve_particle_files() {
+        let storage = storage("example".to_string());
+
+        let mut expected = {
+            let w1 = Particle {
+                parameters: DummyParams::new(1, 2.),
+                scores: vec![100.0, 200.0],
+                weight: 1.234,
+            };
+
+            let w2 = Particle {
+                parameters: DummyParams::new(3, 4.),
+                scores: vec![300.0, 400.0],
+                weight: 1.567,
+            };
+
+            vec![w1, w2]
+        };
+
+        let mut result: Vec<Particle<DummyParams>> = storage.retrieve_all_particles().unwrap();
+
+        //Sort by weight for easy comparison
+        expected.sort_by(|a, b| a.weight.partial_cmp(&b.weight).unwrap());
+        result.sort_by(|a, b| a.weight.partial_cmp(&b.weight).unwrap());
+
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn save_and_load_generation() {
+        let gen_number = 3;
+        let dummy_generation = make_dummy_generation(gen_number, 0.3);
+
+        let storage = storage("save_generation".to_string());
+        let test_storage = TestStorage::new(&storage.bucket, "save_generation", true); //Clears bucket if anything there
+        
+        storage
+            .save_new_gen(&dummy_generation)
+            .expect("Expected successful save");
+
+        let expected: Value = serde_json::to_value(&dummy_generation).unwrap();
+
+        let actual: Value = serde_json::from_str(
+                &test_storage.load_object(
+                    &format!("gen_{:03}/gen_{:03}.json", gen_number, gen_number)
+                )
+            )
+            .unwrap();
+
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn dont_save_over_existing_gen_file(){
+        let gen_number = 4;
+        
+        let dummy_gen_1 = make_dummy_generation(gen_number, 0.3);
+        let dummy_gen_2 = make_dummy_generation(gen_number, 0.4);
+        
+        let storage = storage("save_generation".into());
+        let test_storage = TestStorage::new(&storage.bucket, "save_generation", true);
+
+        //1. Save an dummy gen_003 file, representing file already save by another node
+        storage.save_new_gen(&dummy_gen_1).expect("Expected successful save");
+
+        //2. Try to save another gen over it, pretending we didn't notice the other node save gen before us
+        let outcome = storage.save_new_gen(&dummy_gen_2);
+        match outcome {
+            Err(ABCDError::GenAlreadySaved(_)) => (),
+            other => panic!("Expected error, got: {:?}", other)
+        };
+
+        //3. Test that the original file save by other node is intact and we didn't panic.
+        let loaded = {
+            let string = test_storage.load_object("gen_003/gen_003.json");
+            serde_json::from_str(&string).unwrap()
+        };
+        assert_eq!(dummy_gen_1, loaded);
+    }
 }

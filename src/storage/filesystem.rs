@@ -135,15 +135,14 @@ impl Storage for FileSystem {
 
     fn save_new_gen<P: Serialize>(
         &self,
-        g: &Population<P>,
-        generation_number: u16,
+        gen: &Generation<P>
     ) -> ABCDResult<()> {
-        let gen_dir = self.base_path.join(format!("gen_{:03}", generation_number));
-        let file_path = gen_dir.join(format!("gen_{:03}.json", generation_number));
+        let gen_dir = self.base_path.join(format!("gen_{:03}", gen.gen_number));
+        let file_path = gen_dir.join(format!("gen_{:03}.json", gen.gen_number));
 
         match file_path.exists() {
             false => {
-                let serialised_gen = serde_json::to_string_pretty(&g);
+                let serialised_gen = serde_json::to_string_pretty(&gen);
                 std::fs::write(&file_path, serialised_gen?)?;
                 Ok(())
             }
@@ -161,7 +160,7 @@ mod tests {
     use serde_json::Value;
     use std::{path::{Path, PathBuf}, io::ErrorKind};
 
-    use crate::error::ABCDError;
+    use crate::{error::ABCDError, storage::test_helper::make_dummy_generation};
 
     use super::*;
 
@@ -375,34 +374,18 @@ mod tests {
         let tmp_dir = TmpDir::new("save_generation", true);
         let instance = FileSystem::new(tmp_dir.path.clone());
 
-        let pop = make_dummy_population();
+        let gen_number = 3;
+        let gen_acceptance = 0.3;
+        let gen = make_dummy_generation(gen_number, gen_acceptance);
         std::fs::create_dir(instance.base_path.join("gen_003"))
             .expect("Expected successful dir creation");
 
         instance
-            .save_new_gen(&pop, 3)
+            .save_new_gen(&gen)
             .expect("Expected successful save");
 
-        let expected = serde_json::json!({
-            "generation_number": 3,
-            "tolerance": 0.1234,
-            "acceptance": 0.7,
-            "particles": [
-                {
-                    "parameters" : {
-                        "a": 10, "b": 20.0
-                    },
-                    "scores": [1000.0, 2000.0],
-                    "weight": 0.234
-                },{
-                    "parameters" : {
-                        "a": 30, "b": 40.0
-                    },
-                    "scores": [3000.0, 4000.0],
-                    "weight": 0.567
-                }
-            ]
-        });
+
+        let expected = serde_json::to_string_pretty(&gen).unwrap();
 
         let actual = {
             let file = File::open(&tmp_dir.path.join("gen_003").join("gen_003.json")).unwrap();
@@ -419,29 +402,32 @@ mod tests {
         let tmp_dir = TmpDir::new("save_over_generation", true);
         let instance = FileSystem::new(tmp_dir.path.clone());
 
+        let gen_number = 4;
+        let dummy_gen_1 = make_dummy_generation(gen_number, 0.3);
+        let dummy_gen_2 = make_dummy_generation(gen_number, 0.4);
+
         //1. Save an dummy gen_003 file, representing file already save by another node
         std::fs::create_dir(instance.base_path.join("gen_003"))
             .expect("Expected successful dir creation");
         std::fs::write(
             tmp_dir.path.join("gen_003").join("gen_003.json"),
-            "placeholder file",
+            serde_json::to_string_pretty(&dummy_gen_1).unwrap(),
         )
         .unwrap();
 
         //2. Try to save another gen over it, pretending we didn't notice the other node save gen before us
-        let pop = make_dummy_population();
-        let result = instance.save_new_gen(&pop, 3);
-
-        //3. Test that the original file save by other node is intact and we didn't panic.
-        let contents =
-            std::fs::read_to_string(tmp_dir.path.join("gen_003").join("gen_003.json")).unwrap();
-        assert_eq!("placeholder file", contents);
-
-        //4. Test that Result is Error: GenAlreadySaved
-        match result {
+        let outcome = instance.save_new_gen(&dummy_gen_2);
+        match outcome {
             Ok(_) => panic!("Expected error"),
             Err(ABCDError::GenAlreadySaved(_)) => (),
             Err(e) => panic!("Wrong error, got: {}", e),
         }
+
+        //3. Test that the original file save by other node is intact.
+        let loaded = {
+            let string = std::fs::read_to_string(tmp_dir.path.join("gen_003").join("gen_003.json")).unwrap();
+            serde_json::from_str(&string).unwrap()
+        };
+        assert_eq!(dummy_gen_1, loaded);
     }
 }
