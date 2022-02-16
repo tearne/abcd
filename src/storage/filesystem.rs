@@ -398,7 +398,30 @@ mod tests {
             .expect("Expected successful save");
 
 
-        let expected = serde_json::to_string_pretty(&gen).unwrap();
+     //   let expected = serde_json::to_string_pretty(&gen).unwrap(); //Doesn't seem to compare will when prettyified
+
+        let expected = serde_json::json!({
+            "gen_number": 3,
+            "pop": {
+            "tolerance": 0.1234,
+            "acceptance": 0.3,
+            "normalised_particles": [
+                {
+                    "parameters" : {
+                        "a": 10, "b": 20.0
+                    },
+                    "scores": [1000.0, 2000.0],
+                    "weight": 0.234
+                },{
+                    "parameters" : {
+                        "a": 30, "b": 40.0
+                    },
+                    "scores": [3000.0, 4000.0],
+                    "weight": 0.567
+                }
+            ]
+            }
+        });
 
         let actual = {
             let file = File::open(&tmp_dir.path.join("gen_003").join("gen_003.json")).unwrap();
@@ -420,20 +443,26 @@ mod tests {
         let dummy_gen_2 = make_dummy_generation(gen_number, 0.4);
 
         //1. Save an dummy gen_003 file, representing file already save by another node
-        std::fs::create_dir(instance.base_path.join("gen_003"))
-            .expect("Expected successful dir creation");
-        std::fs::write(
-            tmp_dir.path.join("gen_003").join("gen_003.json"),
-            serde_json::to_string_pretty(&dummy_gen_1).unwrap(),
-        )
-        .unwrap();
+        // std::fs::create_dir(instance.base_path.join("gen_003"))
+        //     .expect("Expected successful dir creation");
+        // std::fs::write(
+        //     tmp_dir.path.join("gen_003").join("gen_003.json"),
+        //     serde_json::to_string_pretty(&dummy_gen_1).unwrap(),
+        // )
+        // .unwrap();
+        let outcome1 = instance.save_new_gen(&dummy_gen_1);
+        match outcome1 {
+            Ok(_) => (),
+            Err(ABCDError::GenAlreadySaved(_)) => (),
+            Err(e) => panic!("Wrong error, got: {}", e), //Note seems to be deleted at this point?
+        }
 
         //2. Try to save another gen over it, pretending we didn't notice the other node save gen before us
         let outcome = instance.save_new_gen(&dummy_gen_2);
         match outcome {
             Ok(_) => panic!("Expected error"),
             Err(ABCDError::GenAlreadySaved(_)) => (),
-            Err(e) => panic!("Wrong error, got: {}", e),
+            Err(e) => panic!("Wrong error, got: {}", e), //Note seems to be deleted at this point?
         }
 
         //3. Test that the original file save by other node is intact.
