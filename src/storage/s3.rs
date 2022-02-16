@@ -23,7 +23,7 @@ pub struct S3System {
     runtime: Runtime,
 }
 impl S3System {
-    pub fn new(bucket: &str, prefix: &str) -> Self {
+    pub fn new(bucket: String, prefix: String) -> Self {
         let runtime = Runtime::new().unwrap();
         let client = {
             let config = runtime.block_on(
@@ -33,8 +33,8 @@ impl S3System {
         };
 
         S3System {
-            bucket: bucket.into(),
-            prefix: prefix.into(),
+            bucket,
+            prefix,
             client,
             runtime,
         }

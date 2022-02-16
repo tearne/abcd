@@ -50,28 +50,8 @@ impl Config {
             .unwrap_or_else(|e| panic!("Failed to load config from {:?}: {}", config_path, e));
         log::info!("Loading str: {:#?}", str);
         let config: Config = toml::from_str(&str).unwrap();
+
         log::info!("Loading config: {:#?}", config);
         config
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::Config;
-    use crate::test_helper::local_test_file_path;
-
-    #[test]
-    fn load_with_env_var_override() {
-        envmnt::set("ABCDBucket", "s3://my-env-var-bucket");
-
-        let path = local_test_file_path("resources/test/config_test.toml");
-        let config = Config::from_path(path);
-
-        let bucket = match config.storage {
-            crate::storage::config::StorageConfig::FileSystem { base_path:_ } => panic!("expected S3 config"),
-            crate::storage::config::StorageConfig::S3 { bucket, prefix:_ } => bucket,
-        };
-
-        assert_eq!("s3://my-env-var-bucket", bucket);
     }
 }

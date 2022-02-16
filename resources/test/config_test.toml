@@ -1,13 +1,13 @@
 [storage]
-type = 'S3'
-bucket = 's3://some-bucket'
-prefix = 'myPrefix'
+type = "S3"
+bucket = "s3://${ABCDBucket}"
+prefix = "myPrefix"
 
-[job]
-num_generations = 10
-terminate_at_target_gen = false
-num_replicates = 10
-num_particles = 10000
+#[job]
+#num_generations = 10
+#terminate_at_target_gen = false
+#num_replicates = 10
+#num_particles = 10000
 
-[algorithm]
-tolerance_descent_percentile = 75
+#[algorithm]
+#tolerance_descent_percentile = 75
