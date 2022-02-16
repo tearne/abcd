@@ -1,8 +1,9 @@
 mod error;
 mod etc;
 mod storage;
+mod algorithm;
 
-use error::ABCDResult;
+use error::{ABCDResult, ABCDError};
 use etc::config::Config;
 use rand::distributions::WeightedIndex;
 use rand::prelude::*;
@@ -15,7 +16,7 @@ use storage::Storage;
 pub type Random = ThreadRng;
 
 pub trait Model {
-    type Parameters: DeserializeOwned + Debug;
+    type Parameters: Serialize + DeserializeOwned + Debug;
 
     fn prior_sample(&self, random: &Random) -> Self::Parameters; //TODO check density of sampled value is NOT 0
     fn prior_density(&self, p: &Self::Parameters) -> f64;
@@ -58,7 +59,11 @@ pub fn run<M: Model, S: Storage>(
     storage: S,
     random: &mut Random,
 ) -> ABCDResult<()> {
-    // do_first_gen(storage, model, config, random);
+    match do_first_gen(&storage, &model, &config, random){
+        Ok(_) => (),
+        Err(ABCDError::WasWorkingOnAnOldGeneration(_)) => println!("LOG ME"),
+        e => e? 
+    };
 
     // loop {
     //     let gen = do_next_gen(storage, model, config, random)?;
@@ -71,20 +76,48 @@ pub fn run<M: Model, S: Storage>(
 }
 
 
-fn do_first_gen<M: Model, S: Storage>(storage: S, model: M, config: Config, random: &mut Random){
-    // loop {
-    //     let p = model.prior_sample(random);//TODO are we meant to perturb?  Check with paper and Sampler
-    //     let scores: Option<Vec<f64>> = (0..config.job.num_replicates)
-    //         .map(|rep_idx| {
-    //             if storage.check_active_gen().ok()? != 0 {
-    //                 return Err(WasWorkingOnAnOldGeneration)
-    //             } else {
-    //                 // (B5a) run the model once to get a score
-    //                 Some(model.score(&p))
-    //             }
-    //         })
-    //         .collect();
-    // }
+fn do_first_gen<M: Model, S: Storage>(storage: &S, model: &M, config: &Config, random: &mut Random) -> ABCDResult<()> {
+    loop { //Particles loop
+        let parameters = model.prior_sample(random);//TODO are we meant to perturb?  Check with paper and Sampler
+        let scores: ABCDResult<Vec<f64>> = (0..config.job.num_replicates)
+            .map(|rep_idx| {
+                if storage.check_active_gen().unwrap() != 0 {
+                    Err(ABCDError::WasWorkingOnAnOldGeneration("bad".into()))
+                } else {
+                    // (B5a) run the model once to get a score
+                    Ok(model.score(&parameters))
+                }
+            })
+            .collect();
+        let scores = scores?;
+
+        // We now have a collection of scores for the particle
+        // (B5b) Calculate f^hat by calc'ing proportion less than tolerance
+        // (B6) Calculate not_normalised_weight for each particle from its f^hat (f^hat(p) * prior(p)) / denom)
+        let particle = algorithm::weigh_particle(scores, f64::MAX, model);
+        // let particle = Particle{
+        //     parameters,
+        //     scores,
+        //     weight,
+        // };
+
+        // Save the non_normalised particle to storage
+        storage.save_particle(&particle)?;
+
+        // Check if we now have the req'd num particles/reps, if so, break
+        if storage.num_particles_available()? >= config.job.num_particles {
+            // Load all the non_normalised particles
+            let particles: Vec<Particle<M::Parameters>> = storage.retrieve_all_particles()?;
+
+            // (B7) Normalise all the weights together
+            let generation = algorithm::normalise::<M>(particles, 1);
+
+            // Save generation to storage
+            storage.save_new_gen(&generation);
+
+            return Ok(())
+        }
+    }
 }
 
 fn do_next_gen<M: Model, S: Storage>(storage: S, model: M, config: Config, random: &mut Random) -> ABCDResult<u16> {
