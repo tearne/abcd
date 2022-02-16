@@ -35,7 +35,7 @@ impl FileSystem {
 
         let re = Regex::new(r#"^gen_(?P<gid>\d*)$"#)?;
 
-        let r = std::fs::read_dir(dir)?
+        let files = std::fs::read_dir(dir)?
             //TODO use filter_map
             // .map(|r| r.map_err(crate::error::Error::from))
             .filter(|entry| {
@@ -48,7 +48,13 @@ impl FileSystem {
             .filter_map(Result::ok)
             .collect::<Vec<DirEntry>>();
 
-        Ok(r)
+            if files.is_empty() {
+                Err(ABCDError::NoParticleFilesExists("No Particle files exist".into()))
+            } else {
+                Ok(files)
+            }
+
+        //Ok(r) //Maybe revert to this and remove lines to check for no particles - discuss!
     }
 }
 
@@ -299,42 +305,29 @@ mod tests {
     // - gen already exists
 
     #[test]
-    fn test_no_particle_files_exception() {
-        let full_path = manifest_dir().join("resources/test/fs/empty/");
+    fn test_no_particle_files_exception() { //TODO Is it not valid to have no particles at start of gen
+        let full_path = manifest_dir().join("resources/test/fs/emptyGen");
         let storage = FileSystem::new(full_path);
         let result = storage.num_particles_available();
-        let expected_message = "Failed to find max gen."; //Should this not be coming from num particles
+        let expected_message = "No Particle files exist"; //Should this not be coming from num particles
 
         match result {
             Ok(_) => panic!("Expected error"),
-            Err(ABCDError::Other(msg)) if msg == expected_message=> (),
+            Err(ABCDError::NoParticleFilesExists(msg)) if msg == expected_message=> (),
             Err(e) => panic!("Wrong error, got: {}", e),
         };
     }
 
     #[test]
-    // fn test_check_active_gen_exception_noGenZeroExists() {
-    //     let full_path = manifest_dir().join("resources/test/fs/empty/");
-    //     let storage = FileSystem::new(full_path);
-    //     let result = storage.check_active_gen();
-    //     let expected_message = "No Gen Zero Directory Exists";
-
-    //     match result {
-    //         Ok(_) => panic!("Expected error"),
-    //         Err(ABCDError::NoGenZeroDirExists(msg)) if msg == expected_message => (),
-    //         Err(e) => panic!("Wrong error, got: {}", e),
-    //     };
-    // }
-
-    fn test_check_active_gen_exception_GenZeroDoesExist() { //Actually turn this into test for active Gen = 0?
-        let full_path = manifest_dir().join("resources/test/fs/empty_WithGen0/");
+        fn test_check_active_gen_exception_GenZeroDoesNotExist() { //Actually turn this into test for active Gen = 0?
+        let full_path = manifest_dir().join("resources/test/fs/empty/");
         let storage = FileSystem::new(full_path);
         let result = storage.check_active_gen();
-        let expected_message = "Failed to find max gen.";
+        let expected_message = "No Gen Zero Directory Exists";
 
         match result {
             Ok(_) => panic!("Expected error"),
-            Err(ABCDError::Other(msg)) if msg == expected_message => (),
+            Err(ABCDError::NoGenZeroDirExists(msg)) if msg == expected_message => (),
             Err(e) => panic!("Wrong error, got: {}", e),
         };
     }

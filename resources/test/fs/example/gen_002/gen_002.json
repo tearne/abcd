@@ -1,8 +1,8 @@
 {
-    "generation_number": 2,
+    "pop": {
     "tolerance": 0.1234,
     "acceptance": 0.7,
-    "particles": [
+    "normalised_particles": [
         {
             "parameters" : {
                 "a": 10, "b": 20
@@ -16,5 +16,6 @@
             "scores": [3000, 4000],
             "weight": 0.567
         }
-    ]
+    ]},
+    "gen_number": 2
 }
