@@ -224,8 +224,8 @@ impl Storage for S3System {
         &self,
         gen: &Generation<P>
     ) -> ABCDResult<()> {
-        let gen_dir = format!("gen_{:03}", gen.gen_number);
-        let object_name = format!("gen_{:03}.json", gen.gen_number);
+        let gen_dir = format!("gen_{:03}", gen.number);
+        let object_name = format!("gen_{:03}.json", gen.number);
         let prefix_cloned = self.prefix.clone();
         let object_path = format!("{}/{}/{}", prefix_cloned, gen_dir, object_name);
         
