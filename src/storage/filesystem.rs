@@ -443,23 +443,18 @@ mod tests {
         let dummy_gen_2 = make_dummy_generation(gen_number, 0.4);
 
         //1. Save an dummy gen_003 file, representing file already save by another node
-        // std::fs::create_dir(instance.base_path.join("gen_003"))
-        //     .expect("Expected successful dir creation");
-        // std::fs::write(
-        //     tmp_dir.path.join("gen_003").join("gen_003.json"),
-        //     serde_json::to_string_pretty(&dummy_gen_1).unwrap(),
-        // )
-        // .unwrap();
+        std::fs::create_dir(instance.base_path.join("gen_004"))
+            .expect("Expected successful dir creation");
+            
         let outcome1 = instance.save_new_gen(&dummy_gen_1);
         match outcome1 {
             Ok(_) => (),
-            Err(ABCDError::GenAlreadySaved(_)) => (),
             Err(e) => panic!("Wrong error, got: {}", e), //Note seems to be deleted at this point?
         }
 
         //2. Try to save another gen over it, pretending we didn't notice the other node save gen before us
-        let outcome = instance.save_new_gen(&dummy_gen_2);
-        match outcome {
+        let outcome2 = instance.save_new_gen(&dummy_gen_2);
+        match outcome2 {
             Ok(_) => panic!("Expected error"),
             Err(ABCDError::GenAlreadySaved(_)) => (),
             Err(e) => panic!("Wrong error, got: {}", e), //Note seems to be deleted at this point?
@@ -467,7 +462,7 @@ mod tests {
 
         //3. Test that the original file save by other node is intact.
         let loaded = {
-            let string = std::fs::read_to_string(tmp_dir.path.join("gen_003").join("gen_003.json")).unwrap();
+            let string = std::fs::read_to_string(tmp_dir.path.join("gen_004").join("gen_004.json")).unwrap();
             serde_json::from_str(&string).unwrap()
         };
         assert_eq!(dummy_gen_1, loaded);
