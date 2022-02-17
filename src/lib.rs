@@ -120,38 +120,56 @@ fn do_first_gen<M: Model, S: Storage>(storage: &S, model: &M, config: &Config, r
     }
 }
 
-fn do_next_gen<M: Model, S: Storage>(storage: S, model: M, config: Config, random: &mut Random) -> ABCDResult<u16> {
-    // let gen = storage.retrieve_previous_gen()?;
+fn do_next_gen<M: Model, S: Storage>(storage: &S, model: &M, config: &Config, random: &mut Random) -> ABCDResult<()> {
+     let gen = storage.retrieve_previous_gen()?;
 
-    // loop {
-    //     // Particle loop
-    //     // TODO loop could go on forever?  Use some kind of timeout, or issue warning?
-    //     // (B3) sample a (fitting) parameter set from gen (perturb based on weights and kernel if sampling from generation)
-    //     // (B4) Check if prior probability is zero - if so sample again
-    //     let p = sample_and_perturb_with_support(&gen, &model, random);
+    loop {
+        // Particle loop
+        // TODO loop could go on forever?  Use some kind of timeout, or issue warning?
+        // (B3) sample a (fitting) parameter set from gen (perturb based on weights and kernel if sampling from generation)
+        // (B4) Check if prior probability is zero - if so sample again
+        let parameters = sample_and_perturb_with_support(&gen, model, random);
 
-    //     let scores: Option<Vec<f64>> = (0..config.job.num_replicates)
-    //         .map(|rep_idx| {
-    //             // Reps loop
-    //             // Check with the filesystem that we are still working on the gen,
-    //             // else return None, causing the loop to exit.
-    //             if storage.check_active_gen().ok()? != gen.gen_number {
-    //                 return Err(WasWorkingOnAnOldGeneration)
-    //             } else {
-    //                 // (B5a) run the model once to get a score
-    //                 Some(model.score(&p))
-    //             }
-    //         })
-    //         .collect();
+        let scores: ABCDResult<Vec<f64>>= (0..config.job.num_replicates)
+            .map(|rep_idx| {
+                // Reps loop
+                // Check with the filesystem that we are still working on the gen,
+                // else return None, causing the loop to exit.
+                if storage.check_active_gen().unwrap() != gen.gen_number {
+                    Err(ABCDError::WasWorkingOnAnOldGeneration("bad".into()))
+                } else {
+                    // (B5a) run the model once to get a score
+                    Ok(model.score(&parameters))
+                }
+            })
+            .collect();
+            let scores = scores?;
 
-    //     if let Some(scores) = scores {
-    //         // We now have a collection of scores for the particle
-    //         // (B5b) Calculate f^hat by calc'ing proportion less than tolerance
-    //         // (B6) Calculate not_normalised_weight for each particle from its f^hat (f^hat(p) * prior(p)) / denom)
-    //         // Save the non_normalised particle to storage
-    //         // Check if we now have the req'd num particles/reps, if so, break
-    //         todo!();
-    //         //weigh_and_save_new_scored_particle(scores);
+
+     //   if let Some(scores) = scores {
+            // We now have a collection of scores for the particle
+            // (B5b) Calculate f^hat by calc'ing proportion less than tolerance
+            // (B6) Calculate not_normalised_weight for each particle from its f^hat (f^hat(p) * prior(p)) / denom)
+            let particle = algorithm::weigh_particle(scores, f64::MAX, model);
+            // Save the non_normalised particle to storage
+            storage.save_particle(&particle)?;
+
+                    // Check if we now have the req'd num particles/reps, if so, break
+        if storage.num_particles_available()? >= config.job.num_particles {
+            // Load all the non_normalised particles
+            let particles: Vec<Particle<M::Parameters>> = storage.retrieve_all_particles()?;
+
+            // (B7) Normalise all the weights together
+            let generation = algorithm::normalise::<M>(particles, 1);
+
+            // Save generation to storage
+            storage.save_new_gen(&generation);
+
+            return Ok(()) //Should I be returning gen number here for outer loop?
+        }
+
+            // Check if we now have the req'd num particles/reps, if so, break
+            //weigh_and_save_new_scored_particle(scores);
     //         if storage.num_particles_available()? >= config.job.num_particles {
     //             // Load all the non_normalised particles
     //             // (B7) Normalise all the weights together
@@ -159,10 +177,10 @@ fn do_next_gen<M: Model, S: Storage>(storage: S, model: M, config: Config, rando
     //             let gen_number_flushed = todo!();// flush_entire_generation();
     //             return Ok(gen_number_flushed)
     //         }
-    //     }
-    // }
+    //   //  }
+    }
 
-    todo!()
+   // todo!()
 }
 
 fn sample_and_perturb_with_support<M>(
