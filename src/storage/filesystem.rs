@@ -48,13 +48,7 @@ impl FileSystem {
             .filter_map(Result::ok)
             .collect::<Vec<DirEntry>>();
 
-            if files.is_empty() {
-                Err(ABCDError::NoParticleFilesExists("No Particle files exist".into()))
-            } else {
-                Ok(files)
-            }
-
-        //Ok(r) //Maybe revert to this and remove lines to check for no particles - discuss!
+        Ok(files)
     }
 }
 
@@ -149,8 +143,8 @@ impl Storage for FileSystem {
         &self,
         gen: &Generation<P>
     ) -> ABCDResult<()> {
-        let gen_dir = self.base_path.join(format!("gen_{:03}", gen.gen_number));
-        let file_path = gen_dir.join(format!("gen_{:03}.json", gen.gen_number));
+        let gen_dir = self.base_path.join(format!("gen_{:03}", gen.number));
+        let file_path = gen_dir.join(format!("gen_{:03}.json", gen.number));
 
         match file_path.exists() {
             false => {
@@ -170,7 +164,7 @@ impl Storage for FileSystem {
 mod tests {
     use serde::{Deserialize, Serialize};
     use serde_json::Value;
-    use std::{path::{Path, PathBuf}, io::ErrorKind};
+    use std::{path::{Path, PathBuf}};
 
     use crate::{error::ABCDError, storage::test_helper::make_dummy_generation};
 
@@ -251,7 +245,7 @@ mod tests {
     #[test]
     fn test_retrieve_previous_gen() {
         let expected = Generation {
-            gen_number: 2,
+            number: 2,
             pop: make_dummy_population(),
         };
 
@@ -293,53 +287,33 @@ mod tests {
         assert_eq!(w1, loaded);
     }
 
-    //test_ask_question_of_empty_dir_exception
-    //  - num_particles_available
-    //  - retrieve_current
-    //  - check active gen
-    //  - ... others
-
     //expection if
     // - try to save gen but there's a higher number gen in there already
     // - gen already exists
 
     #[test]
-    fn test_no_particle_files_exception() { //TODO Is it not valid to have no particles at start of gen
-        let full_path = manifest_dir().join("resources/test/fs/emptyGen");
-        let storage = FileSystem::new(full_path);
-        let result = storage.num_working_particles();
-        let expected_message = "No Particle files exist"; //Should this not be coming from num particles
-
-        match result {
-            Ok(_) => panic!("Expected error"),
-            Err(ABCDError::NoParticleFilesExists(msg)) if msg == expected_message=> (),
-            Err(e) => panic!("Wrong error, got: {}", e),
-        };
-    }
-
-    #[test]
-    fn test_check_active_gen_exception_GenZeroDoesNotExist() { //Actually turn this into test for active Gen = 0?
+    fn test_exception_when_empty_folder() { //Actually turn this into test for active Gen = 0?
         let full_path = manifest_dir().join("resources/test/fs/empty/");
         let storage = FileSystem::new(full_path);
-        let result = storage.previous_gen_number();
-        let expected_message = "No Gen Zero Directory Exists";
 
-        match result {
+        let expected_message = "No Gen Zero Directory Exists";
+        
+        //TODO helper function to remove duplication?
+        match storage.previous_gen_number() {
             Ok(_) => panic!("Expected error"),
             Err(ABCDError::NoGenZeroDirExists(msg)) if msg == expected_message => (),
             Err(e) => panic!("Wrong error, got: {}", e),
         };
-    }
 
-    #[test]
-    fn test_retreive_current_gen_empty() {
-        let full_path = manifest_dir().join("resources/test/fs/empty/");
-        let storage = FileSystem::new(full_path);
-        let result = storage.load_previous_gen::<DummyParams>();
-
-        match result {
+        match storage.num_working_particles() {
             Ok(_) => panic!("Expected error"),
-            Err(ABCDError::Io(err)) if err.kind() == ErrorKind::NotFound => (),
+            Err(ABCDError::NoGenZeroDirExists(msg)) if msg == expected_message => (),
+            Err(e) => panic!("Wrong error, got: {}", e),
+        };
+
+        match storage.load_working_particles::<DummyParams>() {
+            Ok(_) => panic!("Expected error"),
+            Err(ABCDError::NoGenZeroDirExists(msg)) if msg == expected_message => (),
             Err(e) => panic!("Wrong error, got: {}", e),
         };
     }
@@ -442,23 +416,18 @@ mod tests {
         let dummy_gen_2 = make_dummy_generation(gen_number, 0.4);
 
         //1. Save an dummy gen_003 file, representing file already save by another node
-        // std::fs::create_dir(instance.base_path.join("gen_003"))
-        //     .expect("Expected successful dir creation");
-        // std::fs::write(
-        //     tmp_dir.path.join("gen_003").join("gen_003.json"),
-        //     serde_json::to_string_pretty(&dummy_gen_1).unwrap(),
-        // )
-        // .unwrap();
+        std::fs::create_dir(instance.base_path.join("gen_004"))
+            .expect("Expected successful dir creation");
+
         let outcome1 = instance.save_new_gen(&dummy_gen_1);
         match outcome1 {
             Ok(_) => (),
-            Err(ABCDError::GenAlreadySaved(_)) => (),
             Err(e) => panic!("Wrong error, got: {}", e), //Note seems to be deleted at this point?
         }
 
         //2. Try to save another gen over it, pretending we didn't notice the other node save gen before us
-        let outcome = instance.save_new_gen(&dummy_gen_2);
-        match outcome {
+        let outcome2 = instance.save_new_gen(&dummy_gen_2);
+        match outcome2 {
             Ok(_) => panic!("Expected error"),
             Err(ABCDError::GenAlreadySaved(_)) => (),
             Err(e) => panic!("Wrong error, got: {}", e), //Note seems to be deleted at this point?
@@ -466,7 +435,7 @@ mod tests {
 
         //3. Test that the original file save by other node is intact.
         let loaded = {
-            let string = std::fs::read_to_string(tmp_dir.path.join("gen_003").join("gen_003.json")).unwrap();
+            let string = std::fs::read_to_string(tmp_dir.path.join("gen_004").join("gen_004.json")).unwrap();
             serde_json::from_str(&string).unwrap()
         };
         assert_eq!(dummy_gen_1, loaded);

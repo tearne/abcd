@@ -68,7 +68,7 @@ mod test_helper {
 
         Generation {
             pop,
-            gen_number
+            number: gen_number
         }
     }
 }

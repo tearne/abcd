@@ -31,6 +31,13 @@ impl Model for MyModel {
     }
 
     fn score(&self, _p: &Self::Parameters) -> f64 {
+        // let parameter_args: Vec<String> = _p.to_args();
+        // // vec!["beta=0.23213123", "badger=123.23", ...]
+        // let out = Command::new("tbmi-run.sh")
+        //     .args(parameter_args)
+        //     .run()
+        //     .output()?...
+
         todo!()
     }
 }
