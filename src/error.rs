@@ -7,6 +7,7 @@ pub type ABCDResult<T> = std::result::Result<T, ABCDError>;
 
 #[derive(Debug)]
 pub enum ABCDError {
+    Configuration(String),
     Io(std::io::Error),
     Os(std::ffi::OsString),
     Parse(std::num::ParseIntError),
@@ -26,6 +27,7 @@ pub enum ABCDError {
 impl std::fmt::Display for ABCDError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            ABCDError::Configuration(ref msg) => write!(f, "{}", msg),
             ABCDError::Io(ref err) => err.fmt(f),
             ABCDError::Os(ref original) => {
                 f.write_fmt(format_args!("Failed to convert to string: {:?}", original))
@@ -77,12 +79,6 @@ impl From<regex::Error> for ABCDError {
         ABCDError::Regex(value)
     }
 }
-
-// impl<E: 'static + Error, R = Response> From<SdkError<E, R>> for ABCDError {
-//     fn from(value: SdkError<E,R>) -> Self {
-//         ABCDError::Other(value.to_string())
-//     }
-// }
 
 impl From<aws_sdk_s3::SdkError<aws_sdk_s3::error::GetObjectError>> for ABCDError {
     fn from(value: aws_sdk_s3::SdkError<aws_sdk_s3::error::GetObjectError>) -> Self {

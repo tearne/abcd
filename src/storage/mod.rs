@@ -9,11 +9,9 @@ use crate::{error::ABCDResult, Generation, Particle};
 use std::fmt::Debug;
 
 pub trait Storage {
-    //TODO rename get_...
-    fn check_active_gen(&self) -> ABCDResult<u16>;
+    fn previous_gen_number(&self) -> ABCDResult<u16>;
 
-    //TODO rename get_...
-    fn retrieve_previous_gen<P>(&self) -> ABCDResult<Generation<P>>
+    fn load_previous_gen<P>(&self) -> ABCDResult<Generation<P>>
     where
         P: DeserializeOwned + Debug;
 
@@ -21,10 +19,9 @@ pub trait Storage {
     where
         P: Serialize + Debug;
 
-    fn num_particles_available(&self) -> ABCDResult<u32>;
+    fn num_working_particles(&self) -> ABCDResult<u32>;
 
-    //TODO rename get_all_working_particles
-    fn retrieve_all_particles<P>(&self) -> ABCDResult<Vec<Particle<P>>>
+    fn load_working_particles<P>(&self) -> ABCDResult<Vec<Particle<P>>>
     where
         P: DeserializeOwned + Debug;
 

@@ -1,7 +1,7 @@
 [storage]
 type = "S3"
-bucket = "s3://${ABCDBucket}"
-prefix = "myPrefix"
+bucket = "${TEST_BUCKET}"
+prefix = "test_data"
 
 [job]
 num_generations = 10

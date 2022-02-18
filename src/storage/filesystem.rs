@@ -27,7 +27,7 @@ impl FileSystem {
     }
 
     fn get_particle_files_in_current_gen_folder(&self) -> ABCDResult<Vec<std::fs::DirEntry>> {
-        let gen_no = self.check_active_gen()?;
+        let gen_no = self.previous_gen_number()? + 1;
         println!("Active gen is {}", gen_no);
         let gen_dir = format!("gen_{:03}", gen_no);
         let dir = self.base_path.join(gen_dir);
@@ -59,7 +59,7 @@ impl FileSystem {
 }
 
 impl Storage for FileSystem {
-    fn check_active_gen(&self) -> ABCDResult<u16> {
+    fn previous_gen_number(&self) -> ABCDResult<u16> {
         let re = Regex::new(r#"^gen_(?P<gid>\d*)$"#)?;
 
         let gen_dirs: Vec<u16> = std::fs::read_dir(&self.base_path)?
@@ -93,12 +93,11 @@ impl Storage for FileSystem {
         }
     }
 
-    // fn retrieve_previous_gen<'de, P>(&self) -> Result<Generation<P>> where P: Deserialize<'de>;
-    fn retrieve_previous_gen<P>(&self) -> ABCDResult<Generation<P>>
+    fn load_previous_gen<P>(&self) -> ABCDResult<Generation<P>>
     where
         P: DeserializeOwned,
     {
-        let prev_gen_no = self.check_active_gen().unwrap_or(1) - 1;
+        let prev_gen_no = self.previous_gen_number()?;
         let previous_gen_dir = self.base_path.join(format!("gen_{:03}", prev_gen_no));
         let file_path = previous_gen_dir.join(format!("gen_{:03}.json", prev_gen_no));
         let file = File::open(file_path)?;
@@ -122,17 +121,17 @@ impl Storage for FileSystem {
         Ok(file_path.to_string_lossy().into_owned())
     }
 
-    fn num_particles_available(&self) -> ABCDResult<u32> {
+    fn num_working_particles(&self) -> ABCDResult<u32> {
         let files_in_folder = self.get_particle_files_in_current_gen_folder();
 
         match files_in_folder {
-            Err(_) if self.check_active_gen().ok() == Some(1) => Ok(0),
+            Err(_) if self.previous_gen_number().ok() == Some(0) => Ok(0),
             Ok(files) => Ok(files.len() as u32), //TODO read dir numbers & take max //TODO safer way to do cast - Ok(u16::try_from(file.len()))
             Err(e) => Err(e),
         }
     }
 
-    fn retrieve_all_particles<P: DeserializeOwned>(&self) -> ABCDResult<Vec<Particle<P>>> {
+    fn load_working_particles<P: DeserializeOwned>(&self) -> ABCDResult<Vec<Particle<P>>> {
         let particle_files = self.get_particle_files_in_current_gen_folder()?;
 
         let mut weighted_particles = Vec::new();
@@ -246,7 +245,7 @@ mod tests {
     fn test_check_active_gen() {
         let base_path = manifest_dir().join("resources/test/fs/example");
         let storage = FileSystem::new(base_path);
-        assert_eq!(3, storage.check_active_gen().unwrap());
+        assert_eq!(2, storage.previous_gen_number().unwrap());
     }
 
     #[test]
@@ -259,7 +258,7 @@ mod tests {
         let base_path = manifest_dir().join("resources/test/fs/example/");
         let instance = FileSystem::new(base_path);
 
-        let result = instance.retrieve_previous_gen::<DummyParams>().unwrap();
+        let result = instance.load_previous_gen::<DummyParams>().unwrap();
 
         assert_eq!(expected, result);
     }
@@ -308,7 +307,7 @@ mod tests {
     fn test_no_particle_files_exception() { //TODO Is it not valid to have no particles at start of gen
         let full_path = manifest_dir().join("resources/test/fs/emptyGen");
         let storage = FileSystem::new(full_path);
-        let result = storage.num_particles_available();
+        let result = storage.num_working_particles();
         let expected_message = "No Particle files exist"; //Should this not be coming from num particles
 
         match result {
@@ -319,10 +318,10 @@ mod tests {
     }
 
     #[test]
-        fn test_check_active_gen_exception_GenZeroDoesNotExist() { //Actually turn this into test for active Gen = 0?
+    fn test_check_active_gen_exception_GenZeroDoesNotExist() { //Actually turn this into test for active Gen = 0?
         let full_path = manifest_dir().join("resources/test/fs/empty/");
         let storage = FileSystem::new(full_path);
-        let result = storage.check_active_gen();
+        let result = storage.previous_gen_number();
         let expected_message = "No Gen Zero Directory Exists";
 
         match result {
@@ -336,7 +335,7 @@ mod tests {
     fn test_retreive_current_gen_empty() {
         let full_path = manifest_dir().join("resources/test/fs/empty/");
         let storage = FileSystem::new(full_path);
-        let result = storage.retrieve_previous_gen::<DummyParams>();
+        let result = storage.load_previous_gen::<DummyParams>();
 
         match result {
             Ok(_) => panic!("Expected error"),
@@ -349,7 +348,7 @@ mod tests {
     fn test_number_particle_files() {
         let full_path = manifest_dir().join("resources/test/fs/example/");
         let storage = FileSystem::new(full_path);
-        assert_eq!(2, storage.num_particles_available().unwrap())
+        assert_eq!(2, storage.num_working_particles().unwrap())
     }
 
     #[test]
@@ -373,7 +372,7 @@ mod tests {
             vec![w1, w2]
         };
 
-        let mut result: Vec<Particle<DummyParams>> = instance.retrieve_all_particles().unwrap();
+        let mut result: Vec<Particle<DummyParams>> = instance.load_working_particles().unwrap();
 
         //Sort by weight for easy comparison
         expected.sort_by(|a, b| a.weight.partial_cmp(&b.weight).unwrap());

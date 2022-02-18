@@ -81,7 +81,7 @@ fn do_first_gen<M: Model, S: Storage>(storage: &S, model: &M, config: &Config, r
         let parameters = model.prior_sample(random);//TODO are we meant to perturb?  Check with paper and Sampler
         let scores: ABCDResult<Vec<f64>> = (0..config.job.num_replicates)
             .map(|rep_idx| {
-                if storage.check_active_gen().unwrap() != 0 {
+                if storage.previous_gen_number().unwrap() != 0 {
                     Err(ABCDError::WasWorkingOnAnOldGeneration("bad".into()))
                 } else {
                     // (B5a) run the model once to get a score
@@ -105,9 +105,9 @@ fn do_first_gen<M: Model, S: Storage>(storage: &S, model: &M, config: &Config, r
         storage.save_particle(&particle)?;
 
         // Check if we now have the req'd num particles/reps, if so, break
-        if storage.num_particles_available()? >= config.job.num_particles {
+        if storage.num_working_particles()? >= config.job.num_particles {
             // Load all the non_normalised particles
-            let particles: Vec<Particle<M::Parameters>> = storage.retrieve_all_particles()?;
+            let particles: Vec<Particle<M::Parameters>> = storage.load_working_particles()?;
 
             // (B7) Normalise all the weights together
             let generation = algorithm::normalise::<M>(particles, 1);
@@ -206,9 +206,9 @@ where
 pub mod test_helper {
     use std::path::PathBuf;
 
-    pub fn local_test_file_path(string_path: &str) -> PathBuf {
+    pub fn test_data_path(proj_path: &str) -> PathBuf {
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d.push(string_path);
+        d.push(proj_path);
         d
     }
 }
