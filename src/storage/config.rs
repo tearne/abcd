@@ -15,7 +15,7 @@ pub enum StorageConfig {
     S3 { bucket: String, prefix: String },
 }
 impl StorageConfig {
-    pub fn build_s3(&self) -> S3System {
+    pub fn build_s3(&self) -> ABCDResult<S3System> {
         match self {
             StorageConfig::FileSystem { base_path: _ } => panic!("Can't build FileSystem from S3 config"),
             StorageConfig::S3{bucket, prefix} => {
@@ -42,10 +42,10 @@ impl StorageConfig {
 #[cfg(test)]
 mod tests {
     use super::StorageConfig;
-    use crate::test_helper::test_data_path;
+    use crate::error::ABCDResult;
 
     #[test]
-    fn build_s3_storage_properties_from_config_expanding_env_var() {
+    fn build_s3_storage_properties_from_config_expanding_env_var() -> ABCDResult<()>{
         let storage_config = StorageConfig::S3 {
             bucket: "s3://${ABCDBgucket}".into(),
             prefix: "a-prefix".into(),
@@ -58,10 +58,12 @@ mod tests {
         // let string = std::fs::read_to_string(&path).unwrap();
         // println!("----- {}", &string);
         // let config: StorageConfig = toml::from_str(&string).unwrap();
-        let storage = storage_config.build_s3();
+        let storage = storage_config.build_s3()?;
 
         assert_eq!("s3://env-var-bucket", storage.bucket);
         assert_eq!("a-prefix", storage.prefix);
+
+        Ok(())
     }
 
     // #[test]

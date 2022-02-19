@@ -237,7 +237,7 @@ mod tests {
 
     #[test]
     fn test_check_active_gen() {
-        let base_path = manifest_dir().join("resources/test/fs/example");
+        let base_path = manifest_dir().join("resources/test/storage/example");
         let storage = FileSystem::new(base_path);
         assert_eq!(2, storage.previous_gen_number().unwrap());
     }
@@ -249,7 +249,7 @@ mod tests {
             pop: make_dummy_population(),
         };
 
-        let base_path = manifest_dir().join("resources/test/fs/example/");
+        let base_path = manifest_dir().join("resources/test/storage/example/");
         let instance = FileSystem::new(base_path);
 
         let result = instance.load_previous_gen::<DummyParams>().unwrap();
@@ -293,7 +293,7 @@ mod tests {
 
     #[test]
     fn test_exception_when_empty_folder() { //Actually turn this into test for active Gen = 0?
-        let full_path = manifest_dir().join("resources/test/fs/empty/");
+        let full_path = manifest_dir().join("resources/test/storage/empty/");
         let storage = FileSystem::new(full_path);
 
         let expected_message = "No Gen Zero Directory Exists";
@@ -320,14 +320,14 @@ mod tests {
 
     #[test]
     fn test_number_particle_files() {
-        let full_path = manifest_dir().join("resources/test/fs/example/");
+        let full_path = manifest_dir().join("resources/test/storage/example/");
         let storage = FileSystem::new(full_path);
         assert_eq!(2, storage.num_working_particles().unwrap())
     }
 
     #[test]
     fn test_retrieve_particle_files() {
-        let full_path = manifest_dir().join("resources/test/fs/example/");
+        let full_path = manifest_dir().join("resources/test/storage/example/");
         let instance = FileSystem::new(full_path);
 
         let mut expected = {

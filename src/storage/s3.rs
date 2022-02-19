@@ -21,9 +21,11 @@ pub struct S3System {
     pub prefix: String,
     client: Client,
     runtime: Runtime,
+    gen_zero_re: Regex,
+    gen_non_zero_re: Regex
 }
 impl S3System {
-    pub fn new(bucket: String, prefix: String) -> Self {
+    pub fn new(bucket: String, prefix: String) -> ABCDResult<Self> {
         let runtime = Runtime::new().unwrap();
         let client = {
             let config = runtime.block_on(
@@ -32,12 +34,24 @@ impl S3System {
             Client::new(&config)
         };
 
-        S3System {
+        let gen_zero_re = {
+            let string = format!(r#"^{}/abcd.init"#, &prefix);
+            Regex::new(&string)?
+        };
+
+        let gen_non_zero_re = {
+            let string = format!(r#"^{}/gen_(?P<gid1>\d*)/gen_(?P<gid2>\d*).json"#, &prefix);
+            Regex::new(&string)?
+        };
+
+        Ok(S3System {
             bucket,
             prefix,
             client,
             runtime,
-        }
+            gen_zero_re,
+            gen_non_zero_re,
+        })
     }
 
     fn list_objects_v2(&self, prefix: &str) -> ABCDResult<Vec<Object>> {
@@ -122,21 +136,26 @@ impl Storage for S3System {
     fn previous_gen_number(&self) -> ABCDResult<u16> {
         let objects = self.list_objects_v2(&self.prefix)?;
 
-        //TODO compile regex only once for entire struct.
-        let re = {
-            let string = format!(r#"^{}/gen_(?P<gid1>\d*)/gen_(?P<gid2>\d*).json"#, &self.prefix);
-            Regex::new(&string)?
-        };
+        if !objects.iter()
+                .filter_map(|o|{
+                    o.key.as_ref()
+                })
+                .any(|k|self.gen_zero_re.is_match(k)) {
+            return Err(ABCDError::NoGenZeroDirExists("missing 'abcd.init'".into()))
+        }
+
         let key_strings = objects.into_iter().filter_map(|obj| obj.key);
         
-        key_strings
+        let gen_number = key_strings
             .filter_map(|key| {
-                re.captures(&key)
+                self.gen_non_zero_re.captures(&key)
                     .map(|caps| caps["gid1"].parse::<u16>().ok())
                     .flatten()
             })
             .max()
-            .ok_or_else(||ABCDError::NoGenZeroDirExists("".into())) //TODO better error
+            .unwrap_or(0);
+
+        Ok(gen_number)
     }
 
     fn load_previous_gen<P>(&self) -> ABCDResult<Generation<P>>
@@ -429,7 +448,9 @@ mod tests {
 
     fn storage() -> S3System {
         let path = test_data_path("resources/test/config_test.toml");
-        Config::from_path(path).storage.build_s3()
+        Config::from_path(path).storage
+            .build_s3()
+            .expect("Failed to bulid storage instance")
     }
 
     #[test]
@@ -437,7 +458,7 @@ mod tests {
         let storage = storage();
 
         let helper = StorageTestHelper::new(&storage, true);
-        helper.put_recursive(&test_data_path("resources/test/fs/example"));
+        helper.put_recursive(&test_data_path("resources/test/storage/example"));
 
         assert_eq!(2, storage.previous_gen_number().unwrap());
     }
@@ -447,7 +468,7 @@ mod tests {
         let storage = storage();
 
         let helper = StorageTestHelper::new(&storage, true);
-        helper.put_recursive(&test_data_path("resources/test/fs/example_gen0"));
+        helper.put_recursive(&test_data_path("resources/test/storage/example_gen0"));
 
         assert_eq!(0, storage.previous_gen_number().unwrap());
     }
@@ -525,7 +546,7 @@ mod tests {
         let storage = storage();
 
         let helper = StorageTestHelper::new(&storage, true);
-        helper.put_recursive(&test_data_path("resources/test/fs/example"));
+        helper.put_recursive(&test_data_path("resources/test/storage/example"));
 
         assert_eq!(2, storage.num_working_particles().unwrap())
     }
@@ -535,7 +556,7 @@ mod tests {
         let storage = storage();
 
         let helper = StorageTestHelper::new(&storage, true);
-        helper.put_recursive(&test_data_path("resources/test/fs/example"));
+        helper.put_recursive(&test_data_path("resources/test/storage/example"));
 
         let mut expected = {
             let w1 = Particle {
@@ -568,7 +589,7 @@ mod tests {
 
         // Put some test files there, so active gen should be 3.
         let helper = StorageTestHelper::new(&storage, true);
-        helper.put_recursive(&test_data_path("resources/test/fs/example"));
+        helper.put_recursive(&test_data_path("resources/test/storage/example"));
         
         let gen_number = 3;
         let dummy_generation = make_dummy_generation(gen_number, 0.3);
@@ -593,7 +614,7 @@ mod tests {
 
         // Put some test files there, so active gen should be 3.
         let helper = StorageTestHelper::new(&storage, true);
-        helper.put_recursive(&test_data_path("resources/test/fs/example"));
+        helper.put_recursive(&test_data_path("resources/test/storage/example"));
         
         let expected = Generation{
             pop: Population{ 
