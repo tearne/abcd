@@ -32,7 +32,7 @@ pub trait Storage {
 
 #[cfg(test)]
 mod test_helper {
-    use serde::{Serialize, Deserialize};
+    use serde::{Deserialize, Serialize};
 
     use crate::{Generation, Particle, Population};
 
@@ -62,13 +62,13 @@ mod test_helper {
 
         let pop = Population {
             tolerance: 0.5678,
-            acceptance,  //Acceptance can be changed, so we can make different dummy gens
+            acceptance, //Acceptance can be changed, so we can make different dummy gens
             normalised_particles: vec![particle_1, particle_2],
         };
 
         Generation {
             pop,
-            number: gen_number
+            number: gen_number,
         }
     }
 }

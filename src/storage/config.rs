@@ -1,29 +1,26 @@
-use std::{path::PathBuf, borrow::Cow};
+use std::{borrow::Cow, path::PathBuf};
 
-use aws_sdk_s3::{Region, Client};
+use aws_sdk_s3::{Client, Region};
 use envmnt::{ExpandOptions, ExpansionType};
 use tokio::runtime::Runtime;
 
-use crate::error::{ABCDResult, ABCDError};
+use crate::error::{ABCDError, ABCDResult};
 
 use super::{filesystem::FileSystem, s3::S3System};
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 #[serde(tag = "type")]
 pub enum StorageConfig {
-    FileSystem { 
-        base_path: PathBuf 
-    },
-    S3 { 
-        bucket: String, 
-        prefix: String 
-    },
+    FileSystem { base_path: PathBuf },
+    S3 { bucket: String, prefix: String },
 }
 impl StorageConfig {
     pub fn build_s3(&self) -> ABCDResult<S3System> {
         match self {
-            StorageConfig::FileSystem { base_path: _ } => panic!("Can't build FileSystem from S3 config"),
-            StorageConfig::S3{bucket, prefix} => {
+            StorageConfig::FileSystem { base_path: _ } => {
+                panic!("Can't build FileSystem from S3 config")
+            }
+            StorageConfig::S3 { bucket, prefix } => {
                 //TODO error ...
                 // if bucket.starts_with("s3://") {
                 //     Err(ABCDError::Configuration(format!""))
@@ -50,7 +47,7 @@ mod tests {
     use crate::error::ABCDResult;
 
     #[test]
-    fn build_s3_storage_properties_from_config_expanding_env_var() -> ABCDResult<()>{
+    fn build_s3_storage_properties_from_config_expanding_env_var() -> ABCDResult<()> {
         let storage_config = StorageConfig::S3 {
             bucket: "s3://${ABCDBgucket}".into(),
             prefix: "a-prefix".into(),

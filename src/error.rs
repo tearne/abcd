@@ -1,6 +1,6 @@
 use std::{error::Error, num::TryFromIntError};
 
-use aws_sdk_s3::{SdkError, error::GetObjectError};
+use aws_sdk_s3::{error::GetObjectError, SdkError};
 use aws_smithy_http::operation::Response;
 
 pub type ABCDResult<T> = std::result::Result<T, ABCDError>;

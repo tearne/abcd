@@ -78,7 +78,8 @@ impl Storage for FileSystem {
         if !gen_dirs.contains(&0) {
             Err(ABCDError::StorageInitError)
         } else {
-            gen_dirs.iter()
+            gen_dirs
+                .iter()
                 .max()
                 .copied()
                 .ok_or_else(|| ABCDError::Other("Failed to find max gen".into()))
@@ -137,10 +138,7 @@ impl Storage for FileSystem {
         Ok(weighted_particles)
     }
 
-    fn save_new_gen<P: Serialize>(
-        &self,
-        gen: &Generation<P>
-    ) -> ABCDResult<()> {
+    fn save_new_gen<P: Serialize>(&self, gen: &Generation<P>) -> ABCDResult<()> {
         let gen_dir = self.base_path.join(format!("gen_{:03}", gen.number));
         let file_path = gen_dir.join(format!("gen_{:03}.json", gen.number));
 
@@ -162,7 +160,7 @@ impl Storage for FileSystem {
 mod tests {
     use serde::{Deserialize, Serialize};
     use serde_json::Value;
-    use std::{path::{Path, PathBuf}};
+    use std::path::{Path, PathBuf};
 
     use crate::{error::ABCDError, storage::test_helper::make_dummy_generation, Population};
 
@@ -232,7 +230,6 @@ mod tests {
         }
     }
 
-
     #[test]
     fn test_check_active_gen() {
         let base_path = manifest_dir().join("resources/test/storage/example");
@@ -290,12 +287,13 @@ mod tests {
     // - gen already exists
 
     #[test]
-    fn test_exception_when_empty_folder() { //Actually turn this into test for active Gen = 0?
+    fn test_exception_when_empty_folder() {
+        //Actually turn this into test for active Gen = 0?
         let full_path = manifest_dir().join("resources/test/storage/empty/");
         let storage = FileSystem::new(full_path);
 
         let expected_message = "No Gen Zero Directory Exists";
-        
+
         //TODO helper function to remove duplication?
         match storage.previous_gen_number() {
             Ok(_) => panic!("Expected error"),
@@ -361,7 +359,6 @@ mod tests {
         let gen_number = 3;
         let gen_acceptance = 0.3;
 
-
         let gen = make_dummy_generation(gen_number, gen_acceptance);
         std::fs::create_dir(instance.base_path.join("gen_003"))
             .expect("Expected successful dir creation");
@@ -370,8 +367,7 @@ mod tests {
             .save_new_gen(&gen)
             .expect("Expected successful save");
 
-
-     //   let expected = serde_json::to_string_pretty(&gen).unwrap(); //Doesn't seem to compare will when prettyified
+        //   let expected = serde_json::to_string_pretty(&gen).unwrap(); //Doesn't seem to compare will when prettyified
 
         let expected = serde_json::json!({
             "gen_number": 3,
@@ -435,7 +431,8 @@ mod tests {
 
         //3. Test that the original file save by other node is intact.
         let loaded = {
-            let string = std::fs::read_to_string(tmp_dir.path.join("gen_004").join("gen_004.json")).unwrap();
+            let string =
+                std::fs::read_to_string(tmp_dir.path.join("gen_004").join("gen_004.json")).unwrap();
             serde_json::from_str(&string).unwrap()
         };
         assert_eq!(dummy_gen_1, loaded);

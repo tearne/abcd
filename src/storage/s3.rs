@@ -189,7 +189,6 @@ impl Storage for S3System {
     }
 
     fn save_particle<P: Serialize>(&self, w: &Particle<P>) -> ABCDResult<String> {
-        
         let gen_file_dir = {
             let gen_no = self.previous_gen_number()? + 1;
             format!("gen_{:03}", gen_no)
