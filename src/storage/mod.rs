@@ -49,19 +49,19 @@ mod test_helper {
 
     pub fn make_dummy_generation(gen_number: u16, acceptance: f64) -> Generation<DummyParams> {
         let particle_1 = Particle {
-            parameters: DummyParams::new(10, 20.),
-            scores: vec![1000.0, 2000.0],
-            weight: 0.234,
+            parameters: DummyParams::new(11, 22.),
+            scores: vec![1111.0, 2222.0],
+            weight: 0.89,
         };
 
         let particle_2 = Particle {
-            parameters: DummyParams::new(30, 40.),
-            scores: vec![3000.0, 4000.0],
-            weight: 0.567,
+            parameters: DummyParams::new(33, 44.),
+            scores: vec![3333.0, 4444.0],
+            weight: 0.10,
         };
 
         let pop = Population {
-            tolerance: 0.1234,
+            tolerance: 0.5678,
             acceptance,  //Acceptance can be changed, so we can make different dummy gens
             normalised_particles: vec![particle_1, particle_2],
         };

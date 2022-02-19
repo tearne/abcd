@@ -86,7 +86,7 @@ impl S3System {
 
     fn get_particle_files_in_active_gen(&self) -> ABCDResult<Vec<Object>> {
         let gen_prefix = {
-            let gen_no = self.previous_gen_number()?; //TODO test me
+            let gen_no = self.previous_gen_number()? + 1;
             let gen_dir = format!("gen_{:03}", gen_no);
             format!("{}/{}", self.prefix.clone(), gen_dir)
         };
@@ -141,7 +141,7 @@ impl Storage for S3System {
                     o.key.as_ref()
                 })
                 .any(|k|self.gen_zero_re.is_match(k)) {
-            return Err(ABCDError::NoGenZeroDirExists("missing 'abcd.init'".into()))
+            return Err(ABCDError::StorageInitError)
         }
 
         let key_strings = objects.into_iter().filter_map(|obj| obj.key);
@@ -162,8 +162,8 @@ impl Storage for S3System {
     where
         P: DeserializeOwned + Debug,
     {
+        let prev_gen_no = self.previous_gen_number()?;
         let object_key = {
-            let prev_gen_no = self.previous_gen_number()?;
             let prev_gen_file_dir = format!("gen_{:03}", prev_gen_no);
             let prev_gen_file_name = format!("gen_{:03}.json", prev_gen_no);
 
@@ -177,31 +177,51 @@ impl Storage for S3System {
 
         let string_fut = self.get_object_future(&object_key).then(Self::read_to_string);
         let string = self.runtime.block_on(string_fut)?;
-        let parsed: Generation<P> = serde_json::from_str(&string)?;
-        Ok(parsed)
+        let gen: Generation<P> = serde_json::from_str(&string)?;
+
+        if gen.number == prev_gen_no {
+            Ok(gen)
+        } else {
+            Err(ABCDError::StorageConsistencyError(
+                format!("Expected gen number {} but got {}", prev_gen_no, gen.number)
+            ))
+        }
     }
 
     fn save_particle<P: Serialize>(&self, w: &Particle<P>) -> ABCDResult<String> {
-        let object_path = {
+        
+        let gen_file_dir = {
             let gen_no = self.previous_gen_number()? + 1;
-            let gen_file_dir = format!("gen_{:03}", gen_no);
-            let file_uuid = Uuid::new_v4();
-            let particle_file_name = file_uuid.to_string() + ".json";
-            let prefix_cloned = self.prefix.clone();
-
-            format!("{}/{}/{}", prefix_cloned, gen_file_dir, particle_file_name)
+            format!("gen_{:03}", gen_no)
         };
+        
+        let particle_file_name = {
+            let file_uuid = Uuid::new_v4();
+            file_uuid.to_string() + ".json"
+        };
+
+        let non_prefixed_path =format!(
+            "{}/{}",  
+            gen_file_dir, 
+            particle_file_name
+        );
+
+        let prefixed_path = format!(
+            "{}/{}", 
+            self.prefix.clone(), 
+            non_prefixed_path
+        );
 
         let pretty_json = serde_json::to_string_pretty(w)?;
 
         let request = self.put_object_future(
-            &object_path, 
+            &prefixed_path, 
             &pretty_json
         );
 
         self.runtime.block_on(request)?;
 
-        Ok(object_path)
+        Ok(non_prefixed_path)
     }
 
     fn num_working_particles(&self) -> ABCDResult<u32> {
@@ -245,6 +265,19 @@ impl Storage for S3System {
         &self,
         gen: &Generation<P>
     ) -> ABCDResult<()> {
+        let expected_new_gen_number = self.previous_gen_number()? + 1;
+        if gen.number != expected_new_gen_number {
+            return Err(
+                ABCDError::StorageConsistencyError(
+                    format!(
+                        "Asked to save gen {}, but was due to save {}", 
+                        &gen.number, 
+                        &expected_new_gen_number
+                    )
+                )
+            )
+        }
+
         let gen_dir = format!("gen_{:03}", gen.number);
         let object_name = format!("gen_{:03}.json", gen.number);
         let prefix_cloned = self.prefix.clone();
@@ -287,9 +320,8 @@ mod tests {
 
     use aws_sdk_s3::{Region, model::{Delete, ObjectIdentifier}};
     use futures::TryStreamExt;
-    use serde_json::Value;
 
-    use crate::{etc::config::Config, storage::test_helper::{make_dummy_generation, DummyParams}, test_helper::test_data_path, Population};
+    use crate::{storage::{test_helper::{DummyParams, make_dummy_generation}, config::StorageConfig}, test_helper::test_data_path, Population};
 
     use super::*;
 
@@ -323,7 +355,9 @@ mod tests {
             instance
         }
 
-        fn put_recursive(&self, local_path: &Path) {
+        fn put_recursive(&self, proj_path: &str) {
+            let abs_project_path = &test_data_path(proj_path);
+
             fn visit_dirs(dir: &Path, cb: &dyn Fn(&DirEntry)) -> std::io::Result<()> {
                 if dir.is_dir() {
                     for entry in std::fs::read_dir(dir)? {
@@ -343,7 +377,7 @@ mod tests {
            
             let uploader = |de: &DirEntry|{
                 let absolute_path = de.path();
-                let stripped_path = absolute_path.strip_prefix(local_path).unwrap();
+                let stripped_path = absolute_path.strip_prefix(abs_project_path).unwrap();
                 let object_name = prefix.join(&stripped_path).to_string_lossy().into_owned();
                 let file_contents = std::fs::read_to_string(&absolute_path).unwrap();
                 self.put_object(
@@ -351,13 +385,13 @@ mod tests {
                     &file_contents
                 );
             };
-            visit_dirs(local_path, &uploader).unwrap();
+            visit_dirs(abs_project_path, &uploader).unwrap();
         }
 
         fn put_object(&self, key: &str, body: &str) {
             let bytes = ByteStream::from(Bytes::from(body.to_string()));
 
-            let t = self.runtime.block_on(async {
+            self.runtime.block_on(async {
                 self.client
                     .put_object()
                     .bucket(&self.bucket)
@@ -388,11 +422,6 @@ mod tests {
                 std::str::from_utf8(&bytes).unwrap().into()
             })
         }
-
-        // fn get_particle(&self, key: &str) -> Particle<DummyParams> {
-        //     let string = self.get_object(key);
-        //     serde_json::from_str(&string).unwrap()
-        // }
 
         fn delete_prefix_recursively(&self) {
             if self.delete_prefix_on_drop {
@@ -446,79 +475,96 @@ mod tests {
         }
     }
 
-    fn storage() -> S3System {
-        let path = test_data_path("resources/test/config_test.toml");
-        Config::from_path(path).storage
+    fn storage_using_prefix(prefix: &str) -> S3System {
+        if !envmnt::exists("TEST_BUCKET") {
+            panic!("You need to set the environment variable 'TEST_BUCKET' before running");
+        }
+
+        let storage_cfg = StorageConfig::S3{
+            bucket: "${TEST_BUCKET}".into(),
+            prefix: prefix.into(),
+        };
+
+        storage_cfg
             .build_s3()
             .expect("Failed to bulid storage instance")
     }
 
     #[test]
     fn test_previous_gen_num_three() {
-        let storage = storage();
+        let instance = storage_using_prefix("test_previous_gen_num_three");
 
-        let helper = StorageTestHelper::new(&storage, true);
-        helper.put_recursive(&test_data_path("resources/test/storage/example"));
+        let helper = StorageTestHelper::new(&instance, false);
+        helper.put_recursive("resources/test/storage/example");
 
-        assert_eq!(2, storage.previous_gen_number().unwrap());
+        assert_eq!(2, instance.previous_gen_number().unwrap());
     }
 
     #[test]
     fn test_previous_gen_num_zero() {
-        let storage = storage();
+        let instance = storage_using_prefix("test_previous_gen_num_zero");
 
-        let helper = StorageTestHelper::new(&storage, true);
-        helper.put_recursive(&test_data_path("resources/test/storage/example_gen0"));
+        let helper = StorageTestHelper::new(&instance, true);
+        helper.put_recursive("resources/test/storage/example_gen0");
 
-        assert_eq!(0, storage.previous_gen_number().unwrap());
+        assert_eq!(0, instance.previous_gen_number().unwrap());
     }
 
     #[test]
-    fn test_retrieve_previous_gen() {
-        let gen_number = 3;
-        let expected = make_dummy_generation(gen_number, 0.3);
-        let storage = storage();
+    fn test_load_previous_gen() {
+        let instance = storage_using_prefix("test_load_previous_gen");
 
-        let helper = StorageTestHelper::new(&storage, true);
-        helper.put_object(
-            &format!("{}/gen_003/gen_003.json", storage.prefix),
-            &serde_json::to_string_pretty(&expected).unwrap()
-        );
+        let helper = StorageTestHelper::new(&instance, true);
+        helper.put_recursive("resources/test/storage/example");
 
-        let result = storage
+        let result = instance
             .load_previous_gen::<DummyParams>()
             .unwrap();
+
+        let expected = Generation{
+            pop: Population{ 
+                tolerance: 0.1234, 
+                acceptance: 0.7, 
+                normalised_particles: vec![
+                    Particle{ 
+                        parameters: DummyParams::new(10, 20.0), 
+                        scores: vec![1000.0, 2000.0], 
+                        weight: 0.234 
+                    },
+                    Particle{ 
+                        parameters: DummyParams::new(30, 40.0), 
+                        scores: vec![3000.0, 4000.0], 
+                        weight: 0.567 
+                    }
+                ] 
+            },
+            number: 2,
+        };
 
         assert_eq!(expected, result);
     }
 
     #[test]
-    fn test_exception_if_gen_num_doesnt_match_path() {
-        let gen_number = 999;
-        let expected = make_dummy_generation(gen_number, 0.3);
-        let storage = storage();
+    fn test_exception_if_load_gen_not_matching_path() {
+        let instance = storage_using_prefix("test_exception_if_load_gen_not_matching_path");
 
-        let helper = StorageTestHelper::new(&storage, true);
-        helper.put_object(
-            &format!("{}/gen_003/gen_003.json", storage.prefix),
-            &serde_json::to_string_pretty(&expected).unwrap()
-        );
+        let helper = StorageTestHelper::new(&instance, true);
+        helper.put_recursive("resources/test/storage/example_gen_mismatch");
 
-        let result = storage.load_previous_gen::<DummyParams>();
+        let result = instance.load_previous_gen::<DummyParams>();
 
-        //TODO proper error, e.g. "InconsistentFileSystem(msg)"
-        assert!(result.is_err());
+        match result {
+            Err(ABCDError::StorageConsistencyError(_)) => (),
+            _ => panic!("Expected exception")
+        }
     }
 
     #[test]
-    fn test_exception_if_save_but_no_gen_zero_exists() {
-        todo!();
-    }
+    fn test_exception_if_save_without_init() {
+        let instance = storage_using_prefix("test_exception_if_save_without_init");
 
-    #[test]
-    fn test_save_particle() {
-        let storage = storage();
-        let helper = StorageTestHelper::new(&storage, true);
+        let helper = StorageTestHelper::new(&instance, true);
+        helper.put_recursive("resources/test/storage/empty");
 
         let w1 = Particle {
             parameters:  DummyParams::new(1, 2.),
@@ -526,37 +572,68 @@ mod tests {
             weight: 1.234,
         };
 
-        // TODO fix the async problem like this:
-        // https://github.com/hyperium/hyper/issues/2112
-        // or rusoto you can create a new client https://docs.rs/rusoto_core/0.43.0/rusoto_core/request/struct.HttpClient.html
-        // from here and then pass that into the specific service's constructor. This will avoid using the lazy_static client.
-        let saved_1 = storage.save_particle(&w1).unwrap();
-        let loaded: Particle<DummyParams> = serde_json::from_str(&helper.get_object(&saved_1)).unwrap();
+        let result = instance.save_particle(&w1);
+
+        match result {
+            Err(ABCDError::StorageInitError) => (),
+            _ => panic!("Expected exception")
+        }
+    }
+
+    #[test]
+    fn test_save_particle() {
+        let instance = storage_using_prefix("test_save_particle");
+
+        let helper = StorageTestHelper::new(&instance, true);
+        helper.put_recursive("resources/test/storage/example");
+
+        let w1 = Particle {
+            parameters:  DummyParams::new(1, 2.),
+            scores: vec![100.0, 200.0],
+            weight: 1.234,
+        };
+
+        let save_path = instance.save_particle(&w1).unwrap();
+
+        let loaded: Particle<DummyParams> = serde_json::from_str(&helper.get_object(&save_path)).unwrap();
 
         assert_eq!(w1, loaded);
     }
 
     #[test]
-    fn test_exception_saving_inconsistent_gen_number(){
-        todo!()
+    fn test_exception_if_save_inconsistent_gen_number(){
+        let instance = storage_using_prefix("test_exception_saving_inconsistent_gen_number");
+
+        let helper = StorageTestHelper::new(&instance, true);
+        helper.put_recursive("resources/test/storage/example");
+
+        let dummy_generation = make_dummy_generation(999, 0.3);
+
+        let result = instance
+            .save_new_gen(&dummy_generation);
+
+        match result {
+            Err(ABCDError::StorageConsistencyError(_)) => (),
+            _ => panic!("Expected exception")
+        }
     }
 
     #[test]
-    fn test_number_particle_files() {
-        let storage = storage();
+    fn test_num_working_particles() {
+        let instance = storage_using_prefix("test_num_working_particles");
 
-        let helper = StorageTestHelper::new(&storage, true);
-        helper.put_recursive(&test_data_path("resources/test/storage/example"));
+        let helper = StorageTestHelper::new(&instance, true);
+        helper.put_recursive("resources/test/storage/example");
 
-        assert_eq!(2, storage.num_working_particles().unwrap())
+        assert_eq!(2, instance.num_working_particles().unwrap())
     }
 
     #[test]
-    fn test_retrieve_particle_files() {
-        let storage = storage();
+    fn test_load_working_particles() {
+        let instance = storage_using_prefix("test_load_working_particles");
 
-        let helper = StorageTestHelper::new(&storage, true);
-        helper.put_recursive(&test_data_path("resources/test/storage/example"));
+        let helper = StorageTestHelper::new(&instance, true);
+        helper.put_recursive("resources/test/storage/example");
 
         let mut expected = {
             let w1 = Particle {
@@ -574,7 +651,7 @@ mod tests {
             vec![w1, w2]
         };
 
-        let mut result: Vec<Particle<DummyParams>> = storage.load_working_particles().unwrap();
+        let mut result: Vec<Particle<DummyParams>> = instance.load_working_particles().unwrap();
 
         //Sort by weight for easy comparison
         expected.sort_by(|a, b| a.weight.partial_cmp(&b.weight).unwrap());
@@ -585,22 +662,21 @@ mod tests {
 
     #[test]
     fn test_save_generation() {
-        let storage = storage();
+        let instance = storage_using_prefix("test_save_generation");
 
-        // Put some test files there, so active gen should be 3.
-        let helper = StorageTestHelper::new(&storage, true);
-        helper.put_recursive(&test_data_path("resources/test/storage/example"));
+        let helper = StorageTestHelper::new(&instance, true);
+        helper.put_recursive("resources/test/storage/example");
         
         let gen_number = 3;
         let dummy_generation = make_dummy_generation(gen_number, 0.3);
 
-        storage
+        instance
             .save_new_gen(&dummy_generation)
             .expect("Expected successful save");
 
         let expected = dummy_generation;
 
-        //Manually load what was saved to have a look
+        //Manually load what was saved to S3 to check
         let actual: Generation<DummyParams> = serde_json::from_str(
             &helper.get_object(&format!("gen_{:03}/gen_{:03}.json", 3, 3))
         ).unwrap();
@@ -610,11 +686,10 @@ mod tests {
 
     #[test]
     fn test_load_generation() {
-        let storage = storage();
+        let instance = storage_using_prefix("test_load_generation");
 
-        // Put some test files there, so active gen should be 3.
-        let helper = StorageTestHelper::new(&storage, true);
-        helper.put_recursive(&test_data_path("resources/test/storage/example"));
+        let helper = StorageTestHelper::new(&instance, true);
+        helper.put_recursive("resources/test/storage/example");
         
         let expected = Generation{
             pop: Population{ 
@@ -636,38 +711,8 @@ mod tests {
             number: 2,
         };
 
-        let actual = storage.load_previous_gen().unwrap();
+        let actual = instance.load_previous_gen().unwrap();
 
         assert_eq!(expected, actual);
     }
-
-    // #[test]
-    // fn dont_save_over_existing_gen_file(){
-    //     let gen_number = 4;
-        
-    //     let dummy_gen_1 = make_dummy_generation(gen_number, 0.3);
-    //     let dummy_gen_2 = make_dummy_generation(gen_number, 0.4);
-        
-    //     let storage = storage();
-
-    //     let helper = StorageTestHelper::new(&storage, true);
-    //     helper.put_recursive(&test_data_path("resources/test/fs/example"));
-
-    //     //1. Save an dummy gen_003 file, representing file already save by another node
-    //     storage.save_new_gen(&dummy_gen_1).expect("Expected successful save");
-
-    //     //2. Try to save another gen over it, pretending we didn't notice the other node save gen before us
-    //     let outcome = storage.save_new_gen(&dummy_gen_2);
-    //     match outcome {
-    //         Err(ABCDError::GenAlreadySaved(_)) => (),
-    //         other => panic!("Expected error, got: {:?}", other)
-    //     };
-
-    //     //3. Test that the original file save by other node is intact and we didn't panic.
-    //     let loaded = {
-    //         let string = test_storage.get_object("gen_003/gen_003.json");
-    //         serde_json::from_str(&string).unwrap()
-    //     };
-    //     assert_eq!(dummy_gen_1, loaded);
-    // }
 }

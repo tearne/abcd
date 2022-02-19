@@ -11,8 +11,13 @@ use super::{filesystem::FileSystem, s3::S3System};
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 #[serde(tag = "type")]
 pub enum StorageConfig {
-    FileSystem { base_path: PathBuf },
-    S3 { bucket: String, prefix: String },
+    FileSystem { 
+        base_path: PathBuf 
+    },
+    S3 { 
+        bucket: String, 
+        prefix: String 
+    },
 }
 impl StorageConfig {
     pub fn build_s3(&self) -> ABCDResult<S3System> {

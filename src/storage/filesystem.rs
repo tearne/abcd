@@ -9,11 +9,9 @@ use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{
     error::{ABCDError, ABCDResult},
-    Generation, Particle, Population,
+    Generation, Particle,
 };
 use uuid::Uuid;
-
-use crate::storage::filesystem::ABCDError::NoGenZeroDirExists;
 
 use super::Storage;
 
@@ -78,7 +76,7 @@ impl Storage for FileSystem {
 
         //TODO need the equiv in the S3 Storage module
         if !gen_dirs.contains(&0) {
-            Err(ABCDError::NoGenZeroDirExists("No Gen Zero Directory Exists".into()))
+            Err(ABCDError::StorageInitError)
         } else {
             gen_dirs.iter()
                 .max()
@@ -166,7 +164,7 @@ mod tests {
     use serde_json::Value;
     use std::{path::{Path, PathBuf}};
 
-    use crate::{error::ABCDError, storage::test_helper::make_dummy_generation};
+    use crate::{error::ABCDError, storage::test_helper::make_dummy_generation, Population};
 
     use super::*;
 
@@ -301,19 +299,19 @@ mod tests {
         //TODO helper function to remove duplication?
         match storage.previous_gen_number() {
             Ok(_) => panic!("Expected error"),
-            Err(ABCDError::NoGenZeroDirExists(msg)) if msg == expected_message => (),
+            Err(ABCDError::StorageInitError) => (),
             Err(e) => panic!("Wrong error, got: {}", e),
         };
 
         match storage.num_working_particles() {
             Ok(_) => panic!("Expected error"),
-            Err(ABCDError::NoGenZeroDirExists(msg)) if msg == expected_message => (),
+            Err(ABCDError::StorageInitError) => (),
             Err(e) => panic!("Wrong error, got: {}", e),
         };
 
         match storage.load_working_particles::<DummyParams>() {
             Ok(_) => panic!("Expected error"),
-            Err(ABCDError::NoGenZeroDirExists(msg)) if msg == expected_message => (),
+            Err(ABCDError::StorageInitError) => (),
             Err(e) => panic!("Wrong error, got: {}", e),
         };
     }
@@ -362,6 +360,8 @@ mod tests {
 
         let gen_number = 3;
         let gen_acceptance = 0.3;
+
+
         let gen = make_dummy_generation(gen_number, gen_acceptance);
         std::fs::create_dir(instance.base_path.join("gen_003"))
             .expect("Expected successful dir creation");
