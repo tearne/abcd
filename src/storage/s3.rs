@@ -146,6 +146,7 @@ impl Storage for S3System {
 
         let key_strings = objects.into_iter().filter_map(|obj| obj.key);
         
+        //TODO there is nothing currently checking that gid1 == gid2, which might lead to a consistnecy error
         let gen_number = key_strings
             .filter_map(|key| {
                 self.gen_non_zero_re.captures(&key)
@@ -320,7 +321,7 @@ mod tests {
     use aws_sdk_s3::{Region, model::{Delete, ObjectIdentifier}};
     use futures::TryStreamExt;
 
-    use crate::{storage::{test_helper::{DummyParams, make_dummy_generation}, config::StorageConfig}, test_helper::test_data_path, Population};
+    use crate::{storage::{test_helper::{DummyParams, make_dummy_generation}, config::StorageConfig}, test_helper::test_data_path, types::Population};
 
     use super::*;
 

@@ -53,10 +53,10 @@ impl FileSystem {
 impl Storage for FileSystem {
     fn previous_gen_number(&self) -> ABCDResult<u16> {
         let re = Regex::new(r#"^gen_(?P<gid>\d*)$"#)?;
-        // let gen_non_zero_re = {
-        //     let string = format!(r#"^{:?}/gen_(?P<gid1>\d*)/gen_(?P<gid2>\d*).json"#, &self.base_path);
-        //     Regex::new(&string)?
-        // };
+        let gen_non_zero_re = {
+            let string = format!(r#"^{:?}/gen_(?P<gid1>\d*)/gen_(?P<gid2>\d*).json"#, &self.base_path);
+            Regex::new(&string)?
+        };
         let gen_zero_file = self.base_path.join("abcd.init");
 
         if !gen_zero_file.exists(){
@@ -66,7 +66,8 @@ impl Storage for FileSystem {
         let gen_dirs: Vec<u16> = std::fs::read_dir(&self.base_path)?
             .filter_map(|read_dir| {
                 let path = read_dir.as_ref().ok()?.path();
-                if path.is_dir() {
+                println!("Path is  {:?}", path);
+                if path.exists(){
                     path.file_name()
                         .map(|name| name.to_string_lossy().to_string())
                 } else {
@@ -75,24 +76,36 @@ impl Storage for FileSystem {
             })
             .filter(|dir_name| dir_name.starts_with("gen_"))
             .filter_map(|dir_name| {
-                if let Some(caps) = re.captures(&dir_name) {
-                    caps["gid"].parse::<u16>().ok()
+                if let Some(caps) = gen_non_zero_re.captures(&dir_name) {
+                    caps["gid1"].parse::<u16>().ok()
                 } else {
                     None
                 }
             })
             .collect();
 
+            /**
+             *         let gen_number = key_strings
+            .filter_map(|key| {
+                self.gen_non_zero_re.captures(&key)
+                    .map(|caps| caps["gid1"].parse::<u16>().ok())
+                    .flatten()
+            })
+            .max()
+            .unwrap_or(0);
+             */
+
         //TODO need the equiv in the S3 Storage module
       //  if !gen_dirs.contains(&0) {
       //      Err(ABCDError::StorageInitError)
       //  } else {
-            gen_dirs
+          gen_dirs
                 .iter()
                 .max() 
                 .copied()
-                 .ok_or_else(|| ABCDError::Other("Failed to find max gen".into())) 
+                 .ok_or_else(|| ABCDError::Other("Failed to find max gen".into()))
        // }
+
     }
 
     fn load_previous_gen<P>(&self) -> ABCDResult<Generation<P>>
@@ -171,7 +184,7 @@ mod tests {
     use serde_json::Value;
     use std::path::{Path, PathBuf};
 
-    use crate::{error::ABCDError, storage::test_helper::make_dummy_generation, Population};
+    use crate::{error::ABCDError, storage::test_helper::make_dummy_generation, types::Population};
 
     use super::*;
 
