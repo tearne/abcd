@@ -25,7 +25,7 @@ impl FileSystem {
     }
 
     fn get_particle_files_in_current_gen_folder(&self) -> ABCDResult<Vec<std::fs::DirEntry>> {
-        let gen_no = self.previous_gen_number()? + 1;
+        let gen_no = self.previous_gen_number()? +1;
         println!("Active gen is {}", gen_no);
         let gen_dir = format!("gen_{:03}", gen_no);
         let dir = self.base_path.join(gen_dir);
@@ -53,6 +53,15 @@ impl FileSystem {
 impl Storage for FileSystem {
     fn previous_gen_number(&self) -> ABCDResult<u16> {
         let re = Regex::new(r#"^gen_(?P<gid>\d*)$"#)?;
+        // let gen_non_zero_re = {
+        //     let string = format!(r#"^{:?}/gen_(?P<gid1>\d*)/gen_(?P<gid2>\d*).json"#, &self.base_path);
+        //     Regex::new(&string)?
+        // };
+        let gen_zero_file = self.base_path.join("abcd.init");
+
+        if !gen_zero_file.exists(){
+            return Err(ABCDError::StorageInitError)
+        }
 
         let gen_dirs: Vec<u16> = std::fs::read_dir(&self.base_path)?
             .filter_map(|read_dir| {
@@ -75,15 +84,15 @@ impl Storage for FileSystem {
             .collect();
 
         //TODO need the equiv in the S3 Storage module
-        if !gen_dirs.contains(&0) {
-            Err(ABCDError::StorageInitError)
-        } else {
+      //  if !gen_dirs.contains(&0) {
+      //      Err(ABCDError::StorageInitError)
+      //  } else {
             gen_dirs
                 .iter()
-                .max()
+                .max() 
                 .copied()
-                .ok_or_else(|| ABCDError::Other("Failed to find max gen".into()))
-        }
+                 .ok_or_else(|| ABCDError::Other("Failed to find max gen".into())) 
+       // }
     }
 
     fn load_previous_gen<P>(&self) -> ABCDResult<Generation<P>>
@@ -234,7 +243,7 @@ mod tests {
     fn test_check_active_gen() {
         let base_path = manifest_dir().join("resources/test/storage/example");
         let storage = FileSystem::new(base_path);
-        assert_eq!(2, storage.previous_gen_number().unwrap());
+        assert_eq!(3, storage.previous_gen_number().unwrap());
     }
 
     #[test]
@@ -369,24 +378,25 @@ mod tests {
 
         //   let expected = serde_json::to_string_pretty(&gen).unwrap(); //Doesn't seem to compare will when prettyified
 
+
         let expected = serde_json::json!({
-            "gen_number": 3,
+            "number": 3,
             "pop": {
-            "tolerance": 0.1234,
+            "tolerance": 0.5678,
             "acceptance": 0.3,
             "normalised_particles": [
                 {
                     "parameters" : {
-                        "a": 10, "b": 20.0
+                        "a": 11, "b": 22.0
                     },
-                    "scores": [1000.0, 2000.0],
-                    "weight": 0.234
+                    "scores": [1111.0, 2222.0],
+                    "weight": 0.89
                 },{
                     "parameters" : {
-                        "a": 30, "b": 40.0
+                        "a": 33, "b": 44.0
                     },
-                    "scores": [3000.0, 4000.0],
-                    "weight": 0.567
+                    "scores": [3333.0, 4444.0],
+                    "weight": 0.10
                 }
             ]
             }
