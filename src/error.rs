@@ -17,9 +17,7 @@ pub enum ABCDError {
     StorageConsistencyError(String),
     WasWorkingOnAnOldGeneration(String),
     Regex(regex::Error),
-    S3GetError(aws_sdk_s3::SdkError<aws_sdk_s3::error::GetObjectError>),
-    S3ListError(aws_sdk_s3::SdkError<aws_sdk_s3::error::ListObjectsV2Error>),
-    S3PutError(aws_sdk_s3::SdkError<aws_sdk_s3::error::PutObjectError>),
+    S3OperationError(String),
     Other(String),
     CastError(TryFromIntError),
 }
@@ -39,9 +37,7 @@ impl std::fmt::Display for ABCDError {
             ABCDError::StorageInitError => write!(f, "Storage init error"),
             ABCDError::StorageConsistencyError(ref msg) => write!(f, "{}", msg),
             ABCDError::Regex(ref err) => err.fmt(f),
-            ABCDError::S3GetError(ref err) => err.fmt(f),
-            ABCDError::S3ListError(ref err) => err.fmt(f),
-            ABCDError::S3PutError(ref err) => err.fmt(f),
+            ABCDError::S3OperationError(ref msg) => write!(f, "{}", msg),
             ABCDError::Other(msg) => f.write_fmt(format_args!("ABCD error: {}", msg)),
             ABCDError::CastError(ref err) => err.fmt(f),
         }
@@ -82,19 +78,37 @@ impl From<regex::Error> for ABCDError {
 
 impl From<aws_sdk_s3::SdkError<aws_sdk_s3::error::GetObjectError>> for ABCDError {
     fn from(value: aws_sdk_s3::SdkError<aws_sdk_s3::error::GetObjectError>) -> Self {
-        ABCDError::S3GetError(value)
+        ABCDError::S3OperationError(format!("Get object error: {}", value))
     }
 }
 
 impl From<aws_sdk_s3::SdkError<aws_sdk_s3::error::ListObjectsV2Error>> for ABCDError {
     fn from(value: aws_sdk_s3::SdkError<aws_sdk_s3::error::ListObjectsV2Error>) -> Self {
-        ABCDError::S3ListError(value)
+        ABCDError::S3OperationError(format!("List object error: {}", value))
     }
 }
 
 impl From<aws_sdk_s3::SdkError<aws_sdk_s3::error::PutObjectError>> for ABCDError {
     fn from(value: aws_sdk_s3::SdkError<aws_sdk_s3::error::PutObjectError>) -> Self {
-        ABCDError::S3PutError(value)
+        ABCDError::S3OperationError(format!("Put object error: {}", value))
+    }
+}
+
+impl From<aws_sdk_s3::SdkError<aws_sdk_s3::error::GetBucketVersioningError>> for ABCDError {
+    fn from(value: aws_sdk_s3::SdkError<aws_sdk_s3::error::GetBucketVersioningError>) -> Self {
+        ABCDError::S3OperationError(format!("Failed to get bucket version data: {}",value))
+    }
+}
+
+impl From<aws_sdk_s3::SdkError<aws_sdk_s3::error::ListObjectVersionsError>> for ABCDError {
+    fn from(value: aws_sdk_s3::SdkError<aws_sdk_s3::error::ListObjectVersionsError>) -> Self {
+        ABCDError::S3OperationError(format!("Failed to list object version data: {}",value))
+    }
+}
+
+impl From<aws_sdk_s3::SdkError<aws_sdk_s3::error::DeleteObjectsError>> for ABCDError {
+    fn from(value: aws_sdk_s3::SdkError<aws_sdk_s3::error::DeleteObjectsError>) -> Self {
+        ABCDError::S3OperationError(format!("Failed to delete objects: {}",value))
     }
 }
 

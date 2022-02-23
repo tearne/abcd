@@ -15,6 +15,7 @@ regex = "1.4.3"
 #rusoto_s3 = { version = "0.46.0", default_features = false, features=["rustls"] }
 aws-config = "0.6.0"
 aws-smithy-http = "0.36.0"
+aws-smithy-types-convert = { version = "0.37.0", features = ["convert-chrono"] }
 bytes = "1.1.0"
 aws-sdk-s3 = "0.6.0"
 tokio = {version = "1.5.0", features = ["full"]}
@@ -23,6 +24,7 @@ toml = "0.5"
 envmnt = "0.9.0"
 log = "0.4.0"
 env_logger = "0.8.4"
+chrono = "0.4.19"
 #anyhow = "1.0"
 #once_cell = "1.9.0"
 #thiserror = "1.0.30"
