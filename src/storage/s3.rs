@@ -156,6 +156,19 @@ impl Storage for S3System {
             .max()
             .unwrap_or(0);
 
+            // let file_number = key_strings
+            // .filter_map(|key| {
+            //     self.gen_non_zero_re.captures(&key)
+            //         .map(|caps| caps["gid2"].parse::<u16>().ok())
+            //         .flatten()
+            // })
+            // .max()
+            // .unwrap_or(0);
+
+            // if(gen_number!=file_number){
+            //     return Err(ABCDError::StorageInitError) //To Test this do we need to set up new directory structure where gen dir number and gen file number are different
+            // }
+
         Ok(gen_number)
     }
 
