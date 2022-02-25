@@ -1,6 +1,6 @@
 use aws_sdk_s3::error::GetObjectAclError;
 use aws_sdk_s3::{Client, SdkError, ByteStream, Region};
-use aws_sdk_s3::model::{Object, ObjectCannedAcl, BucketVersioningStatus, ObjectVersion, ObjectIdentifier, Delete};
+use aws_sdk_s3::model::{Object, ObjectCannedAcl, BucketVersioningStatus, ObjectIdentifier, Delete};
 use aws_sdk_s3::output::{GetObjectOutput, PutObjectOutput, ListObjectsV2Output};
 use bytes::Bytes;
 use futures::{FutureExt, Future, TryFutureExt, TryStreamExt};
@@ -9,7 +9,6 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::convert::TryInto;
 use std::fmt::Debug;
 use tokio::runtime::Runtime;
-use chrono::prelude;
 
 use super::Storage;
 use crate::error::{ABCDError, ABCDResult};
@@ -45,48 +44,50 @@ impl S3System {
             Regex::new(&string)?
         };
 
-        //check bucket versioning is on
-        let versioning_enabled = runtime.block_on(client.get_bucket_versioning()
-                .bucket(&bucket)
-                .send()
-            )?
-            .status
-            .map(|s|s == BucketVersioningStatus::Enabled)
-            .unwrap_or(false);
-
-        if !versioning_enabled {
-            return Err(ABCDError::S3OperationError("Versioning must be enabled".into()));
-        }
-
-        Ok(S3System {
+        let instance = S3System {
             bucket,
             prefix,
             client,
             runtime,
             gen_zero_re,
             gen_non_zero_re,
-        })
+        };
+
+        instance.runtime.block_on(instance.assert_versioning_active())?;
+
+        Ok(instance)
     }
 
-    fn list_objects_v2(&self, prefix: &str) -> ABCDResult<Vec<Object>> {
+    async fn assert_versioning_active(&self) -> ABCDResult<()> { 
+        let enabled = self.client.get_bucket_versioning()
+            .bucket(&self.bucket)
+            .send()
+            .await?
+            .status
+            .map(|s|s == BucketVersioningStatus::Enabled)
+            .unwrap_or(false);
+
+        if enabled { Ok(()) }
+        else { Err(ABCDError::S3OperationError("Versioning must be enabled".into())) }
+    }
+
+    async fn list_objects_v2(&self, prefix: &str) -> ABCDResult<Vec<Object>> {
         let mut acc: Vec<Object> = Vec::new();
 
-        let next_page = |c_tok: Option<String>| -> ABCDResult<ListObjectsV2Output> {
-            let request = self.client
+        async fn next_page(client: &Client, bucket: &str, prefix: &str, c_tok: Option<String>) -> ABCDResult<ListObjectsV2Output> {
+            client
                 .list_objects_v2()
-                .bucket(&self.bucket)
+                .bucket(bucket)
                 .prefix(prefix)
                 .set_continuation_token(c_tok)
-                .send();
-
-            self.runtime
-                .block_on(request)
+                .send()
+                .await
                 .map_err(|e|e.into())
-        };
+        }
 
         let mut c_token = None;
         loop {
-            let list_output = next_page(c_token)?;
+            let list_output = next_page(&self.client, &self.bucket, prefix, c_token).await?;
             if let Some(mut items) = list_output.contents {
                 acc.append(&mut items);
             }
@@ -98,85 +99,90 @@ impl S3System {
         Ok(acc)
     }
 
-    fn get_particle_files_in_active_gen(&self) -> ABCDResult<Vec<Object>> {
+    async fn get_particle_files_in_active_gen(&self) -> ABCDResult<Vec<Object>> {
         let gen_prefix = {
-            let gen_no = self.previous_gen_number()? + 1;
+            let gen_no = self.previous_gen_number_async().await? + 1;
             let gen_dir = format!("gen_{:03}", gen_no);
             format!("{}/{}", self.prefix.clone(), gen_dir)
         };
 
-        self.list_objects_v2(&gen_prefix)
+        self.list_objects_v2(&gen_prefix).await
     }
 
-    async fn read_to_string<E: 'static + std::error::Error>(
-        output: Result<GetObjectOutput, E>,
-    ) -> Result<String, E> {
+    async fn read_to_string(
+        output: ABCDResult<GetObjectOutput>,
+    ) -> ABCDResult<String> {
         // use futures::TryStreamExt;
 
         let bytes = output?
             .body
             .try_next()
-            .await
-            .unwrap()   //TODO
-            .unwrap();  //TODO
+            .await?
+            .ok_or_else(||
+                ABCDError::S3OperationError("Empty byte stream".into())
+            )?;
 
         let string = std::str::from_utf8(&bytes).unwrap();
         Ok(string.into())
     }
 
-    fn ensure_only_original_verions(&self, key: &str) -> ABCDResult<()> {
-        self.runtime.block_on(async {
-            let list_obj_ver = self.client
-                .list_object_versions()
-                .bucket(&self.bucket)
-                .prefix(key)
-                .send()
-                .await?;
+    async fn ensure_only_original_verions(&self, key: &str) -> ABCDResult<()> {
+        let list_obj_ver = self.client
+            .list_object_versions()
+            .bucket(&self.bucket)
+            .prefix(key)
+            .send()
+            .await?;
 
-            let mut versions = list_obj_ver.versions.unwrap_or_default();
-            let delete_markers =  list_obj_ver.delete_markers.unwrap_or_default();
+        if list_obj_ver.is_truncated {
+            return Err(ABCDError::S3OperationError(
+                format!("Too many object verions - pagination not currently in use: {:?}", list_obj_ver)
+            ));
+        }
 
-            if versions.len() == 1 && delete_markers.is_empty() {
-                return Ok(());
-            }
+        let mut versions = list_obj_ver.versions.unwrap_or_default();
+        let delete_markers =  list_obj_ver.delete_markers.unwrap_or_default();
 
-            versions.pop();
-            let vers_to_delete = versions.into_iter()
-                .filter_map(|ov|
-                    if ov.key.is_some() && ov.version_id.is_some() {
-                        Some((ov.key.unwrap(), ov.version_id.unwrap()))
-                    } else {
-                        None
-                    }
-                );
-            let dms_to_delete = delete_markers.into_iter()
-                .filter_map(|ov|
-                    if ov.key.is_some() && ov.version_id.is_some() {
-                        Some((ov.key.unwrap(), ov.version_id.unwrap()))
-                    } else {
-                        None
-                    }
-                );
-            let to_delete: Vec<ObjectIdentifier> = {
-                vers_to_delete.chain(dms_to_delete)
-                    .map(|(key, id)| 
-                        ObjectIdentifier::builder()
-                            .set_version_id(Some(id))
-                            .set_key(Some(key))
-                            .build()
-                    )
-                    .collect()
-            };
+        if versions.len() == 1 && delete_markers.is_empty() {
+            return Ok(());
+        }
 
-            self.client
-                .delete_objects()
-                .bucket(&self.bucket)
-                .delete(Delete::builder().set_objects(Some(to_delete)).build())
-                .send()
-                .await?;
+        versions.pop();
+        let vers_to_delete = versions.into_iter()
+            .filter_map(|ov|
+                if ov.key.is_some() && ov.version_id.is_some() {
+                    Some((ov.key.unwrap(), ov.version_id.unwrap()))
+                } else {
+                    None
+                }
+            );
+        let dms_to_delete = delete_markers.into_iter()
+            .filter_map(|ov|
+                if ov.key.is_some() && ov.version_id.is_some() {
+                    Some((ov.key.unwrap(), ov.version_id.unwrap()))
+                } else {
+                    None
+                }
+            );
+        let to_delete: Vec<ObjectIdentifier> = {
+            vers_to_delete.chain(dms_to_delete)
+                .map(|(key, id)| 
+                    ObjectIdentifier::builder()
+                        .set_version_id(Some(id))
+                        .set_key(Some(key))
+                        .build()
+                )
+                .collect()
+        };
 
-            Ok(())
-        })
+        self.client
+            .delete_objects()
+            .bucket(&self.bucket)
+            .delete(Delete::builder().set_objects(Some(to_delete)).build())
+            .send()
+            .await?;
+
+        Ok(())
     }
 
     fn get_object_future(&self, key: &str) -> impl Future<Output = ABCDResult<GetObjectOutput>> {
@@ -200,101 +206,108 @@ impl S3System {
             .send()
             .map_err(Into::<ABCDError>::into)
     }
+
+    async fn previous_gen_number_async(&self) -> ABCDResult<u16> {
+        let objects = self.list_objects_v2(&self.prefix).await?;
+
+            if !objects.iter()
+                    .filter_map(|o|{
+                        o.key.as_ref()
+                    })
+                    .any(|k|self.gen_zero_re.is_match(k)) {
+                return Err(ABCDError::StorageInitError)
+            }
+    
+            let key_strings = objects.into_iter().filter_map(|obj| obj.key);
+            
+            let gen_number = key_strings
+                .filter_map(|key| {
+                    self.gen_non_zero_re.captures(&key)
+                        .map(|caps| caps["gid1"].parse::<u16>().ok())
+                        .flatten()
+                })
+                .max()
+                .unwrap_or(0);
+    
+            Ok(gen_number)
+    }
 }
 impl Storage for S3System {
     fn previous_gen_number(&self) -> ABCDResult<u16> {
-        let objects = self.list_objects_v2(&self.prefix)?;
-
-        if !objects.iter()
-                .filter_map(|o|{
-                    o.key.as_ref()
-                })
-                .any(|k|self.gen_zero_re.is_match(k)) {
-            return Err(ABCDError::StorageInitError)
-        }
-
-        let key_strings = objects.into_iter().filter_map(|obj| obj.key);
-        
-        let gen_number = key_strings
-            .filter_map(|key| {
-                self.gen_non_zero_re.captures(&key)
-                    .map(|caps| caps["gid1"].parse::<u16>().ok())
-                    .flatten()
-            })
-            .max()
-            .unwrap_or(0);
-
-        Ok(gen_number)
+        self.runtime.block_on(self.previous_gen_number_async())
     }
 
     fn load_previous_gen<P>(&self) -> ABCDResult<Generation<P>>
     where
         P: DeserializeOwned + Debug,
     {
-        let prev_gen_no = self.previous_gen_number()?;
-        let object_key = {
-            let prev_gen_file_dir = format!("gen_{:03}", prev_gen_no);
-            let prev_gen_file_name = format!("gen_{:03}.json", prev_gen_no);
-
-            format!(
-                "{}/{}/{}",
-                self.prefix.clone(),
-                prev_gen_file_dir,
-                prev_gen_file_name
-            )
-        };
-
-        self.ensure_only_original_verions(&object_key)?;
-
-        let string_fut = self.get_object_future(&object_key).then(Self::read_to_string);
-        let string = self.runtime.block_on(string_fut)?;
-        let gen: Generation<P> = serde_json::from_str(&string)?;
-
-        if gen.number == prev_gen_no { Ok(gen) } 
-        else {
-            Err(ABCDError::StorageConsistencyError(
-                format!("Expected gen number {} but got {}", prev_gen_no, gen.number)
-            ))
-        }
+        self.runtime.block_on(async{
+            let prev_gen_no = self.previous_gen_number_async().await?;
+            let object_key = {
+                let prev_gen_file_dir = format!("gen_{:03}", prev_gen_no);
+                let prev_gen_file_name = format!("gen_{:03}.json", prev_gen_no);
+    
+                format!(
+                    "{}/{}/{}",
+                    self.prefix.clone(),
+                    prev_gen_file_dir,
+                    prev_gen_file_name
+                )
+            };
+    
+            self.ensure_only_original_verions(&object_key).await?;
+    
+            let string = self.get_object_future(&object_key).then(Self::read_to_string).await?;
+            let gen: Generation<P> = serde_json::from_str(&string)?;
+    
+            if gen.number == prev_gen_no { Ok(gen) } 
+            else {
+                Err(ABCDError::StorageConsistencyError(
+                    format!("Expected gen number {} but got {}", prev_gen_no, gen.number)
+                ))
+            }
+        })
     }
 
     fn save_particle<P: Serialize>(&self, w: &Particle<P>) -> ABCDResult<String> {
-        let gen_file_dir = {
-            let gen_no = self.previous_gen_number()? + 1;
-            format!("gen_{:03}", gen_no)
-        };
-        
-        let particle_file_name = {
-            let file_uuid = Uuid::new_v4();
-            file_uuid.to_string() + ".json"
-        };
-
-        let non_prefixed_path =format!(
-            "{}/{}",  
-            gen_file_dir, 
-            particle_file_name
-        );
-
-        let prefixed_path = format!(
-            "{}/{}", 
-            self.prefix.clone(), 
-            non_prefixed_path
-        );
-
-        let pretty_json = serde_json::to_string_pretty(w)?;
-
-        let request = self.put_object_future(
-            &prefixed_path, 
-            &pretty_json
-        );
-
-        self.runtime.block_on(request)?;
-
-        Ok(non_prefixed_path)
+        self.runtime.block_on(async {
+            let gen_file_dir = {
+                let gen_no = self.previous_gen_number_async().await? + 1;
+                format!("gen_{:03}", gen_no)
+            };
+            
+            let particle_file_name = {
+                let file_uuid = Uuid::new_v4();
+                file_uuid.to_string() + ".json"
+            };
+    
+            let non_prefixed_path =format!(
+                "{}/{}",  
+                gen_file_dir, 
+                particle_file_name
+            );
+    
+            let prefixed_path = format!(
+                "{}/{}", 
+                self.prefix.clone(), 
+                non_prefixed_path
+            );
+    
+            let pretty_json = serde_json::to_string_pretty(w)?;
+    
+            self.put_object_future(
+                &prefixed_path, 
+                &pretty_json
+            ).await?;
+    
+            Ok(non_prefixed_path)
+        })
     }
 
     fn num_working_particles(&self) -> ABCDResult<u32> {
-        let files_in_folder = self.get_particle_files_in_active_gen();
+        let files_in_folder = self.runtime
+            .block_on(self.get_particle_files_in_active_gen());
+        
         match files_in_folder {
             // Err(_) if self.check_active_gen().ok() == Some(1) => Ok(0),
             Ok(files) => Ok(files.len().try_into()?), //TODO read dir numbers & take max
@@ -303,83 +316,89 @@ impl Storage for S3System {
     }
 
     fn load_working_particles<P>(&self) -> ABCDResult<Vec<Particle<P>>>
-    where
-        P: DeserializeOwned,
+    where P: DeserializeOwned,
     {
-        let object_names = self
-            .get_particle_files_in_active_gen()?
-            .into_iter()
-            .map(|t| t.key)
-            .collect::<Option<Vec<String>>>()
-            .ok_or_else(|| ABCDError::Other("failed to identify all particle file names".into()))?;
+        self.runtime.block_on(async {
+            let object_names = self
+                .get_particle_files_in_active_gen().await?
+                .into_iter()
+                .map(|t| t.key)
+                .collect::<Option<Vec<String>>>()
+                .ok_or_else(|| ABCDError::Other("failed to identify all particle file names".into()))?;
 
-        let particle_futures = object_names.into_iter().map(|filename| {
-            self.get_object_future(&filename)
-                .then(Self::read_to_string)
-                .map(|res| {    //TODO better
-                    res.and_then(|s| {
-                        serde_json::from_str::<Particle<P>>(&s)
-                            .map_err(|_| ABCDError::Other("badness".into()))
+            let particle_futures = object_names.into_iter().map(|filename| {
+                self.get_object_future(&filename)
+                    .then(Self::read_to_string)
+                    .map(|res| {
+                        res.and_then(move |s| {
+                            serde_json::from_str::<Particle<P>>(&s)
+                                .map_err(|e| ABCDError::SerdeError(
+                                    format!("Failed to deserialise {}: {}", filename.clone(), e)
+                                ))
+                        })
                     })
-                })
-        });
+            });
 
-        let joined = futures::future::join_all(particle_futures);
-        let particle_futures: Vec<Result<Particle<P>, ABCDError>> = self.runtime.block_on(joined);
-        let result_of_vec: ABCDResult<Vec<Particle<P>>> = particle_futures.into_iter().collect();
-        result_of_vec
+            let joined = futures::future::join_all(particle_futures);
+            let particles: Vec<Result<Particle<P>, ABCDError>> = joined.await;
+
+            let result_of_vec: ABCDResult<Vec<Particle<P>>> = particles.into_iter().collect();
+            result_of_vec
+        }) 
     }
 
     fn save_new_gen<P: Serialize>(
         &self,
         gen: &Generation<P>
     ) -> ABCDResult<()> {
-        let expected_new_gen_number = self.previous_gen_number()? + 1;
-        if gen.number != expected_new_gen_number {
-            return Err(
-                ABCDError::StorageConsistencyError(
-                    format!(
-                        "Asked to save gen {}, but was due to save {}", 
-                        &gen.number, 
-                        &expected_new_gen_number
+        self.runtime.block_on(async{
+            let expected_new_gen_number = self.previous_gen_number_async().await? + 1;
+            if gen.number != expected_new_gen_number {
+                return Err(
+                    ABCDError::StorageConsistencyError(
+                        format!(
+                            "Asked to save gen {}, but was due to save {}", 
+                            &gen.number, 
+                            &expected_new_gen_number
+                        )
                     )
                 )
-            )
-        }
-
-        let gen_dir = format!("gen_{:03}", gen.number);
-        let object_name = format!("gen_{:03}.json", gen.number);
-        let prefix_cloned = self.prefix.clone();
-        let object_path = format!("{}/{}/{}", prefix_cloned, gen_dir, object_name);
-        
-        //Test if the file is somehow already there
-        let request = self.client
-            .get_object_acl()
-            .bucket(&self.bucket)
-            .key(&object_path)
-            .send();
-
-        match self.runtime.block_on(request) {
-            Err(SdkError::ServiceError{
-                err: GetObjectAclError{..},
-                raw: _,
-            }) => {
-                //This is good, means we're not writing over existing gen
-                let request = self.put_object_future(
-                    &object_path,
-                    &serde_json::to_string_pretty(gen)?
-                );
-                self.runtime.block_on(request)?;
-                Ok(())
-            },
-            _ => {
-                //This is bad, the file shouldn't exist before we've saved it!
-                Err(ABCDError::GenAlreadySaved(format!(
-                    "Gen file already existed at {:?}",
-                    object_path
-                )))
-            },
-        }
+            }
+    
+            let gen_dir = format!("gen_{:03}", gen.number);
+            let object_name = format!("gen_{:03}.json", gen.number);
+            let prefix_cloned = self.prefix.clone();
+            let object_path = format!("{}/{}/{}", prefix_cloned, gen_dir, object_name);
+            
+            //Test if the file is somehow already there
+            let get_acl_output = self.client
+                .get_object_acl()
+                .bucket(&self.bucket)
+                .key(&object_path)
+                .send()
+                .await;
+    
+            match get_acl_output {
+                Err(SdkError::ServiceError{
+                    err: GetObjectAclError{..},
+                    raw: _,
+                }) => {
+                    //This is good, means we're not writing over existing gen
+                    self.put_object_future(
+                        &object_path,
+                        &serde_json::to_string_pretty(gen)?
+                    ).await?;
+                    Ok(())
+                },
+                _ => {
+                    //This is bad, the file shouldn't exist before we've saved it!
+                    Err(ABCDError::GenAlreadySaved(format!(
+                        "Gen file already existed at {:?}",
+                        object_path
+                    )))
+                },
+            }
+        })
     }
 }
 
@@ -531,7 +550,7 @@ mod tests {
                         .await
                         .unwrap();
 
-                    let vers = list_obj_ver.versions
+                    let ver_markers = list_obj_ver.versions
                         .unwrap_or_default()
                         .into_iter()
                         .filter_map(|v|{
@@ -551,9 +570,8 @@ mod tests {
                                 None
                             }
                         });
-                    let ver_keys: Vec<_> = vers.chain(del_markers).collect();
 
-                    let object_identifiers: Vec<ObjectIdentifier> = ver_keys.into_iter()
+                    let object_identifiers: Vec<ObjectIdentifier> = ver_markers.chain(del_markers)
                         .map(|(key, id)| 
                             ObjectIdentifier::builder()
                                 .set_version_id(Some(id))
@@ -562,7 +580,7 @@ mod tests {
                         )
                         .collect();
 
-                    let response = self.client
+                    self.client
                         .delete_objects()
                         .bucket(&self.bucket)
                         .delete(Delete::builder().set_objects(Some(object_identifiers)).build())
@@ -658,7 +676,7 @@ mod tests {
         let helper = StorageTestHelper::new(&instance, true);
         helper.put_recursive("resources/test/storage/example");
 
-        // Now (manually) upload another gen_002 file, as though
+        // Manually upload another gen_002 file, as though
         // it was uploaded concurrently by another node.
         helper.put_object(
             &format!("{}/{}", &helper.prefix, "gen_002/gen_002.json"), 
@@ -777,7 +795,7 @@ mod tests {
     fn test_num_working_particles() {
         let instance = storage_using_prefix("test_num_working_particles");
 
-        let helper = StorageTestHelper::new(&instance, true);
+        let helper = StorageTestHelper::new(&instance, false);
         helper.put_recursive("resources/test/storage/example");
 
         assert_eq!(2, instance.num_working_particles().unwrap())

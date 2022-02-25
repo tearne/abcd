@@ -1,7 +1,4 @@
-use std::{error::Error, num::TryFromIntError};
-
-use aws_sdk_s3::{error::GetObjectError, SdkError};
-use aws_smithy_http::operation::Response;
+use std::num::TryFromIntError;
 
 pub type ABCDResult<T> = std::result::Result<T, ABCDError>;
 
@@ -11,7 +8,7 @@ pub enum ABCDError {
     Io(std::io::Error),
     Os(std::ffi::OsString),
     Parse(std::num::ParseIntError),
-    Serde(serde_json::Error),
+    SerdeError(String),
     GenAlreadySaved(String),
     StorageInitError,
     StorageConsistencyError(String),
@@ -31,7 +28,7 @@ impl std::fmt::Display for ABCDError {
                 f.write_fmt(format_args!("Failed to convert to string: {:?}", original))
             }
             ABCDError::Parse(ref err) => err.fmt(f),
-            ABCDError::Serde(ref err) => err.fmt(f),
+            ABCDError::SerdeError(ref msg) => write!(f, "{}", msg),
             ABCDError::GenAlreadySaved(ref msg) => write!(f, "{}", msg),
             ABCDError::WasWorkingOnAnOldGeneration(ref msg) => write!(f, "{}", msg),
             ABCDError::StorageInitError => write!(f, "Storage init error"),
@@ -48,7 +45,7 @@ impl std::error::Error for ABCDError {}
 
 impl From<serde_json::Error> for ABCDError {
     fn from(value: serde_json::Error) -> Self {
-        ABCDError::Serde(value)
+        ABCDError::SerdeError(format!("{}",value))
     }
 }
 
@@ -109,6 +106,12 @@ impl From<aws_sdk_s3::SdkError<aws_sdk_s3::error::ListObjectVersionsError>> for 
 impl From<aws_sdk_s3::SdkError<aws_sdk_s3::error::DeleteObjectsError>> for ABCDError {
     fn from(value: aws_sdk_s3::SdkError<aws_sdk_s3::error::DeleteObjectsError>) -> Self {
         ABCDError::S3OperationError(format!("Failed to delete objects: {}",value))
+    }
+}
+
+impl From<aws_smithy_http::byte_stream::Error> for ABCDError {
+    fn from(value: aws_smithy_http::byte_stream::Error) -> Self {
+        ABCDError::S3OperationError(format!("Byte stream error: {}",value))
     }
 }
 
