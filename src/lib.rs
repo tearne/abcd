@@ -108,7 +108,7 @@ fn do_gen<M: Model, S: Storage>(
         // We now have a collection of scores for the particle
         // (B5b) Calculate f^hat by calc'ing proportion less than tolerance
         // (B6) Calculate not_normalised_weight for each particle from its f^hat (f^hat(p) * prior(p)) / denom)
-        let particle = algorithm::weigh_particle(scores, f64::MAX, model);
+        let particle = todo!();//algorithm::weigh_particle(scores, f64::MAX, model);
         // let particle = Particle{
         //     parameters,
         //     scores,
@@ -116,7 +116,7 @@ fn do_gen<M: Model, S: Storage>(
         // };
 
         // Save the non_normalised particle to storage
-        storage.save_particle(&particle)?;
+       // storage.save_particle(&particle)?;
 
         // Check if we now have the req'd num particles/reps, if so, break
         if storage.num_working_particles()? >= config.job.num_particles {
