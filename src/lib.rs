@@ -2,56 +2,16 @@ mod algorithm;
 mod error;
 mod etc;
 mod storage;
+mod types;
 
 use error::{ABCDError, ABCDResult};
 use etc::config::Config;
 use rand::distributions::WeightedIndex;
 use rand::prelude::*;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::fmt::Debug;
 use storage::Storage;
-// use anyhow::{Result, Context};
+pub use types::{ Model, Generation, Particle};
 
-// pub struct Random {}
 pub type Random = ThreadRng;
-
-pub trait Model {
-    type Parameters: Serialize + DeserializeOwned + Debug;
-
-    fn prior_sample(&self, random: &Random) -> Self::Parameters; //TODO check density of sampled value is NOT 0
-    fn prior_density(&self, p: &Self::Parameters) -> f64;
-
-    fn perturb(&self, p: &Self::Parameters) -> Self::Parameters;
-    fn pert_density(&self, a: &Self::Parameters, b: &Self::Parameters) -> f64;
-
-    fn score(&self, p: &Self::Parameters) -> f64;
-}
-
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
-pub struct Particle<P> {
-    pub parameters: P,
-    scores: Vec<f64>,
-    weight: f64,
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
-pub struct Population<P> {
-    // generation_number: u16,
-    tolerance: f64,
-    acceptance: f64,
-    normalised_particles: Vec<Particle<P>>,
-}
-// impl Population {
-//     pub fn new(...) -> Self {
-//         //TODO ensure the weights are normalised
-//     }
-// }
-
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
-pub struct Generation<P> {
-    pop: Population<P>,
-    number: u16,
-}
 
 pub fn run<M: Model, S: Storage>(
     model: M,
@@ -59,8 +19,8 @@ pub fn run<M: Model, S: Storage>(
     storage: S,
     random: &mut Random,
 ) -> ABCDResult<()> {
-    match do_gen(&storage, &model, &config, random, Prior::new()) {
-        Ok(gen_number) if gen_number == 0 => (),
+    match do_gen(&storage, &model, &config, random, PriorProposer::new()) {
+        Ok(gen_number) if gen_number == 1 => (),
         Err(ABCDError::WasWorkingOnAnOldGeneration(_)) => {
             println!("LOG ME");
             ()
@@ -76,40 +36,40 @@ pub fn run<M: Model, S: Storage>(
             &model,
             &config,
             random,
-            PreviousGeneration::new(gen),
+            PreviousGenerationProposer::new(gen),
         )?;
         if number == config.job.num_generations && config.job.terminate_at_target_gen {
             break;
         }
     }
 
-    todo!()
+    Ok(())
 }
 
 trait Proposer<M: Model> {
     fn next(&self, model: &M, random: &mut Random) -> M::Parameters;
 }
-struct Prior {}
-impl Prior {
+struct PriorProposer {}
+impl PriorProposer {
     pub fn new() -> Self {
-        Prior {}
+        PriorProposer {}
     }
 }
-impl<M: Model> Proposer<M> for Prior {
+impl<M: Model> Proposer<M> for PriorProposer {
     fn next(&self, model: &M, random: &mut Random) -> <M as Model>::Parameters {
         model.prior_sample(random)
     }
 }
 
-struct PreviousGeneration<P> {
+struct PreviousGenerationProposer<P> {
     generation: Generation<P>,
 }
-impl<P> PreviousGeneration<P> {
+impl<P> PreviousGenerationProposer<P> {
     pub fn new(generation: Generation<P>) -> Self {
-        PreviousGeneration { generation }
+        PreviousGenerationProposer { generation }
     }
 }
-impl<M: Model> Proposer<M> for PreviousGeneration<M::Parameters> {
+impl<M: Model> Proposer<M> for PreviousGenerationProposer<M::Parameters> {
     fn next(&self, model: &M, random: &mut Random) -> <M as Model>::Parameters {
         sample_and_perturb_with_support(&self.generation, model, random)
     }
@@ -174,6 +134,8 @@ fn do_gen<M: Model, S: Storage>(
     }
 }
 
+
+//TODO put this in the previous gen proposer
 fn sample_and_perturb_with_support<M>(
     gen: &Generation<M::Parameters>,
     model: &M,

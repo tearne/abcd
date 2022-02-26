@@ -34,7 +34,7 @@ pub trait Storage {
 mod test_helper {
     use serde::{Deserialize, Serialize};
 
-    use crate::{Generation, Particle, Population};
+    use crate::{Generation, Particle, types::Population};
 
     #[derive(Serialize, Deserialize, Debug, PartialEq)]
     pub struct DummyParams {

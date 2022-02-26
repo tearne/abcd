@@ -235,6 +235,19 @@ impl S3System {
 }
 impl Storage for S3System {
     fn previous_gen_number(&self) -> ABCDResult<u16> {
+        //TODO there is nothing currently checking that gid1 == gid2, which might lead to a consistnecy error
+        // let file_number = key_strings
+        // .filter_map(|key| {
+        //     self.gen_non_zero_re.captures(&key)
+        //         .map(|caps| caps["gid2"].parse::<u16>().ok())
+        //         .flatten()
+        // })
+        // .max()
+        // .unwrap_or(0);
+
+        // if(gen_number!=file_number){
+        //     return Err(ABCDError::StorageInitError) //To Test this do we need to set up new directory structure where gen dir number and gen file number are different
+        // }
         self.runtime.block_on(self.previous_gen_number_async())
     }
 
@@ -424,7 +437,7 @@ mod tests {
     use aws_sdk_s3::{Region, model::{Delete, ObjectIdentifier}};
     use futures::TryStreamExt;
 
-    use crate::{storage::{test_helper::{DummyParams, make_dummy_generation}, config::StorageConfig}, test_helper::test_data_path, Population};
+    use crate::{storage::{test_helper::{DummyParams, make_dummy_generation}, config::StorageConfig}, test_helper::test_data_path, types::Population};
 
     use super::*;
 
