@@ -126,7 +126,7 @@ impl S3System {
         Ok(string.into())
     }
 
-    async fn ensure_only_original_verions(&self, key: &str) -> ABCDResult<()> {
+    async fn ensure_only_original_verions(&self, key: &str) -> ABCDResult<String> {
         let list_obj_ver = self.client
             .list_object_versions()
             .bucket(&self.bucket)
@@ -144,10 +144,20 @@ impl S3System {
         let delete_markers =  list_obj_ver.delete_markers.unwrap_or_default();
 
         if versions.len() == 1 && delete_markers.is_empty() {
-            return Ok(());
+            if let Some(version) = versions.swap_remove(0).version_id {
+                return Ok(version);
+            } else {
+                return Err(ABCDError::S3OperationError(format!("Only verion of {} has ID None", key)));
+            }
         }
 
-        versions.pop();
+        let oldest_version_id = 
+            if let Some(version) = versions.pop().and_then(|ov|ov.version_id) {
+                version
+            } else {
+                return Err(ABCDError::S3OperationError(format!("Oldest verion of {} has ID None", key)));
+            };
+
         let vers_to_delete = versions.into_iter()
             .filter_map(|ov|
                 if ov.key.is_some() && ov.version_id.is_some() {
@@ -182,16 +192,7 @@ impl S3System {
             .send()
             .await?;
 
-        Ok(())
-    }
-
-    fn get_object_future(&self, key: &str) -> impl Future<Output = ABCDResult<GetObjectOutput>> {
-        self.client
-            .get_object()
-            .bucket(&self.bucket)
-            .key(key)
-            .send()
-            .map_err(Into::<ABCDError>::into)
+        Ok(oldest_version_id)
     }
 
     fn put_object_future(&self, key: &str, body: &str) -> impl Future<Output = ABCDResult<PutObjectOutput>> {        
@@ -255,10 +256,19 @@ impl Storage for S3System {
                 )
             };
     
-            self.ensure_only_original_verions(&object_key).await?;
+            let version_id = self.ensure_only_original_verions(&object_key).await?;
     
-            let string = self.get_object_future(&object_key).then(Self::read_to_string).await?;
-            let gen: Generation<P> = serde_json::from_str(&string)?;
+            let obj_string = self.client
+                .get_object()
+                .bucket(&self.bucket)
+                .key(&object_key)
+                .version_id(version_id)
+                .send()
+                .map_err(Into::<ABCDError>::into)
+                .then(Self::read_to_string)
+                .await?;
+            
+            let gen: Generation<P> = serde_json::from_str(&obj_string)?;
     
             if gen.number == prev_gen_no { Ok(gen) } 
             else {
@@ -327,7 +337,12 @@ impl Storage for S3System {
                 .ok_or_else(|| ABCDError::Other("failed to identify all particle file names".into()))?;
 
             let particle_futures = object_names.into_iter().map(|filename| {
-                self.get_object_future(&filename)
+                self.client
+                    .get_object()
+                    .bucket(&self.bucket)
+                    .key(&filename)
+                    .send()
+                    .map_err(Into::<ABCDError>::into)
                     .then(Self::read_to_string)
                     .map(|res| {
                         res.and_then(move |s| {
@@ -336,7 +351,7 @@ impl Storage for S3System {
                                     format!("Failed to deserialise {}: {}", filename.clone(), e)
                                 ))
                         })
-                    })
+                    }) 
             });
 
             let joined = futures::future::join_all(particle_futures);
