@@ -112,8 +112,6 @@ impl S3System {
     async fn read_to_string(
         output: ABCDResult<GetObjectOutput>,
     ) -> ABCDResult<String> {
-        // use futures::TryStreamExt;
-
         let bytes = output?
             .body
             .try_next()
@@ -222,11 +220,31 @@ impl S3System {
             let key_strings = objects.into_iter().filter_map(|obj| obj.key);
             
             let gen_number = key_strings
-                .filter_map(|key| {
-                    self.gen_non_zero_re.captures(&key)
-                        .map(|caps| caps["gid1"].parse::<u16>().ok())
-                        .flatten()
+                .filter_map(|key|{
+                    let captures = self.gen_non_zero_re.captures(&key)?;
+                    let g1 = captures.name("gid1").map(|m|m.as_str().parse::<u16>().ok()).flatten();
+                    let g2 = captures.name("gid2").map(|m|m.as_str().parse::<u16>().ok()).flatten();
+
+                    match (g1, g2) {
+                        (Some(gid_1), Some(gid_2)) => {
+                            Some((
+                                key.clone(),
+                                gid_1, 
+                                gid_2
+                            ))
+                        },
+                        _ => None,
+                    }
                 })
+                .map(|(key, gid_1, gid_2)|{
+                    if gid_1 != gid_2 { 
+                        Err(ABCDError::StorageConsistencyError(format!("Inconsistent path: {}", &key)))
+                    } else {
+                        Ok(gid_1)
+                    }
+                })
+                .collect::<ABCDResult<Vec<u16>>>()?
+                .into_iter()
                 .max()
                 .unwrap_or(0);
     
@@ -235,19 +253,6 @@ impl S3System {
 }
 impl Storage for S3System {
     fn previous_gen_number(&self) -> ABCDResult<u16> {
-        //TODO there is nothing currently checking that gid1 == gid2, which might lead to a consistnecy error
-        // let file_number = key_strings
-        // .filter_map(|key| {
-        //     self.gen_non_zero_re.captures(&key)
-        //         .map(|caps| caps["gid2"].parse::<u16>().ok())
-        //         .flatten()
-        // })
-        // .max()
-        // .unwrap_or(0);
-
-        // if(gen_number!=file_number){
-        //     return Err(ABCDError::StorageInitError) //To Test this do we need to set up new directory structure where gen dir number and gen file number are different
-        // }
         self.runtime.block_on(self.previous_gen_number_async())
     }
 
@@ -678,8 +683,8 @@ mod tests {
     }
 
     #[test]
-    fn test_previous_gen_num_three() {
-        let instance = storage_using_prefix("test_previous_gen_num_three");
+    fn test_previous_gen_num_two() {
+        let instance = storage_using_prefix("test_previous_gen_num_two");
 
         let helper = StorageTestHelper::new(&instance, true);
         helper.put_recursive("resources/test/storage/example");
@@ -727,28 +732,30 @@ mod tests {
             .load_previous_gen::<DummyParams>()
             .unwrap();
 
-        
-
         assert_eq!(gen_002(), result);
     }
 
-    // #[test]
-    // fn test_version_experiments() {
-    //     let instance = storage_using_prefix("test_versioning");
-
-    //     let helper = StorageTestHelper::new(&instance, true);
-    //     helper.put_recursive("resources/test/storage/example");
-    //     helper.put_recursive("resources/test/storage/example");
-
-    //     instance.get_ensuring_version_one("test_versioning/abcd.init");
-    // }
-
     #[test]
-    fn test_exception_if_load_gen_not_matching_path() {
-        let instance = storage_using_prefix("test_exception_if_load_gen_not_matching_path");
+    fn test_exception_if_gen_num_mismatch_path() {
+        let instance = storage_using_prefix("test_exception_if_gen_num_mismatch_path");
 
         let helper = StorageTestHelper::new(&instance, true);
         helper.put_recursive("resources/test/storage/example_gen_mismatch");
+
+        let result = instance.load_previous_gen::<DummyParams>();
+
+        match result {
+            Err(ABCDError::StorageConsistencyError(_)) => (),
+            _ => panic!("Expected exception")
+        }
+    }
+
+    #[test]
+    fn test_exception_if_gen_path_inconsistent() {
+        let instance = storage_using_prefix("test_exception_if_gen_path_inconsistent");
+
+        let helper = StorageTestHelper::new(&instance, true);
+        helper.put_recursive("resources/test/storage/example_path_inconsistent");
 
         let result = instance.load_previous_gen::<DummyParams>();
 
