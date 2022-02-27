@@ -1,9 +1,9 @@
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::fmt::Debug;
-use serde::{Serialize, de::DeserializeOwned, Deserialize};
 
 use crate::Random;
 
- pub trait Model {
+pub trait Model {
     type Parameters: Serialize + DeserializeOwned + Debug;
 
     fn prior_sample(&self, random: &Random) -> Self::Parameters; //TODO check density of sampled value is NOT 0

@@ -25,7 +25,7 @@ impl FileSystem {
     }
 
     fn get_particle_files_in_current_gen_folder(&self) -> ABCDResult<Vec<std::fs::DirEntry>> {
-        let gen_no = self.previous_gen_number()? +1;
+        let gen_no = self.previous_gen_number()? + 1;
         println!("Active gen is {}", gen_no);
         let gen_dir = format!("gen_{:03}", gen_no);
         let dir = self.base_path.join(gen_dir);
@@ -59,15 +59,15 @@ impl Storage for FileSystem {
         // };
         let gen_zero_file = self.base_path.join("abcd.init");
 
-        if !gen_zero_file.exists(){
-            return Err(ABCDError::StorageInitError)
+        if !gen_zero_file.exists() {
+            return Err(ABCDError::StorageInitError);
         }
 
         let gen_dirs: Vec<u16> = std::fs::read_dir(&self.base_path)?
             .filter_map(|read_dir| {
                 let path = read_dir.as_ref().ok()?.path();
                 println!("Path is  {:?}", path);
-                if path.is_dir(){
+                if path.is_dir() {
                     path.file_name()
                         .map(|name| name.to_string_lossy().to_string())
                 } else {
@@ -84,7 +84,7 @@ impl Storage for FileSystem {
             })
             .collect();
 
-          let max_gen = //gen_dirs.iter().max();
+        let max_gen = //gen_dirs.iter().max();
           gen_dirs
                 .iter()
                 .max() 
@@ -92,11 +92,10 @@ impl Storage for FileSystem {
                  .ok_or_else(|| ABCDError::Other("Failed to find max gen".into()));
 
         match max_gen {
-            Ok(max_gen) => Ok(max_gen-1 as u16), //TODO read dir numbers & take max //TODO safer way to do cast - Ok(u16::try_from(file.len()))
-          //  Err(ABCDError::Other("Failed to find max gen".into())) => Err(e),
-            Err(e) => Err(e)
+            Ok(max_gen) => Ok(max_gen - 1 as u16), //TODO read dir numbers & take max //TODO safer way to do cast - Ok(u16::try_from(file.len()))
+            //  Err(ABCDError::Other("Failed to find max gen".into())) => Err(e),
+            Err(e) => Err(e),
         }
-
     }
 
     fn load_previous_gen<P>(&self) -> ABCDResult<Generation<P>>
@@ -381,7 +380,6 @@ mod tests {
             .expect("Expected successful save");
 
         //   let expected = serde_json::to_string_pretty(&gen).unwrap(); //Doesn't seem to compare will when prettyified
-
 
         let expected = serde_json::json!({
             "number": 3,

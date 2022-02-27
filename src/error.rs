@@ -45,7 +45,7 @@ impl std::error::Error for ABCDError {}
 
 impl From<serde_json::Error> for ABCDError {
     fn from(value: serde_json::Error) -> Self {
-        ABCDError::SerdeError(format!("{}",value))
+        ABCDError::SerdeError(format!("{}", value))
     }
 }
 
@@ -93,25 +93,25 @@ impl From<aws_sdk_s3::SdkError<aws_sdk_s3::error::PutObjectError>> for ABCDError
 
 impl From<aws_sdk_s3::SdkError<aws_sdk_s3::error::GetBucketVersioningError>> for ABCDError {
     fn from(value: aws_sdk_s3::SdkError<aws_sdk_s3::error::GetBucketVersioningError>) -> Self {
-        ABCDError::S3OperationError(format!("Failed to get bucket version data: {}",value))
+        ABCDError::S3OperationError(format!("Failed to get bucket version data: {}", value))
     }
 }
 
 impl From<aws_sdk_s3::SdkError<aws_sdk_s3::error::ListObjectVersionsError>> for ABCDError {
     fn from(value: aws_sdk_s3::SdkError<aws_sdk_s3::error::ListObjectVersionsError>) -> Self {
-        ABCDError::S3OperationError(format!("Failed to list object version data: {}",value))
+        ABCDError::S3OperationError(format!("Failed to list object version data: {}", value))
     }
 }
 
 impl From<aws_sdk_s3::SdkError<aws_sdk_s3::error::DeleteObjectsError>> for ABCDError {
     fn from(value: aws_sdk_s3::SdkError<aws_sdk_s3::error::DeleteObjectsError>) -> Self {
-        ABCDError::S3OperationError(format!("Failed to delete objects: {}",value))
+        ABCDError::S3OperationError(format!("Failed to delete objects: {}", value))
     }
 }
 
 impl From<aws_smithy_http::byte_stream::Error> for ABCDError {
     fn from(value: aws_smithy_http::byte_stream::Error) -> Self {
-        ABCDError::S3OperationError(format!("Byte stream error: {}",value))
+        ABCDError::S3OperationError(format!("Byte stream error: {}", value))
     }
 }
 
