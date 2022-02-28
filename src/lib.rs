@@ -4,12 +4,14 @@ mod etc;
 mod storage;
 mod types;
 
+use std::thread::Thread;
+
 use error::{ABCDError, ABCDResult};
 use etc::config::Config;
 use rand::distributions::WeightedIndex;
 use rand::prelude::*;
 use storage::Storage;
-pub use types::{Generation, Model, Particle};
+pub use types::{ Model, Generation, Particle};
 
 pub type Random = ThreadRng;
 
@@ -19,7 +21,7 @@ pub fn run<M: Model, S: Storage>(
     storage: S,
     random: &mut Random,
 ) -> ABCDResult<()> {
-    match do_gen(&storage, &model, &config, random, PriorProposer::new()) {
+    match do_gen(&storage, &model, &config, random, PriorGeneration::new()) {
         Ok(gen_number) if gen_number == 1 => (),
         Err(ABCDError::WasWorkingOnAnOldGeneration(_)) => {
             println!("LOG ME");
@@ -36,7 +38,7 @@ pub fn run<M: Model, S: Storage>(
             &model,
             &config,
             random,
-            PreviousGenerationProposer::new(gen),
+            ActualGeneration::new(gen),
         )?;
         if number == config.job.num_generations && config.job.terminate_at_target_gen {
             break;
@@ -46,43 +48,85 @@ pub fn run<M: Model, S: Storage>(
     Ok(())
 }
 
-trait Proposer<M: Model> {
-    fn next(&self, model: &M, random: &mut Random) -> M::Parameters;
+trait GenerationStuff<M: Model> {
+    fn propose_me_a_parmeter_set(&self, model: &M, random: &ThreadRng) -> M::Parameters;
+    fn calculate_me_a_tolerance(&self) -> f64;
+    fn weigh_me_a_particle(&self, scores: Vec<f64>, model: &M, tolerance: f64) -> Particle<M::Parameters>;
 }
-struct PriorProposer {}
-impl PriorProposer {
-    pub fn new() -> Self {
-        PriorProposer {}
+struct ActualGeneration<P>{
+    gen: Generation<P>,
+}
+impl<P> ActualGeneration<P> {
+    fn new(gen: Generation<P>) -> Self {
+        Self { gen }
     }
 }
-impl<M: Model> Proposer<M> for PriorProposer {
-    fn next(&self, model: &M, random: &mut Random) -> <M as Model>::Parameters {
-        model.prior_sample(random)
+impl<M: Model> GenerationStuff<M> for ActualGeneration<M::Parameters>{
+    fn propose_me_a_parmeter_set(&self, model: &M, random: &ThreadRng) -> <M as Model>::Parameters {
+        todo!()
     }
+
+    fn calculate_me_a_tolerance(&self) -> f64 {
+        todo!()
+    }
+
+    fn weigh_me_a_particle(&self, scores: Vec<f64>, model: &M, tolerance: f64) -> Particle<<M as Model>::Parameters> {
+        todo!()
+    }
+}
+struct PriorGeneration{}
+impl<M: Model> GenerationStuff<M> for PriorGeneration{
+    fn propose_me_a_parmeter_set(&self, model: &M, random: &ThreadRng) -> <M as Model>::Parameters {
+        todo!()
+    }
+
+    fn calculate_me_a_tolerance(&self) -> f64 {
+        f64::MAX
+    }
+
+    fn weigh_me_a_particle(&self, scores: Vec<f64>, model: &M, tolerance: f64) -> Particle<<M as Model>::Parameters> {
+        todo!()
+    }
+    //todo
 }
 
-struct PreviousGenerationProposer<P> {
-    generation: Generation<P>,
-}
-impl<P> PreviousGenerationProposer<P> {
-    pub fn new(generation: Generation<P>) -> Self {
-        PreviousGenerationProposer { generation }
-    }
-}
-impl<M: Model> Proposer<M> for PreviousGenerationProposer<M::Parameters> {
-    fn next(&self, model: &M, random: &mut Random) -> <M as Model>::Parameters {
-        sample_and_perturb_with_support(&self.generation, model, random)
-    }
-}
+// struct PriorProposer { //TODO rename to reflect fact that it does two things (a) proposing, (b) weighing
+
+// }
+// impl PriorProposer {
+//     pub fn new() -> Self {
+//         PriorProposer {}
+//     }
+// }
+// impl<M: Model> Proposer<M> for PriorProposer {
+//     fn next(&self, model: &M, random: &mut Random) -> <M as Model>::Parameters {
+//         model.prior_sample(random)
+//     }
+// }
+
+// struct PreviousGenerationProposer<P> {
+//     generation: Generation<P>,
+// }
+// impl<P> PreviousGenerationProposer<P> {
+//     pub fn new(generation: Generation<P>) -> Self {
+//         PreviousGenerationProposer { generation }
+//     }
+// }
+// impl<M: Model> Proposer<M> for PreviousGenerationProposer<M::Parameters> {
+//     fn next(&self, model: &M, random: &mut Random) -> <M as Model>::Parameters {
+//         sample_and_perturb_with_support(&self.generation, model, random)
+//     }
+// }
 
 fn do_gen<M: Model, S: Storage>(
     storage: &S,
     model: &M,
     config: &Config,
     random: &mut Random,
-    proposer: impl Proposer<M>,
+    gen_stuff: impl GenerationStuff<M>,
 ) -> ABCDResult<u16> {
     let prev_gen_number = storage.previous_gen_number()?;
+    let tolerance = gen_stuff.calculate_me_a_tolerance();
     loop {
         //Particle loop
 
@@ -90,7 +134,7 @@ fn do_gen<M: Model, S: Storage>(
         // TODO loop could go on forever?  Use some kind of timeout, or issue warning?
         // (B3) sample a (fitting) parameter set from gen (perturb based on weights and kernel if sampling from generation)
         // (B4) Check if prior probability is zero - if so sample again
-        let parameters: <M as Model>::Parameters = proposer.next(model, random);
+        let parameters: <M as Model>::Parameters = gen_stuff.propose_me_a_parmeter_set(model, random);
 
         let scores: ABCDResult<Vec<f64>> = (0..config.job.num_replicates)
             .map(|rep_idx| {
@@ -108,15 +152,16 @@ fn do_gen<M: Model, S: Storage>(
         // We now have a collection of scores for the particle
         // (B5b) Calculate f^hat by calc'ing proportion less than tolerance
         // (B6) Calculate not_normalised_weight for each particle from its f^hat (f^hat(p) * prior(p)) / denom)
-        let particle = todo!(); //algorithm::weigh_particle(scores, f64::MAX, model);
-                                // let particle = Particle{
-                                //     parameters,
-                                //     scores,
-                                //     weight,
-                                // };
+        let particle = gen_stuff.weigh_me_a_particle(scores, model, tolerance);
+        // let particle = algorithm::weigh_particle(scores, f64::MAX, model, prev_gen_number);
+        // let particle = Particle{
+        //     parameters,
+        //     scores,
+        //     weight,
+        // };
 
         // Save the non_normalised particle to storage
-        // storage.save_particle(&particle)?;
+        storage.save_particle(&particle)?;
 
         // Check if we now have the req'd num particles/reps, if so, break
         if storage.num_working_particles()? >= config.job.num_particles {
@@ -124,7 +169,7 @@ fn do_gen<M: Model, S: Storage>(
             let particles: Vec<Particle<M::Parameters>> = storage.load_working_particles()?;
 
             // (B7) Normalise all the weights together
-            let new_generation = algorithm::normalise::<M>(particles, prev_gen_number + 1);
+            let new_generation = Generation::new(particles, prev_gen_number + 1, tolerance);
 
             // Save generation to storage
             storage.save_new_gen(&new_generation);
@@ -133,6 +178,7 @@ fn do_gen<M: Model, S: Storage>(
         }
     }
 }
+
 
 //TODO put this in the previous gen proposer
 fn sample_and_perturb_with_support<M>(
