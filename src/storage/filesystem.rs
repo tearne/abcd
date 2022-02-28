@@ -369,9 +369,8 @@ mod tests {
         let instance = FileSystem::new(tmp_dir.path.clone());
 
         let gen_number = 3;
-        let gen_acceptance = 0.3;
 
-        let gen = make_dummy_generation(gen_number, gen_acceptance);
+        let gen = make_dummy_generation(gen_number);
         std::fs::create_dir(instance.base_path.join("gen_003"))
             .expect("Expected successful dir creation");
 
@@ -385,7 +384,7 @@ mod tests {
             "number": 3,
             "pop": {
             "tolerance": 0.5678,
-            "acceptance": 0.3,
+            "acceptance": 0.75,
             "normalised_particles": [
                 {
                     "parameters" : {
@@ -420,8 +419,9 @@ mod tests {
         let instance = FileSystem::new(tmp_dir.path.clone());
 
         let gen_number = 4;
-        let dummy_gen_1 = make_dummy_generation(gen_number, 0.3);
-        let dummy_gen_2 = make_dummy_generation(gen_number, 0.4);
+        let dummy_gen_1 = make_dummy_generation(gen_number);
+        let mut dummy_gen_2 = make_dummy_generation(gen_number);
+        dummy_gen_2.pop.acceptance = 0.3;
 
         //1. Save an dummy gen_003 file, representing file already save by another node
         std::fs::create_dir(instance.base_path.join("gen_004"))

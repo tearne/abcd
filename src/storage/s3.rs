@@ -359,7 +359,6 @@ impl Storage for S3System {
             .block_on(self.get_particle_files_in_active_gen());
 
         match files_in_folder {
-            // Err(_) if self.check_active_gen().ok() == Some(1) => Ok(0),
             Ok(files) => Ok(files.len().try_into()?), //TODO read dir numbers & take max
             Err(e) => Err(e),
         }
@@ -467,11 +466,9 @@ mod tests {
 
     use crate::{
         storage::{
-            config::StorageConfig,
-            test_helper::{make_dummy_generation, DummyParams},
+            config::StorageConfig, test_helper::{DummyParams, gen_002, make_dummy_generation}
         },
         test_helper::test_data_path,
-        types::Population,
     };
 
     use super::*;
@@ -699,28 +696,6 @@ mod tests {
             .expect("Failed to bulid storage instance")
     }
 
-    fn gen_002() -> Generation<DummyParams> {
-        Generation {
-            pop: Population {
-                tolerance: 0.1234,
-                acceptance: 0.7,
-                normalised_particles: vec![
-                    Particle {
-                        parameters: DummyParams::new(10, 20.0),
-                        scores: vec![1000.0, 2000.0],
-                        weight: 0.234,
-                    },
-                    Particle {
-                        parameters: DummyParams::new(30, 40.0),
-                        scores: vec![3000.0, 4000.0],
-                        weight: 0.567,
-                    },
-                ],
-            },
-            number: 2,
-        }
-    }
-
     #[test]
     fn test_previous_gen_num_two() {
         let instance = storage_using_prefix("test_previous_gen_num_two");
@@ -851,7 +826,7 @@ mod tests {
         let helper = StorageTestHelper::new(&instance, true);
         helper.put_recursive("resources/test/storage/example");
 
-        let dummy_generation = make_dummy_generation(999, 0.3);
+        let dummy_generation = make_dummy_generation(999);
 
         let result = instance.save_new_gen(&dummy_generation);
 
@@ -911,7 +886,7 @@ mod tests {
         helper.put_recursive("resources/test/storage/example");
 
         let gen_number = 3;
-        let dummy_generation = make_dummy_generation(gen_number, 0.3);
+        let dummy_generation = make_dummy_generation(gen_number);
 
         instance
             .save_new_gen(&dummy_generation)
@@ -923,38 +898,6 @@ mod tests {
         let actual: Generation<DummyParams> =
             serde_json::from_str(&helper.get_object(&format!("gen_{:03}/gen_{:03}.json", 3, 3)))
                 .unwrap();
-
-        assert_eq!(expected, actual);
-    }
-
-    #[test]
-    fn test_load_generation() {
-        let instance = storage_using_prefix("test_load_generation");
-
-        let helper = StorageTestHelper::new(&instance, true);
-        helper.put_recursive("resources/test/storage/example");
-
-        let expected = Generation {
-            pop: Population {
-                tolerance: 0.1234,
-                acceptance: 0.7,
-                normalised_particles: vec![
-                    Particle {
-                        parameters: DummyParams::new(10, 20.0),
-                        scores: vec![1000.0, 2000.0],
-                        weight: 0.234,
-                    },
-                    Particle {
-                        parameters: DummyParams::new(30, 40.0),
-                        scores: vec![3000.0, 4000.0],
-                        weight: 0.567,
-                    },
-                ],
-            },
-            number: 2,
-        };
-
-        let actual = instance.load_previous_gen().unwrap();
 
         assert_eq!(expected, actual);
     }

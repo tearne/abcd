@@ -47,7 +47,29 @@ mod test_helper {
         }
     }
 
-    pub fn make_dummy_generation(gen_number: u16, acceptance: f64) -> Generation<DummyParams> {
+    pub fn gen_002() -> Generation<DummyParams> {
+        Generation {
+            pop: Population {
+                tolerance: 0.1234,
+                acceptance: 0.7,
+                normalised_particles: vec![
+                    Particle {
+                        parameters: DummyParams::new(10, 20.0),
+                        scores: vec![1000.0, 2000.0],
+                        weight: 0.234,
+                    },
+                    Particle {
+                        parameters: DummyParams::new(30, 40.0),
+                        scores: vec![3000.0, 4000.0],
+                        weight: 0.567,
+                    },
+                ],
+            },
+            number: 2,
+        }
+    }
+
+    pub fn make_dummy_generation(gen_number: u16) -> Generation<DummyParams> {
         let particle_1 = Particle {
             parameters: DummyParams::new(11, 22.),
             scores: vec![1111.0, 2222.0],
@@ -62,7 +84,7 @@ mod test_helper {
 
         let pop = Population {
             tolerance: 0.5678,
-            acceptance, //Acceptance can be changed, so we can make different dummy gens
+            acceptance: 0.75,
             normalised_particles: vec![particle_1, particle_2],
         };
 
