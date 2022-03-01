@@ -19,17 +19,13 @@ pub trait Storage {
     where
         P: Serialize + Debug;
 
-    fn num_working_particles(&self) -> ABCDResult<u32>;
+    fn num_accepted_particles(&self) -> ABCDResult<u32>;
 
-    fn load_current_accepted_particles<P>(&self) -> ABCDResult<Vec<Particle<P>>>
+    fn load_accepted_particles<P>(&self) -> ABCDResult<Vec<Particle<P>>>
     where
         P: DeserializeOwned + Debug;
 
-    fn count_current_rejected_particles(&self) -> ABCDResult<u64>;
-
-    // fn load_working_particles<P>(&self) -> ABCDResult<Vec<Particle<P>>>
-    // where
-    //     P: DeserializeOwned + Debug;
+    fn num_rejected_particles(&self) -> ABCDResult<u64>;
 
     fn save_new_gen<P>(&self, generation: &Generation<P>) -> ABCDResult<()>
     where

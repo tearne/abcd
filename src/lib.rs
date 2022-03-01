@@ -163,10 +163,10 @@ fn do_gen<M: Model, S: Storage>(
         storage.save_particle(&particle)?;
 
         // Check if we now have the req'd num particles/reps, if so, break
-        if storage.num_working_particles()? >= config.job.num_particles {
+        if storage.num_accepted_particles()? >= config.job.num_particles {
             // Load all the non_normalised particles
-            let particles: Vec<Particle<M::Parameters>> = storage.load_current_accepted_particles()?;
-            let rejections = storage.count_current_rejected_particles()?;
+            let particles: Vec<Particle<M::Parameters>> = storage.load_accepted_particles()?;
+            let rejections = storage.num_rejected_particles()?;
             let acceptance = {
                 let num: f64 = cast::f64(particles.len()); //TODO check we understand this, seems to be infallable??!
                 let rejected: f64 =  cast::f64(rejections);
@@ -174,13 +174,14 @@ fn do_gen<M: Model, S: Storage>(
             };
 
             // (B7) Normalise all the weights together
-            let normalised = algorithm::normalise(particles);
-            let new_generation = Generation::new(normalised, prev_gen_number + 1, tolerance, acceptance);
+            // let normalised = algorithm::normalise(particles);
+            // let new_generation = Generation::new(normalised, prev_gen_number + 1, tolerance, acceptance);
 
-            // Save generation to storage
-            storage.save_new_gen(&new_generation);
+            // // Save generation to storage
+            // storage.save_new_gen(&new_generation);
 
-            return Ok(new_generation.number);
+            // return Ok(new_generation.number);
+            todo!()
         }
     }
 }
@@ -205,18 +206,19 @@ where
             // } => {
             //https://rust-random.github.io/rand/rand/distributions/weighted/struct.WeightedIndex.html
             // 1. sample a particle from the previosu population
-            let particle_weights: Vec<f64> = gen
-                .pop
-                .normalised_particles
-                .iter()
-                .map(|p| p.weight)
-                .collect();
+            // let particle_weights: Vec<f64> = gen
+            //     .pop
+            //     .normalised_particles
+            //     .iter()
+            //     .map(|p| p.weight)
+            //     .collect();
 
-            let dist = WeightedIndex::new(&particle_weights).unwrap();
-            let sampled_particle_index = dist.sample(random);
-            let sample_particle = &gen.pop.normalised_particles[sampled_particle_index];
+            // let dist = WeightedIndex::new(&particle_weights).unwrap();
+            // let sampled_particle_index = dist.sample(random);
+            //let sample_particle = &gen.pop.normalised_particles[sampled_particle_index];
             // 2. perturb it with model.perturb(p)
-            model.perturb(&sample_particle.parameters)
+            //model.perturb(&sample_particle.parameters)
+            todo!()
         };
 
         if model.prior_density(&proposed) > 0.0 {

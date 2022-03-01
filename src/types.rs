@@ -24,9 +24,9 @@ pub struct Particle<P> {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct Population<P> {
-    tolerance: f64,
-    acceptance: f64,
-    normalised_particles: Vec<Particle<P>>,
+    pub tolerance: f64,
+    pub acceptance: f64,
+    pub normalised_particles: Vec<Particle<P>>,
 }
 impl<P> Population<P> {
     pub fn new(tolterance: f64, acceptance: f64, normalise_particles: Vec<Particle<P>>) -> Self {
@@ -41,8 +41,8 @@ impl<P> Population<P> {
         self.acceptance
     }
 
-    pub fn particles(&self) -> Vec<Particle<P>> {
-        self.normalised_particles
+    pub fn particles(&self) -> &Vec<Particle<P>> {
+        &self.normalised_particles
     }
 }
 

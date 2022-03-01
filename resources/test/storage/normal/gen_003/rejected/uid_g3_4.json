@@ -1,0 +1,7 @@
+{
+    "parameters" : {
+        "a": 70, "b": 80
+    },
+    "scores": [8000, 9000],
+    "weight_not_normalised": 0.0
+}
