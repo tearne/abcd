@@ -4,7 +4,7 @@ mod etc;
 mod storage;
 mod types;
 
-use std::thread::Thread;
+use std::{thread::Thread, convert::TryInto};
 
 use error::{ABCDError, ABCDResult};
 use etc::config::Config;
@@ -21,7 +21,7 @@ pub fn run<M: Model, S: Storage>(
     storage: S,
     random: &mut Random,
 ) -> ABCDResult<()> {
-    match do_gen(&storage, &model, &config, random, PriorGeneration::new()) {
+    match do_gen(&storage, &model, &config, random, PriorGeneration{}) {
         Ok(gen_number) if gen_number == 1 => (),
         Err(ABCDError::WasWorkingOnAnOldGeneration(_)) => {
             println!("LOG ME");
@@ -87,7 +87,6 @@ impl<M: Model> GenerationStuff<M> for PriorGeneration{
     fn weigh_me_a_particle(&self, scores: Vec<f64>, model: &M, tolerance: f64) -> Particle<<M as Model>::Parameters> {
         todo!()
     }
-    //todo
 }
 
 // struct PriorProposer { //TODO rename to reflect fact that it does two things (a) proposing, (b) weighing
@@ -166,10 +165,17 @@ fn do_gen<M: Model, S: Storage>(
         // Check if we now have the req'd num particles/reps, if so, break
         if storage.num_working_particles()? >= config.job.num_particles {
             // Load all the non_normalised particles
-            let particles: Vec<Particle<M::Parameters>> = storage.load_working_particles()?;
+            let particles: Vec<Particle<M::Parameters>> = storage.load_current_accepted_particles()?;
+            let rejections = storage.count_current_rejected_particles()?;
+            let acceptance = {
+                let num: f64 = cast::f64(particles.len()); //TODO check we understand this, seems to be infallable??!
+                let rejected: f64 =  cast::f64(rejections);
+                num / (num + rejected)
+            };
 
             // (B7) Normalise all the weights together
-            let new_generation = Generation::new(particles, prev_gen_number + 1, tolerance);
+            let normalised = algorithm::normalise(particles);
+            let new_generation = Generation::new(normalised, prev_gen_number + 1, tolerance, acceptance);
 
             // Save generation to storage
             storage.save_new_gen(&new_generation);

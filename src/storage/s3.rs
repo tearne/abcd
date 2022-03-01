@@ -364,7 +364,7 @@ impl Storage for S3System {
         }
     }
 
-    fn load_working_particles<P>(&self) -> ABCDResult<Vec<Particle<P>>>
+    fn load_current_accepted_particles<P>(&self) -> ABCDResult<Vec<Particle<P>>>
     where
         P: DeserializeOwned,
     {
@@ -451,6 +451,10 @@ impl Storage for S3System {
                 }
             }
         })
+    }
+
+    fn count_current_rejected_particles(&self) -> ABCDResult<u64> {
+        todo!()
     }
 }
 
@@ -869,7 +873,7 @@ mod tests {
             vec![w1, w2]
         };
 
-        let mut result: Vec<Particle<DummyParams>> = instance.load_working_particles().unwrap();
+        let mut result: Vec<Particle<DummyParams>> = instance.load_current_accepted_particles().unwrap();
 
         //Sort by weight for easy comparison
         expected.sort_by(|a, b| a.weight.partial_cmp(&b.weight).unwrap());

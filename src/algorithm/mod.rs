@@ -4,7 +4,7 @@ pub(crate) fn weigh_particle<M>(scores: Vec<f64>, model: &M, prev_gen: Generatio
 where
     M: Model,
 {
-    let tolerance = if(gen_number==0) {max} else {1}; // Note need to implement something that tracks tolerance througout fit.
+    //let tolerance = if(gen_number==0) {max} else {1}; // Note need to implement something that tracks tolerance througout fit.
     // Get distribution of scores from last generation then reduce by tolerance descent rate (configured) - crate exists for percentile => 
     // (B5b) Calculate f^hat by calc'ing proportion less than tolerance
     // (B6) Calculate not_normalised_weight for each particle from its f^hat (f^hat(p) * prior(p)) / denom)

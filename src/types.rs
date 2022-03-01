@@ -24,13 +24,40 @@ pub struct Particle<P> {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct Population<P> {
-    pub tolerance: f64,
-    pub acceptance: f64,
-    pub normalised_particles: Vec<Particle<P>>,
+    tolerance: f64,
+    acceptance: f64,
+    normalised_particles: Vec<Particle<P>>,
+}
+impl<P> Population<P> {
+    pub fn new(tolterance: f64, acceptance: f64, normalise_particles: Vec<Particle<P>>) -> Self {
+        todo!("Blow up if particles aren't normalised");
+    }
+
+    pub fn tolerance(&self) -> f64 {
+        self.tolerance
+    }
+
+    pub fn acceptance(&self) -> f64 {
+        self.acceptance
+    }
+
+    pub fn particles(&self) -> Vec<Particle<P>> {
+        self.normalised_particles
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct Generation<P> {
     pub pop: Population<P>,
     pub number: u16,
+}
+impl<P> Generation<P> {
+    pub fn new(
+        normalise_particles: P,
+        generation_number: u16,
+        tolerance: f64,
+        acceptance: f64 //TODO change to an f16?
+    ) -> Self{
+        todo!()
+    }
 }

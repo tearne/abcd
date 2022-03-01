@@ -1,5 +1,5 @@
 pub mod config;
-pub mod filesystem;
+// pub mod filesystem;
 pub mod s3;
 
 use serde::de::DeserializeOwned;
@@ -21,9 +21,15 @@ pub trait Storage {
 
     fn num_working_particles(&self) -> ABCDResult<u32>;
 
-    fn load_working_particles<P>(&self) -> ABCDResult<Vec<Particle<P>>>
+    fn load_current_accepted_particles<P>(&self) -> ABCDResult<Vec<Particle<P>>>
     where
         P: DeserializeOwned + Debug;
+
+    fn count_current_rejected_particles(&self) -> ABCDResult<u64>;
+
+    // fn load_working_particles<P>(&self) -> ABCDResult<Vec<Particle<P>>>
+    // where
+    //     P: DeserializeOwned + Debug;
 
     fn save_new_gen<P>(&self, generation: &Generation<P>) -> ABCDResult<()>
     where

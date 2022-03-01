@@ -6,7 +6,7 @@ use tokio::runtime::Runtime;
 
 use crate::error::{ABCDError, ABCDResult};
 
-use super::{filesystem::FileSystem, s3::S3System};
+use super::s3::S3System;
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 #[serde(tag = "type")]
@@ -36,9 +36,9 @@ impl StorageConfig {
         }
     }
 
-    pub fn build_fs(&self) -> FileSystem {
-        todo!()
-    }
+    // pub fn build_fs(&self) -> FileSystem {
+    //     todo!()
+    // }
 }
 
 #[cfg(test)]
