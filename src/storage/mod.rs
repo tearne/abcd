@@ -19,6 +19,8 @@ pub trait Storage {
     where
         P: Serialize + Debug;
 
+    fn save_rejected_particle(&self) -> ABCDResult<String>;
+
     fn num_working_particles(&self) -> ABCDResult<u32>;
 
     fn load_current_accepted_particles<P>(&self) -> ABCDResult<Vec<Particle<P>>>

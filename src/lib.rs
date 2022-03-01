@@ -51,7 +51,7 @@ pub fn run<M: Model, S: Storage>(
 trait GenerationStuff<M: Model> {
     fn propose_me_a_parmeter_set(&self, model: &M, random: &ThreadRng) -> M::Parameters;
     fn calculate_me_a_tolerance(&self) -> f64;
-    fn weigh_me_a_particle(&self, scores: Vec<f64>, model: &M, tolerance: f64) -> Particle<M::Parameters>;
+    fn weigh_me_a_particle(&self, scores: Vec<f64>, model: &M, tolerance: f64) -> Option<Particle<M::Parameters>>;
 }
 struct ActualGeneration<P>{
     gen: Generation<P>,
@@ -70,7 +70,7 @@ impl<M: Model> GenerationStuff<M> for ActualGeneration<M::Parameters>{
         todo!()
     }
 
-    fn weigh_me_a_particle(&self, scores: Vec<f64>, model: &M, tolerance: f64) -> Particle<<M as Model>::Parameters> {
+    fn weigh_me_a_particle(&self, scores: Vec<f64>, model: &M, tolerance: f64) -> Option<Particle<<M as Model>::Parameters>> {
         todo!()
     }
 }
@@ -84,7 +84,7 @@ impl<M: Model> GenerationStuff<M> for PriorGeneration{
         f64::MAX
     }
 
-    fn weigh_me_a_particle(&self, scores: Vec<f64>, model: &M, tolerance: f64) -> Particle<<M as Model>::Parameters> {
+    fn weigh_me_a_particle(&self, scores: Vec<f64>, model: &M, tolerance: f64) -> Option<Particle<<M as Model>::Parameters>> {
         todo!()
     }
 }
@@ -158,9 +158,14 @@ fn do_gen<M: Model, S: Storage>(
         //     scores,
         //     weight,
         // };
+        let accepted = match particle {
+            None => false,
+            Some(_) => true
+        };
 
         // Save the non_normalised particle to storage
-        storage.save_particle(&particle)?;
+        if accepted { storage.save_particle(&particle.unwrap())?; } //Was passing option in to save_particle and doing work there but decided not to.
+        else {storage.save_rejected_particle();} //Can't save rejected particle contents if passed back as None above - unless there is an alternative? Also can't save rejected paricle files in same place as accepted - otherwise it screws up counting of accepted particle files
 
         // Check if we now have the req'd num particles/reps, if so, break
         if storage.num_working_particles()? >= config.job.num_particles {

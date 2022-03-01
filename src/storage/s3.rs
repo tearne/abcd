@@ -353,6 +353,30 @@ impl Storage for S3System {
         })
     }
 
+    fn save_rejected_particle(&self) -> ABCDResult<String> {
+        self.runtime.block_on(async {
+            let gen_file_dir = {
+                let gen_no = self.previous_gen_number_async().await? + 1;
+                format!("gen_{:03}", gen_no)
+            };
+
+            let rejected_particle_file_name = {
+                let file_uuid = Uuid::new_v4();
+                file_uuid.to_string() + "_rejected.json"
+            };
+
+            let non_prefixed_path = format!("{}/{}", gen_file_dir, rejected_particle_file_name);
+
+            let prefixed_path = format!("{}/{}", self.prefix.clone(), non_prefixed_path);
+
+            let pretty_json = "{}"; //serde_json::to_string_pretty(w)?;
+
+            self.put_object_future(&prefixed_path, &pretty_json).await?;
+
+            Ok(non_prefixed_path)
+        })
+    }
+
     fn num_working_particles(&self) -> ABCDResult<u32> {
         let files_in_folder = self
             .runtime
