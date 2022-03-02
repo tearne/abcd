@@ -19,10 +19,8 @@ where
         else {  Some(score) }).collect::<Vec<_>>().len();
     let fhat = number_reps_less_than_tolerance/number_reps;
 
-    if fhat == 0 { None }
-    else {
        todo!()
-    }
+
 }
 
 //TODO add a type alias in where clause for M::Parameters?

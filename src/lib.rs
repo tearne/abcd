@@ -12,6 +12,7 @@ use rand::distributions::WeightedIndex;
 use rand::prelude::*;
 use storage::Storage;
 pub use types::{ Model, Generation, Particle};
+use statrs::statistics::{Statistics,OrderStatistics, Data};
 
 pub type Random = ThreadRng;
 
@@ -38,7 +39,7 @@ pub fn run<M: Model, S: Storage>(
             &model,
             &config,
             random,
-            ActualGeneration::new(gen),
+            ActualGeneration::new(gen,config),
         )?;
         if number == config.job.num_generations && config.job.terminate_at_target_gen {
             break;
@@ -51,14 +52,28 @@ pub fn run<M: Model, S: Storage>(
 trait GenerationStuff<M: Model> {
     fn propose_me_a_parmeter_set(&self, model: &M, random: &ThreadRng) -> M::Parameters;
     fn calculate_me_a_tolerance(&self) -> f64;
-    fn weigh_me_a_particle(&self, scores: Vec<f64>, model: &M, tolerance: f64) -> Option<Particle<M::Parameters>>;
+    fn weigh_me_a_particle(&self, model: &M ) -> Particle<M::Parameters>;
+    fn calculate_fhat(&self, scores: &Vec<f64>,tolerance: f64) -> f64 {
+        // (B5b) Calculate f^hat by calc'ing proportion less than tolerance
+        let number_reps = cast::f64(scores.len());
+        let number_reps_less_than_tolerance = scores.iter()
+            .filter_map(|score| 
+                if *score < tolerance { Some(score) }
+                else { None }
+            )
+            .collect::<Vec<_>>()
+            .len();
+        let fhat = cast::f64(number_reps_less_than_tolerance)/number_reps;
+        fhat
+}
 }
 struct ActualGeneration<P>{
     gen: Generation<P>,
+    config: Config
 }
 impl<P> ActualGeneration<P> {
-    fn new(gen: Generation<P>) -> Self {
-        Self { gen }
+    fn new(gen: Generation<P>, config: Config) -> Self {
+        Self { gen, config }
     }
 }
 impl<M: Model> GenerationStuff<M> for ActualGeneration<M::Parameters>{
@@ -67,12 +82,31 @@ impl<M: Model> GenerationStuff<M> for ActualGeneration<M::Parameters>{
     }
 
     fn calculate_me_a_tolerance(&self) -> f64 {
+        // Get distribution of scores from last generation then reduce by tolerance descent rate (configured) - crate exists for percentile => 
+        let score_distribution: Vec<f64> = self.gen
+            .pop
+            .particles()
+            .iter()
+            .map(|particle| {
+                let mean_scores: f64 = particle.scores.mean();
+                assert!(!mean_scores.is_nan()); //TODO Put proper ABCDError here
+                mean_scores
+            })
+            .collect();
+
+        let mut score_distribution = Data::new(score_distribution);
+        let new_tolerance = score_distribution.percentile(self.config.algorithm.tolerance_descent_percentile);
+        assert!(!new_tolerance.is_nan()); //TODO Put proper ABCDError here
+        new_tolerance
+    }
+
+    fn weigh_me_a_particle(&self,  model: &M) -> Particle<<M as Model>::Parameters> {
+    // (B6) Calculate not_normalised_weight for each particle from its f^hat (f^hat(p) * prior(p)) / denom)
+    
         todo!()
     }
 
-    fn weigh_me_a_particle(&self, scores: Vec<f64>, model: &M, tolerance: f64) -> Option<Particle<<M as Model>::Parameters>> {
-        todo!()
-    }
+
 }
 struct PriorGeneration{}
 impl<M: Model> GenerationStuff<M> for PriorGeneration{
@@ -84,9 +118,13 @@ impl<M: Model> GenerationStuff<M> for PriorGeneration{
         f64::MAX
     }
 
-    fn weigh_me_a_particle(&self, scores: Vec<f64>, model: &M, tolerance: f64) -> Option<Particle<<M as Model>::Parameters>> {
+    fn weigh_me_a_particle(&self,  model: &M) -> Particle<<M as Model>::Parameters> {
+            // Get distribution of scores from last generation then reduce by tolerance descent rate (configured) - crate exists for percentile => 
+    // (B5b) Calculate f^hat by calc'ing proportion less than tolerance
+    // (B6) Calculate not_normalised_weight for each particle from its f^hat (f^hat(p) * prior(p)) / denom)
         todo!()
     }
+    
 }
 
 // struct PriorProposer { //TODO rename to reflect fact that it does two things (a) proposing, (b) weighing
@@ -158,14 +196,9 @@ fn do_gen<M: Model, S: Storage>(
         //     scores,
         //     weight,
         // };
-        let accepted = match particle {
-            None => false,
-            Some(_) => true
-        };
 
         // Save the non_normalised particle to storage
-        if accepted { storage.save_particle(&particle.unwrap())?; } //Was passing option in to save_particle and doing work there but decided not to.
-        else {storage.save_rejected_particle();} //Can't save rejected particle contents if passed back as None above - unless there is an alternative? Also can't save rejected paricle files in same place as accepted - otherwise it screws up counting of accepted particle files
+        storage.save_particle(&particle)?; 
 
         // Check if we now have the req'd num particles/reps, if so, break
         if storage.num_accepted_particles()? >= config.job.num_particles {

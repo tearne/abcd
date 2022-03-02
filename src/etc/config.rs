@@ -31,7 +31,7 @@ pub struct Job {
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 pub struct Algorithm {
-    tolerance_descent_percentile: f32,
+    pub tolerance_descent_percentile: usize,
 }
 //TODO validate - https://crates.io/crates/validator
 
