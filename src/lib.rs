@@ -33,17 +33,17 @@ pub fn run<M: Model, S: Storage>(
     };
 
     loop {
-        let gen = storage.load_previous_gen()?;
-        let number = do_gen(
-            &storage,
-            &model,
-            &config,
-            random,
-            ActualGeneration::new(gen,config),
-        )?;
-        if number == config.job.num_generations && config.job.terminate_at_target_gen {
-            break;
-        }
+        // let gen = storage.load_previous_gen()?;
+        // let number = do_gen(
+        //     &storage,
+        //     &model,
+        //     &config,
+        //     random,
+        //     ActualGeneration::new(gen,config),
+        // )?;
+        // if number == config.job.num_generations && config.job.terminate_at_target_gen {
+        //     break;
+        // }
     }
 
     Ok(())
@@ -88,7 +88,7 @@ impl<M: Model> GenerationStuff<M> for ActualGeneration<M::Parameters>{
             .particles()
             .iter()
             .map(|particle| {
-                let mean_scores: f64 = particle.scores.mean();
+                let mean_scores: f64 = todo!();//particle.scores.mean();
                 assert!(!mean_scores.is_nan()); //TODO Put proper ABCDError here
                 mean_scores
             })
@@ -189,7 +189,7 @@ fn do_gen<M: Model, S: Storage>(
         // We now have a collection of scores for the particle
         // (B5b) Calculate f^hat by calc'ing proportion less than tolerance
         // (B6) Calculate not_normalised_weight for each particle from its f^hat (f^hat(p) * prior(p)) / denom)
-        let particle = gen_stuff.weigh_me_a_particle(scores, model, tolerance);
+        let particle: Particle<M::Parameters> = todo!();//gen_stuff.weigh_me_a_particle(scores, model, tolerance);
         // let particle = algorithm::weigh_particle(scores, f64::MAX, model, prev_gen_number);
         // let particle = Particle{
         //     parameters,

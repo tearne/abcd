@@ -22,14 +22,14 @@ use tokio;
 use uuid::Uuid;
 
 
-
 pub struct S3System {
     pub bucket: String,
-    pub prefix: String,
     client: Client,
     runtime: Runtime,
-    gen_zero_re: Regex,
-    gen_non_zero_re: Regex,
+    pub prefix: String, 
+    particle_prefix: String, 
+    completed_prefix: String, 
+    completed_gen_re: Regex,
 }
 impl S3System {
     pub fn new(bucket: String, prefix: String) -> ABCDResult<Self> {
@@ -43,23 +43,29 @@ impl S3System {
             Client::new(&config)
         };
 
-        let gen_zero_re = {
-            let string = format!(r#"^{}/abcd.init"#, &prefix);
-            Regex::new(&string)?
-        };
+        let completed_prefix = format!(
+            "{}/completed",
+            &prefix,
+        );
 
-        let gen_non_zero_re = {
-            let string = format!(r#"^{}/gen_(?P<gid1>\d*)/gen_(?P<gid2>\d*).json"#, &prefix);
+        let particle_prefix = format!(
+            "{}/particles",
+            &prefix
+        );
+
+        let completed_gen_re = {
+            let string = format!(r#"^{}/completed/gen_(?P<gid>\d*).json"#, &prefix);
             Regex::new(&string)?
         };
 
         let instance = S3System {
             bucket,
-            prefix,
             client,
             runtime,
-            gen_zero_re,
-            gen_non_zero_re,
+            prefix, 
+            particle_prefix,
+            completed_prefix,
+            completed_gen_re,
         };
 
         instance
@@ -124,7 +130,7 @@ impl S3System {
         Ok(acc)
     }
 
-    fn assert_only_json(objects:&Vec<Object>, prefix: &str) -> ABCDResult<()> {
+    fn assert_only_json(objects: &[Object], prefix: &str) -> ABCDResult<()> {
         let is_not_json_file = |o:&Object|{
             o.key
                 .as_ref()
@@ -150,7 +156,7 @@ impl S3System {
             let gen_dir = format!("gen_{:03}", gen_no);
             format!(
                 "{}/{}/accepted", 
-                &self.prefix, 
+                &self.particle_prefix, 
                 gen_dir
             )
         };
@@ -266,12 +272,12 @@ impl S3System {
     }
 
     async fn previous_gen_number_async(&self) -> ABCDResult<u16> {
-        let objects = self.list_objects_v2(&self.prefix).await?;
+        let objects = self.list_objects_v2(&self.completed_prefix).await?;
 
         if !objects
             .iter()
             .filter_map(|o| o.key.as_ref())
-            .any(|k| self.gen_zero_re.is_match(k))
+            .any(|k| k.ends_with("abcd.init"))
         {
             return Err(ABCDError::StorageInitError);
         }
@@ -280,33 +286,12 @@ impl S3System {
 
         let gen_number = key_strings
             .filter_map(|key| {
-                let captures = self.gen_non_zero_re.captures(&key)?;
-                let g1 = captures
-                    .name("gid1")
+                let captures = self.completed_gen_re.captures(&key)?;
+                captures
+                    .name("gid")
                     .map(|m| m.as_str().parse::<u16>().ok())
-                    .flatten();
-                let g2 = captures
-                    .name("gid2")
-                    .map(|m| m.as_str().parse::<u16>().ok())
-                    .flatten();
-
-                match (g1, g2) {
-                    (Some(gid_1), Some(gid_2)) => Some((key.clone(), gid_1, gid_2)),
-                    _ => None,
-                }
+                    .flatten()
             })
-            .map(|(key, gid_1, gid_2)| {
-                if gid_1 != gid_2 {
-                    Err(ABCDError::StorageConsistencyError(format!(
-                        "Inconsistent path: {}",
-                        &key
-                    )))
-                } else {
-                    Ok(gid_1)
-                }
-            })
-            .collect::<ABCDResult<Vec<u16>>>()?
-            .into_iter()
             .max()
             .unwrap_or(0);
 
@@ -325,12 +310,10 @@ impl Storage for S3System {
         self.runtime.block_on(async {
             let prev_gen_no = self.previous_gen_number_async().await?;
             let object_key = {
-                let prev_gen_file_dir = format!("gen_{:03}", prev_gen_no);
                 let prev_gen_file_name = format!("gen_{:03}.json", prev_gen_no);
                 format!(
-                    "{}/{}/{}",
-                    self.prefix.clone(),
-                    prev_gen_file_dir,
+                    "{}/{}",
+                    &self.completed_prefix,
                     prev_gen_file_name
                 )
             };
@@ -368,7 +351,7 @@ impl Storage for S3System {
                     let gen_no = self.previous_gen_number_async().await? + 1;
                     format!("gen_{:03}", gen_no)
                 };
-    
+
                 let particle_file_name = {
                     let file_uuid = Uuid::new_v4();
                     file_uuid.to_string() + ".json"
@@ -380,8 +363,8 @@ impl Storage for S3System {
 
                 format!(
                     "{}/{}/{}/{}",
-                    &self.prefix,
-                    gen_file_dir,
+                    &self.particle_prefix,
+                    &gen_file_dir,
                     &status,
                     particle_file_name,
                 )
@@ -460,13 +443,12 @@ impl Storage for S3System {
             }
 
             let object_path = {
-                let gen_dir = format!("gen_{:03}", gen.number);
                 let object_name = format!("gen_{:03}.json", gen.number);
 
                 format!(
-                    "{}/{}/{}", 
-                    &self.prefix, 
-                    gen_dir, object_name
+                    "{}/{}", 
+                    &self.completed_prefix, 
+                    object_name
                 )
             };
 
@@ -508,7 +490,7 @@ impl Storage for S3System {
 
                 format!(
                     "{}/{}/rejected",
-                    &self.prefix,
+                    &self.particle_prefix,
                     &gen_dir
                 )
             };
