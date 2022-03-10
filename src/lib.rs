@@ -49,11 +49,12 @@ pub fn run<M: Model, S: Storage>(
     Ok(())
 }
 
-trait GenerationStuff<M: Model> {
-    fn propose_me_a_parmeter_set(&self, model: &M, random: &ThreadRng) -> M::Parameters;
+trait GenerationStuff {
+    fn propose_me_a_parmeter_set<M: Model>(&self, model: &M, random: &ThreadRng) -> M::Parameters;
     fn calculate_me_a_tolerance(&self) -> f64;
-    fn weigh_me_a_particle(&self, model: &M ) -> Particle<M::Parameters>;
-    fn calculate_fhat(&self, scores: &Vec<f64>,tolerance: f64) -> f64 {
+    fn weigh_me_a_particle<M: Model>(&self,scores: &Vec<f64>, tolerance: f64, model: &M) -> Particle<M::Parameters>;
+
+    fn calculate_fhat(scores: &Vec<f64>, tolerance: f64) -> f64 {
         // (B5b) Calculate f^hat by calc'ing proportion less than tolerance
         let number_reps = cast::f64(scores.len());
         let number_reps_less_than_tolerance = scores.iter()
@@ -76,8 +77,12 @@ impl<P> ActualGeneration<P> {
         Self { gen, config }
     }
 }
-impl<M: Model> GenerationStuff<M> for ActualGeneration<M::Parameters>{
-    fn propose_me_a_parmeter_set(&self, model: &M, random: &ThreadRng) -> <M as Model>::Parameters {
+impl<Params> GenerationStuff for ActualGeneration<Params> {
+    //TODO
+    // https://stackoverflow.com/questions/40553023/check-for-equal-associated-types-in-where-clause
+    fn propose_me_a_parmeter_set<M>(&self, model: &M, random: &ThreadRng) -> Params 
+    where M: Model<Params = <M as Model>::Parameters>
+    {
         todo!()
     }
 
@@ -85,10 +90,10 @@ impl<M: Model> GenerationStuff<M> for ActualGeneration<M::Parameters>{
         // Get distribution of scores from last generation then reduce by tolerance descent rate (configured) - crate exists for percentile => 
         let score_distribution: Vec<f64> = self.gen
             .pop
-            .particles()
+            .normalised_particles
             .iter()
             .map(|particle| {
-                let mean_scores: f64 = todo!();//particle.scores.mean();
+                let mean_scores: f64 = particle.scores.clone().mean();
                 assert!(!mean_scores.is_nan()); //TODO Put proper ABCDError here
                 mean_scores
             })
@@ -100,17 +105,17 @@ impl<M: Model> GenerationStuff<M> for ActualGeneration<M::Parameters>{
         new_tolerance
     }
 
-    fn weigh_me_a_particle(&self,  model: &M) -> Particle<<M as Model>::Parameters> {
+    fn weigh_me_a_particle(&self, scores: &Vec<f64>, tolerance: f64, model: &M) -> Particle<<M as Model>::Parameters> {
     // (B6) Calculate not_normalised_weight for each particle from its f^hat (f^hat(p) * prior(p)) / denom)
-    
+        let fhat = GenerationStuff::calculate_fhat(scores,tolerance);
         todo!()
     }
 
 
 }
 struct PriorGeneration{}
-impl<M: Model> GenerationStuff<M> for PriorGeneration{
-    fn propose_me_a_parmeter_set(&self, model: &M, random: &ThreadRng) -> <M as Model>::Parameters {
+impl GenerationStuff for PriorGeneration {
+    fn propose_me_a_parmeter_set<M: Model> (&self, model: &M, random: &ThreadRng) -> <M as Model>::Parameters {
         todo!()
     }
 
@@ -118,7 +123,7 @@ impl<M: Model> GenerationStuff<M> for PriorGeneration{
         f64::MAX
     }
 
-    fn weigh_me_a_particle(&self,  model: &M) -> Particle<<M as Model>::Parameters> {
+    fn weigh_me_a_particle<M: Model>(&self,  model: &M) -> Particle<<M as Model>::Parameters> {
             // Get distribution of scores from last generation then reduce by tolerance descent rate (configured) - crate exists for percentile => 
     // (B5b) Calculate f^hat by calc'ing proportion less than tolerance
     // (B6) Calculate not_normalised_weight for each particle from its f^hat (f^hat(p) * prior(p)) / denom)
@@ -160,7 +165,7 @@ fn do_gen<M: Model, S: Storage>(
     model: &M,
     config: &Config,
     random: &mut Random,
-    gen_stuff: impl GenerationStuff<M>,
+    gen_stuff: impl GenerationStuff,
 ) -> ABCDResult<u16> {
     let prev_gen_number = storage.previous_gen_number()?;
     let tolerance = gen_stuff.calculate_me_a_tolerance();

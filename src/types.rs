@@ -29,21 +29,21 @@ pub struct Population<P> {
     pub normalised_particles: Vec<Particle<P>>,
 }
 impl<P> Population<P> {
-    pub fn new(tolterance: f64, acceptance: f64, normalise_particles: Vec<Particle<P>>) -> Self {
+    pub fn new(tolterance: f64, acceptance: f64, normalised_particles: Vec<Particle<P>>) -> Self {
         todo!("Blow up if particles aren't normalised");
     }
 
-    pub fn tolerance(&self) -> f64 {
-        self.tolerance
-    }
+    // pub fn tolerance(&self) -> f64 {
+    //     self.tolerance
+    // }
 
-    pub fn acceptance(&self) -> f64 {
-        self.acceptance
-    }
+    // pub fn acceptance(&self) -> f64 {
+    //     self.acceptance
+    // }
 
-    pub fn particles(&self) -> &Vec<Particle<P>> {
-        &self.normalised_particles
-    }
+    // pub fn particles(&self) -> &Vec<Particle<P>> {
+    //     &self.normalised_particles
+    // }
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
