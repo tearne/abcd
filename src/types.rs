@@ -10,7 +10,7 @@ pub trait Model {
     fn prior_density(&self, p: &Self::Parameters) -> f64;
 
     fn perturb(&self, p: &Self::Parameters) -> Self::Parameters;
-    fn pert_density(&self, a: &Self::Parameters, b: &Self::Parameters) -> f64;
+    fn pert_density(&self, from: &Self::Parameters, to: &Self::Parameters) -> f64;
 
     fn score(&self, p: &Self::Parameters) -> f64;
 }

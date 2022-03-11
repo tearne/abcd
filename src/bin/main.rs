@@ -26,7 +26,7 @@ impl Model for MyModel {
         todo!()
     }
 
-    fn pert_density(&self, _a: &Self::Parameters, _b: &Self::Parameters) -> f64 {
+    fn pert_density(&self, _from: &Self::Parameters, _to: &Self::Parameters) -> f64 {
         todo!()
     }
 

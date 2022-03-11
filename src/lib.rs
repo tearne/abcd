@@ -49,7 +49,7 @@ pub fn run<M: Model, S: Storage>(
 trait GenerationOps<P> {
     fn propose<M: Model<Parameters = P>>(&self, model: &M, random: &ThreadRng) -> P;
     fn calculate_tolerance(&self) -> f64;
-    fn weigh<M: Model<Parameters = P>>(&self, scores: &[f64], tolerance: f64, model: &M) -> Particle<P>;
+    fn weigh<M: Model<Parameters = P>>(&self, params: &P, scores: &[f64], tolerance: f64, model: &M) -> Particle<P>;
 
     fn calculate_fhat(scores: &[f64], tolerance: f64) -> f64 {
         // (B5b) Calculate f^hat by calc'ing proportion less than tolerance
@@ -89,10 +89,24 @@ impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
         new_tolerance
     }
 
-    fn weigh<M: Model<Parameters = P>>(&self, scores: &[f64], tolerance: f64, model: &M) -> Particle<P> {
+    fn weigh<M: Model<Parameters = P>>(&self, parameters: P, scores: vec<f64>, tolerance: f64, model: &M) -> Particle<P> {
         // (B6) Calculate not_normalised_weight for each particle from its f^hat (f^hat(p) * prior(p)) / denom)
         let fhat = Self::calculate_fhat(scores, tolerance);
-        todo!()
+        let prior_prob = model.prior_density(parameters);
+        let denominator : f64 = self.gen.pop.normalised_particles
+                .iter()
+                .map(|prev_gen_particle| {
+                    let weight = prev_gen_particle.weight;
+                    let pert_density = model.pert_density(&prev_gen_particle.parameters, parameters);
+                    weight * pert_density
+                }).sum();
+        let weighted_particles = fhat*prior_prob / denominator;
+        Particle { 
+            parameters, 
+            scores: (), 
+            weight: () 
+        }
+        
     }
 }
 struct PriorGeneration{}
@@ -105,7 +119,7 @@ impl<P> GenerationOps<P> for PriorGeneration {
         f64::MAX
     }
 
-    fn weigh<M: Model<Parameters = P>>(&self,  scores: &[f64], tolerance: f64, model: &M) -> Particle<P> {
+    fn weigh<M: Model<Parameters = P>>(&self, params: &P, scores: &[f64], tolerance: f64, model: &M) -> Particle<P> {
         // Get distribution of scores from last generation then reduce by tolerance descent rate (configured) - crate exists for percentile => 
         // (B5b) Calculate f^hat by calc'ing proportion less than tolerance
         // (B6) Calculate not_normalised_weight for each particle from its f^hat (f^hat(p) * prior(p)) / denom)
@@ -148,7 +162,7 @@ fn do_gen<M: Model, S: Storage>(
         // We now have a collection of scores for the particle
         // (B5b) Calculate f^hat by calc'ing proportion less than tolerance
         // (B6) Calculate not_normalised_weight for each particle from its f^hat (f^hat(p) * prior(p)) / denom)
-        let particle: Particle<M::Parameters> = gen_stuff.weigh(&scores, tolerance, model);
+        let particle: Particle<M::Parameters> = gen_stuff.weigh(&parameters, &scores, tolerance, model);
 
         // Save the non_normalised particle to storage
         storage.save_particle(&particle)?; 
