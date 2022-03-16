@@ -53,7 +53,7 @@ pub struct Generation<P> {
 }
 impl<P> Generation<P> {
     pub fn new(
-        normalise_particles: P,
+        normalise_particles: Vec<Particle<M::Parameters>>,
         generation_number: u16,
         tolerance: f64,
         acceptance: f64 //TODO change to an f16?
