@@ -53,11 +53,33 @@ pub struct Generation<P> {
 }
 impl<P> Generation<P> {
     pub fn new(
-        normalise_particles: Vec<Particle<M::Parameters>>,
+        particles: Vec<Particle<P>>,
         generation_number: u16,
         tolerance: f64,
         acceptance: f64 //TODO change to an f16?
     ) -> Self{
-        todo!()
+        let total_weight : f64 = Self::total_weight(&particles);
+
+        particles.iter_mut()
+            .for_each(|p| p.weight = p.weight / total_weight );
+
+
+        assert!(Self::total_weight(&particles) == 1.0f64);
+
+        Self{
+            pop: Population::<P> {
+             tolerance,
+             acceptance,
+             normalised_particles:particles
+            },
+            number:generation_number
+        }
+        
+    }
+
+    fn total_weight(p: &Vec<Particle<P>>) -> f64 {
+        p.iter()
+            .map(|particle| particle.weight)
+            .sum()
     }
 }
