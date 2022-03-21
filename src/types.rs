@@ -53,7 +53,7 @@ pub struct Generation<P> {
 }
 impl<P> Generation<P> {
     pub fn new(
-        particles: Vec<Particle<P>>,
+        mut particles: Vec<Particle<P>>,
         generation_number: u16,
         tolerance: f64,
         acceptance: f64 //TODO change to an f16?
@@ -62,7 +62,6 @@ impl<P> Generation<P> {
 
         particles.iter_mut()
             .for_each(|p| p.weight = p.weight / total_weight );
-
 
         assert!(Self::total_weight(&particles) == 1.0f64);
 
@@ -74,7 +73,6 @@ impl<P> Generation<P> {
             },
             number:generation_number
         }
-        
     }
 
     fn total_weight(p: &Vec<Particle<P>>) -> f64 {

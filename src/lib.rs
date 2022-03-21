@@ -51,7 +51,7 @@ trait GenerationOps<P> {
     fn calculate_tolerance(&self) -> f64;
     fn weigh<M: Model<Parameters = P>>(&self, params: P, scores: Vec<f64>, tolerance: f64, model: &M) -> Particle<P>;
 
-    fn calculate_fhat(scores: Vec<f64>, tolerance: f64) -> f64 {
+    fn calculate_fhat(scores: &Vec<f64>, tolerance: f64) -> f64 {
         // (B5b) Calculate f^hat by calc'ing proportion less than tolerance
         let number_reps = cast::f64(scores.len());
         let number_reps_less_than_tolerance = scores
@@ -91,7 +91,7 @@ impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
 
     fn weigh<M: Model<Parameters = P>>(&self, parameters: P, scores: Vec<f64>, tolerance: f64, model: &M) -> Particle<P> {
         // (B6) Calculate not_normalised_weight for each particle from its f^hat (f^hat(p) * prior(p)) / denom)
-        let fhat = Self::calculate_fhat(scores, tolerance);
+        let fhat = Self::calculate_fhat(&scores, tolerance);
         let prior_prob = model.prior_density(&parameters);
         let denominator : f64 = self.gen.pop.normalised_particles
                 .iter()
@@ -120,7 +120,7 @@ impl<P> GenerationOps<P> for PriorGeneration {
 
 
     fn weigh<M: Model<Parameters = P>>(&self, parameters: P, scores: Vec<f64>, tolerance: f64, model: &M) -> Particle<P> {
-        let fhat = <Self as GenerationOps<P>>::calculate_fhat(scores, tolerance);
+        let fhat = <Self as GenerationOps<P>>::calculate_fhat(&scores, tolerance);
         Particle { 
             parameters, 
             scores, 
