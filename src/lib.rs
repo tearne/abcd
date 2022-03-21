@@ -10,6 +10,7 @@ use rand::prelude::*;
 use storage::Storage;
 pub use types::{ Model, Generation, Particle};
 use statrs::statistics::{Statistics,OrderStatistics, Data};
+use rand::distributions::WeightedIndex;
 
 pub type Random = ThreadRng;
 
@@ -67,7 +68,29 @@ struct EmpiricalGeneration<P>{
 }
 impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
     fn propose<M: Model<Parameters = P>>(&self, model: &M, random: &ThreadRng) -> P {
-        todo!()
+        //todo!()
+        let proposed: M::Parameters = {
+            // //https://rust-random.github.io/rand/rand/distributions/weighted/struct.WeightedIndex.html
+            // // 1. sample a particle from the previosu population
+            // let particle_weights: Vec<f64> = self.gen
+            //     .pop
+            //     .normalised_particles
+            //     .iter()
+            //     .map(|p| p.weight)
+            //     .collect();
+
+            //  let dist = WeightedIndex::new(&particle_weights).unwrap();
+            //  let sampled_particle_index = dist.sample(random);
+            //  let sample_particle = self.gen.pop.normalised_particles[sampled_particle_index];
+            // // 2. perturb it with model.perturb(p)
+            // model.perturb(&sample_particle.parameters);
+            todo!()
+        };
+
+        // if model.prior_density(&proposed) > 0.0 {
+        //     return proposed;
+        // }
+        //TODO warn if loop too many times
     }
 
     fn calculate_tolerance(&self) -> f64 {
@@ -179,16 +202,10 @@ fn do_gen<M: Model, S: Storage>(
                 let rejected: f64 =  cast::f64(rejections);
                 num / (num + rejected)
             };
-
-            // (B7) Normalise all the weights together
-           //  let normalised: Vec<Particle<M::Parameters>> = gen_stuff.normalise(particles,model);
              let new_generation = Generation::new( particles, prev_gen_number + 1, tolerance, acceptance);
-
             // Save generation to storage
-           //  storage.save_new_gen(&new_generation);
-
+             storage.save_new_gen(&new_generation);
              return Ok(new_generation.number);
-            //todo!()
         }
     }
 }
