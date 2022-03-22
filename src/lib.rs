@@ -68,29 +68,33 @@ struct EmpiricalGeneration<P>{
 }
 impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
     fn propose<M: Model<Parameters = P>>(&self, model: &M, random: &ThreadRng) -> P {
-        //todo!()
-        let proposed: M::Parameters = {
-            // //https://rust-random.github.io/rand/rand/distributions/weighted/struct.WeightedIndex.html
-            // // 1. sample a particle from the previosu population
-            // let particle_weights: Vec<f64> = self.gen
-            //     .pop
-            //     .normalised_particles
-            //     .iter()
-            //     .map(|p| p.weight)
-            //     .collect();
+        let max_number_retries = 10; // Make this a config value
+        let mut num_tries = 0;
+        let proposed: M::Parameters = loop {
+            num_tries += 1;
+            //https://rust-random.github.io/rand/rand/distributions/weighted/struct.WeightedIndex.html
+            // 1. sample a particle from the previosu population
+            let particle_weights: Vec<f64> = self.gen
+                .pop
+                .normalised_particles
+                .iter()
+                .map(|p| p.weight)
+                .collect();
 
-            //  let dist = WeightedIndex::new(&particle_weights).unwrap();
-            //  let sampled_particle_index = dist.sample(random);
-            //  let sample_particle = self.gen.pop.normalised_particles[sampled_particle_index];
-            // // 2. perturb it with model.perturb(p)
-            // model.perturb(&sample_particle.parameters);
-            todo!()
+             let dist = WeightedIndex::new(&particle_weights).unwrap();
+             let mut rng = thread_rng();
+             let sampled_particle_index: usize = dist.sample(&mut rng);
+             let sample_particle = &self.gen.pop.normalised_particles[sampled_particle_index];
+            // 2. perturb it with model.perturb(p)
+            let params = model.perturb(&sample_particle.parameters);        
+            if model.prior_density(&params) > 0.0 {
+               break params;
+            } 
+            if num_tries==max_number_retries {
+              //Throw error/warning here!
+            }
         };
-
-        // if model.prior_density(&proposed) > 0.0 {
-        //     return proposed;
-        // }
-        //TODO warn if loop too many times
+            return proposed;
     }
 
     fn calculate_tolerance(&self) -> f64 {
@@ -210,47 +214,6 @@ fn do_gen<M: Model, S: Storage>(
     }
 }
 
-
-//TODO put this in the previous gen proposer
-fn sample_and_perturb_with_support<M> (
-    gen: &Generation<M::Parameters>,
-    model: &M,
-    random: &mut Random,
-) -> M::Parameters
-where
-    M: Model,
-{
-    loop {
-        let proposed: M::Parameters = {
-            //  gen match {
-            //Generation::Prior => model.prior_sample(random),
-            // Generation::Population {
-            //     gen_number,
-            //     ref pop,
-            // } => {
-            //https://rust-random.github.io/rand/rand/distributions/weighted/struct.WeightedIndex.html
-            // 1. sample a particle from the previosu population
-            // let particle_weights: Vec<f64> = gen
-            //     .pop
-            //     .normalised_particles
-            //     .iter()
-            //     .map(|p| p.weight)
-            //     .collect();
-
-            // let dist = WeightedIndex::new(&particle_weights).unwrap();
-            // let sampled_particle_index = dist.sample(random);
-            //let sample_particle = &gen.pop.normalised_particles[sampled_particle_index];
-            // 2. perturb it with model.perturb(p)
-            //model.perturb(&sample_particle.parameters)
-            todo!()
-        };
-
-        if model.prior_density(&proposed) > 0.0 {
-            return proposed;
-        }
-        //TODO warn if loop too many times
-    }
-}
 
 #[cfg(test)]
 pub mod test_helper {
