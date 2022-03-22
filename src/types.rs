@@ -59,7 +59,7 @@ impl<P> Generation<P> {
         acceptance: f64 //TODO change to an f16?
     ) -> Self{
         let total_weight : f64 = Self::total_weight(&particles);
-
+        //(B7) Normalise all the weights together
         particles.iter_mut()
             .for_each(|p| p.weight = p.weight / total_weight );
 
