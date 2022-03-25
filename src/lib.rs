@@ -45,7 +45,7 @@ pub fn run<M: Model, S: Storage>(
 }
 
 trait GenerationOps<P> {
-    fn propose<M: Model<Parameters = P>>(&self, model: &M, random: &mut ThreadRng) -> P;
+    fn propose<M: Model<Parameters = P>>(&self, model: &M, random: &mut ThreadRng) -> ABCDResult<P>;
     fn calculate_tolerance(&self) -> f64;
     fn weigh<M: Model<Parameters = P>>(&self, params: P, scores: Vec<f64>, tolerance: f64, model: &M) -> Particle<P>;
 
@@ -64,33 +64,27 @@ struct EmpiricalGeneration<P>{
     config: Config
 }
 impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
-    fn propose<M: Model<Parameters = P>>(&self, model: &M, random: &mut ThreadRng) -> P {
-        let max_number_retries = 10; // Make this a config value
-        let mut num_tries = 0;
-        let proposed: M::Parameters = loop {
-            num_tries += 1;
-            //https://rust-random.github.io/rand/rand/distributions/weighted/struct.WeightedIndex.html
-            // 1. sample a particle from the previosu population
-            let particle_weights: Vec<f64> = self.gen
-                .pop
-                .normalised_particles()
-                .iter()
-                .map(|p| p.weight)
-                .collect();
+    fn propose<M: Model<Parameters = P>>(&self, model: &M, random: &mut ThreadRng) -> ABCDResult<P> {
+        //https://rust-random.github.io/rand/rand/distributions/weighted/struct.WeightedIndex.html
+        // 1. sample a particle from the previosu population
+        // TODO can't we pre-calculate the weights table to avoid rebuilding on every proposal?
+        let particle_weights: Vec<f64> = self.gen
+            .pop
+            .normalised_particles()
+            .iter()
+            .map(|p| p.weight)
+            .collect();
 
-             let dist = WeightedIndex::new(&particle_weights).unwrap();
-             let sampled_particle_index: usize = dist.sample(random);
-             let sample_particle = &self.gen.pop.normalised_particles()[sampled_particle_index];
-            // 2. perturb it with model.perturb(p)
-            let params = model.perturb(&sample_particle.parameters,random);        
-            if model.prior_density(&params) > 0.0 {
-               break params;
-            } 
-            if num_tries==max_number_retries {
-              //Throw error/warning here!
-            }
-        };
-            return proposed;
+            let dist = WeightedIndex::new(&particle_weights).unwrap();
+            let sampled_particle_index: usize = dist.sample(random);
+            let sample_particle = &self.gen.pop.normalised_particles()[sampled_particle_index];
+        // 2. perturb it with model.perturb(p)
+        let params = model.perturb(&sample_particle.parameters,random);        
+        if model.prior_density(&params) > 0.0 {
+            Ok(params)
+        } else {
+            Err(ABCDError::AlgortihmError("Proposed particle out of prior bounds.".into()))
+        }
     }
 
     fn calculate_tolerance(&self) -> f64 {
@@ -133,8 +127,8 @@ impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
 }
 struct PriorGeneration{}
 impl<P> GenerationOps<P> for PriorGeneration {
-    fn propose<M: Model<Parameters = P>> (&self, model: &M, random: &mut ThreadRng) -> P {
-        model.prior_sample(random)
+    fn propose<M: Model<Parameters = P>> (&self, model: &M, random: &mut ThreadRng) -> ABCDResult<P> {
+        Ok(model.prior_sample(random))
     }
 
     fn calculate_tolerance(&self) -> f64 {
@@ -166,10 +160,16 @@ fn do_gen<M: Model, S: Storage>(
         //Particle loop
 
         // Particle loop
-        // TODO loop could go on forever?  Use some kind of timeout, or issue warning?
+        // TODO loop could go on forever?  
+        //   * Put something in the config for max num retries
+        //   * Log every failed attempt to generate a particles
+        //   * It's complicated by the fact that the loop is both a retry and an accumlator of particles - how to distinguish?
         // (B3) sample a (fitting) parameter set from gen (perturb based on weights and kernel if sampling from generation)
         // (B4) Check if prior probability is zero - if so sample again
-        let parameters: <M as Model>::Parameters = gen_stuff.propose(model, random);
+        let parameters: <M as Model>::Parameters = match gen_stuff.propose(model, random){
+            Ok(parameters) => parameters,
+            Err(ABCDError(msg)) => todo!("Failed to propose a ..."),
+        };
 
         let scores: ABCDResult<Vec<f64>> = (0..config.job.num_replicates)
             .map(|_| {
