@@ -1,4 +1,3 @@
-mod algorithm;
 mod error;
 mod etc;
 mod storage;
@@ -12,13 +11,11 @@ pub use types::{ Model, Generation, Particle};
 use statrs::statistics::{Statistics,OrderStatistics, Data};
 use rand::distributions::WeightedIndex;
 
-pub type Random = ThreadRng;
-
 pub fn run<M: Model, S: Storage>(
     model: M,
     config: Config,
     storage: S,
-    random: &mut Random,
+    random: &mut ThreadRng,
 ) -> ABCDResult<()> {
     match do_gen(&storage, &model, &config, random, PriorGeneration{}) {
         Ok(gen_number) if gen_number == 1 => (),
@@ -48,7 +45,7 @@ pub fn run<M: Model, S: Storage>(
 }
 
 trait GenerationOps<P> {
-    fn propose<M: Model<Parameters = P>>(&self, model: &M, random: &ThreadRng) -> P;
+    fn propose<M: Model<Parameters = P>>(&self, model: &M, random: &mut ThreadRng) -> P;
     fn calculate_tolerance(&self) -> f64;
     fn weigh<M: Model<Parameters = P>>(&self, params: P, scores: Vec<f64>, tolerance: f64, model: &M) -> Particle<P>;
 
@@ -67,7 +64,7 @@ struct EmpiricalGeneration<P>{
     config: Config
 }
 impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
-    fn propose<M: Model<Parameters = P>>(&self, model: &M, random: &ThreadRng) -> P {
+    fn propose<M: Model<Parameters = P>>(&self, model: &M, random: &mut ThreadRng) -> P {
         let max_number_retries = 10; // Make this a config value
         let mut num_tries = 0;
         let proposed: M::Parameters = loop {
@@ -76,17 +73,16 @@ impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
             // 1. sample a particle from the previosu population
             let particle_weights: Vec<f64> = self.gen
                 .pop
-                .normalised_particles
+                .normalised_particles()
                 .iter()
                 .map(|p| p.weight)
                 .collect();
 
              let dist = WeightedIndex::new(&particle_weights).unwrap();
-             let mut rng = thread_rng();
-             let sampled_particle_index: usize = dist.sample(&mut rng);
-             let sample_particle = &self.gen.pop.normalised_particles[sampled_particle_index];
+             let sampled_particle_index: usize = dist.sample(random);
+             let sample_particle = &self.gen.pop.normalised_particles()[sampled_particle_index];
             // 2. perturb it with model.perturb(p)
-            let params = model.perturb(&sample_particle.parameters);        
+            let params = model.perturb(&sample_particle.parameters,random);        
             if model.prior_density(&params) > 0.0 {
                break params;
             } 
@@ -101,7 +97,7 @@ impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
         // Get distribution of scores from last generation then reduce by tolerance descent rate (configured) - crate exists for percentile => 
         let score_distribution: Vec<f64> = self.gen
             .pop
-            .normalised_particles
+            .normalised_particles()
             .iter()
             .map(|particle| {
                 let mean_scores: f64 = particle.scores.clone().mean();
@@ -120,7 +116,7 @@ impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
         // (B6) Calculate not_normalised_weight for each particle from its f^hat (f^hat(p) * prior(p)) / denom)
         let fhat = Self::calculate_fhat(&scores, tolerance);
         let prior_prob = model.prior_density(&parameters);
-        let denominator : f64 = self.gen.pop.normalised_particles
+        let denominator : f64 = self.gen.pop.normalised_particles()
                 .iter()
                 .map(|prev_gen_particle| {
                     let weight = prev_gen_particle.weight;
@@ -137,7 +133,7 @@ impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
 }
 struct PriorGeneration{}
 impl<P> GenerationOps<P> for PriorGeneration {
-    fn propose<M: Model<Parameters = P>> (&self, model: &M, random: &ThreadRng) -> P {
+    fn propose<M: Model<Parameters = P>> (&self, model: &M, random: &mut ThreadRng) -> P {
         model.prior_sample(random)
     }
 
@@ -146,7 +142,7 @@ impl<P> GenerationOps<P> for PriorGeneration {
     }
 
 
-    fn weigh<M: Model<Parameters = P>>(&self, parameters: P, scores: Vec<f64>, tolerance: f64, model: &M) -> Particle<P> {
+    fn weigh<M: Model<Parameters = P>>(&self, parameters: P, scores: Vec<f64>, tolerance: f64, _model: &M) -> Particle<P> {
         let fhat = <Self as GenerationOps<P>>::calculate_fhat(&scores, tolerance);
         Particle { 
             parameters, 
@@ -161,7 +157,7 @@ fn do_gen<M: Model, S: Storage>(
     storage: &S,
     model: &M,
     config: &Config,
-    random: &mut Random,
+    random: &mut ThreadRng,
     gen_stuff: impl GenerationOps<M::Parameters>,
 ) -> ABCDResult<u16> {
     let prev_gen_number = storage.previous_gen_number()?;
@@ -176,7 +172,7 @@ fn do_gen<M: Model, S: Storage>(
         let parameters: <M as Model>::Parameters = gen_stuff.propose(model, random);
 
         let scores: ABCDResult<Vec<f64>> = (0..config.job.num_replicates)
-            .map(|rep_idx| {
+            .map(|_| {
                 if storage.previous_gen_number().unwrap() != prev_gen_number {
                     Err(ABCDError::WasWorkingOnAnOldGeneration("bad".into()))
                 } else {
@@ -208,7 +204,7 @@ fn do_gen<M: Model, S: Storage>(
             };
              let new_generation = Generation::new( particles, prev_gen_number + 1, tolerance, acceptance);
             // Save generation to storage
-             storage.save_new_gen(&new_generation);
+             storage.save_new_gen(&new_generation)?;
              return Ok(new_generation.number);
         }
     }
