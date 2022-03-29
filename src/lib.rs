@@ -6,6 +6,7 @@ mod types;
 use error::{ABCDError, ABCDResult};
 use etc::config::Config;
 use rand::prelude::*;
+use serde::Deserializer;
 use storage::Storage;
 pub use types::{ Model, Generation, Particle};
 use statrs::statistics::{Statistics,OrderStatistics, Data};
@@ -18,14 +19,14 @@ pub fn run<M: Model, S: Storage>(
     random: &mut ThreadRng,
 ) -> ABCDResult<()> {
     match do_gen(&storage, &model, &config, random, PriorGeneration{}) {
-        Ok(gen_number) if gen_number == 1 => (),
-        Err(ABCDError::WasWorkingOnAnOldGeneration(_)) => {
-            println!("LOG ME");
-            ()
+        Ok(gen_number) if gen_number == 1 => Ok(()),
+        Ok(gen_number) => Err(ABCDError::AlgortihmError("Should have generation 1 in prior generation".into())),
+        Err(ABCDError::WasWorkingOnAnOldGeneration(msg)) => {
+            log::warn!("{}", msg);
+            Ok(())
         }
-        Err(e) => Err(e)?,
-        _ => unreachable!(),
-    };
+        Err(e) => Err(e),
+    }?;
 
     loop {
         let gen = storage.load_previous_gen()?;
@@ -35,7 +36,15 @@ pub fn run<M: Model, S: Storage>(
             &config,
             random,
             EmpiricalGeneration{gen, config: config.clone()},
-        )?;
+        ); 
+        let number = match number {
+            Ok(number) => Ok(number),
+            Err(ABCDError::WasWorkingOnAnOldGeneration(msg)) => {
+                log::warn!("{}", msg);
+                continue
+            }
+            Err(e) => Err(e),
+        }?;
         if number == config.job.num_generations && config.job.terminate_at_target_gen {
             break;
         }
@@ -96,6 +105,10 @@ impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
             .map(|particle| {
                 let mean_scores: f64 = particle.scores.clone().mean();
                 assert!(!mean_scores.is_nan()); //TODO Put proper ABCDError here
+                let is_score_ok = match mean_scores.is_nan() {
+                    true => Ok(mean_scores),
+                    false => Err(ABCDError::AlgortihmError("Mean score is not a number.".into()))
+                };
                 mean_scores
             })
             .collect();
@@ -103,6 +116,10 @@ impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
         let mut score_distribution = Data::new(score_distribution);
         let new_tolerance = score_distribution.percentile(self.config.algorithm.tolerance_descent_percentile);
         assert!(!new_tolerance.is_nan()); //TODO Put proper ABCDError here
+        let is_tolerance_ok = match new_tolerance.is_nan() {
+            true => Ok(new_tolerance),
+            false => Err(ABCDError::AlgortihmError("Tolerance is not a number.".into()))
+        };
         new_tolerance
     }
 
@@ -156,7 +173,13 @@ fn do_gen<M: Model, S: Storage>(
 ) -> ABCDResult<u16> {
     let prev_gen_number = storage.previous_gen_number()?;
     let tolerance = gen_stuff.calculate_tolerance();
+
+    let mut failures = 0;
+
     loop {
+        if failures > config.algorithm.max_num_failures {
+            return Err(ABCDError::AlgortihmError("Too many particle failures".into())); //TODO make this different to the particle propose error
+        }
         //Particle loop
 
         // Particle loop
@@ -167,9 +190,15 @@ fn do_gen<M: Model, S: Storage>(
         // (B3) sample a (fitting) parameter set from gen (perturb based on weights and kernel if sampling from generation)
         // (B4) Check if prior probability is zero - if so sample again
         let parameters: <M as Model>::Parameters = match gen_stuff.propose(model, random){
-            Ok(parameters) => parameters,
-            Err(ABCDError(msg)) => todo!("Failed to propose a ..."),
-        };
+            //TODO put this lot in the propose function?
+            Ok(parameters) => Ok(parameters),
+            Err(ABCDError::AlgortihmError(msg)) => {
+                log::warn!("{}", msg);
+                failures += 1;
+                continue;
+            },
+            Err(e) => Err(e),
+        }?;
 
         let scores: ABCDResult<Vec<f64>> = (0..config.job.num_replicates)
             .map(|_| {
@@ -182,7 +211,7 @@ fn do_gen<M: Model, S: Storage>(
             })
             .collect();
 
-        let scores = scores?;
+        let scores = scores?; //Throws out to main generation loop, which reloads the previous generation and tries again
 
         // We now have a collection of scores for the particle
         // (B5b) Calculate f^hat by calc'ing proportion less than tolerance
@@ -190,13 +219,40 @@ fn do_gen<M: Model, S: Storage>(
         let particle: Particle<M::Parameters> = gen_stuff.weigh(parameters, scores, tolerance, model);
 
         // Save the non_normalised particle to storage
-        storage.save_particle(&particle)?; 
+        let save_result = storage.save_particle(&particle); //TODO log if can't save, then try again?  Blow up?  Need to think about this
+        let save_result = match save_result {
+            Ok(save_result) => Ok(save_result), //This just holds path of where particle was saved - do we want to log that?
+            Err(ABCDError::StorageInitError) => {
+                log::error!("{}", "Problems saving particle to storage");
+                Err(ABCDError::StorageInitError)
+            }
+            Err(e) => Err(e),
+        }?;
 
         // Check if we now have the req'd num particles/reps, if so, break
         if storage.num_accepted_particles()? >= config.job.num_particles {
             // Load all the non_normalised particles
-            let particles: Vec<Particle<M::Parameters>> = storage.load_accepted_particles()?;
-            let rejections = storage.num_rejected_particles()?;
+            let particles: Vec<Particle<M::Parameters>> = storage.load_accepted_particles()?; //TODO think about the error case, tries again?
+            // let particles = storage.load_accepted_particles(); 
+            // let particles = match particles {
+            //     Ok(particles) => Ok(particles), 
+            //     Err(ABCDError::Other(msg)) => {
+            //         log::error!("{}", msg);
+            //         Err(ABCDError::Other(msg))          }
+            //     Err(ABCDError::SerdeError(msg)) => {
+            //             log::error!("{}", msg);
+            //             Err(ABCDError::SerdeError(msg) )          }
+            //     Err(e) => Err(e),
+            // }?;
+            let rejections = storage.num_rejected_particles()?; //TODO think about the error case, tries again?
+            // let rejections = storage.num_rejected_particles();
+            // let rejections = match rejections {
+            //     Ok(rejections) => Ok(rejections), 
+            //     Err(ABCDError::StorageConsistencyError(msg)) => {
+            //         log::error!("{}", msg);
+            //         Err(ABCDError::StorageConsistencyError(msg))          }
+            //     Err(e) => Err(e),
+            // }?;
             let acceptance = {
                 let num: f64 = cast::f64(particles.len()); //TODO check we understand this, seems to be infallable??!
                 let rejected: f64 =  cast::f64(rejections);
@@ -204,7 +260,19 @@ fn do_gen<M: Model, S: Storage>(
             };
              let new_generation = Generation::new( particles, prev_gen_number + 1, tolerance, acceptance);
             // Save generation to storage
-             storage.save_new_gen(&new_generation)?;
+            // storage.save_new_gen(&new_generation)?; //TODO think about the error case, tries again?
+            // Save the non_normalised particle to storage
+            let save_gen_result = storage.save_new_gen(&new_generation); //TODO log if can't save, then try again?  Blow up?  Need to think about this
+            let save_gen_result = match save_gen_result {
+                Ok(save_gen_result) => Ok(save_gen_result), 
+                Err(ABCDError::StorageConsistencyError(msg)) => {
+                       log::error!("{}", msg);
+                       Err(ABCDError::StorageConsistencyError(msg) )          }   
+                Err(ABCDError::GenAlreadySaved(msg)) => {
+                        log::error!("{}", msg);
+                        Err(ABCDError::GenAlreadySaved(msg) )          }             
+                Err(e) => Err(e),
+            }?;
              return Ok(new_generation.number);
         }
     }

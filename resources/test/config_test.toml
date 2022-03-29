@@ -11,3 +11,4 @@ num_particles = 10000
 
 [algorithm]
 tolerance_descent_percentile = 75
+max_num_failures = 50
