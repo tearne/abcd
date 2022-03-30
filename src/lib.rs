@@ -18,6 +18,8 @@ pub fn run<M: Model, S: Storage>(
     storage: S,
     random: &mut ThreadRng,
 ) -> ABCDResult<()> {
+//TODO think about how to handle errors at this level (e.g. tolerance being nan)
+
     match do_gen(&storage, &model, &config, random, PriorGeneration{}) {
         Ok(gen_number) if gen_number == 1 => Ok(()),
         Ok(gen_number) => Err(ABCDError::AlgortihmError("Should have generation 1 in prior generation".into())),
@@ -55,7 +57,7 @@ pub fn run<M: Model, S: Storage>(
 
 trait GenerationOps<P> {
     fn propose<M: Model<Parameters = P>>(&self, model: &M, random: &mut ThreadRng) -> ABCDResult<P>;
-    fn calculate_tolerance(&self) -> f64;
+    fn calculate_tolerance(&self) -> ABCDResult<f64>;
     fn weigh<M: Model<Parameters = P>>(&self, params: P, scores: Vec<f64>, tolerance: f64, model: &M) -> Particle<P>;
 
     fn calculate_fhat(scores: &Vec<f64>, tolerance: f64) -> f64 {
@@ -96,31 +98,29 @@ impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
         }
     }
 
-    fn calculate_tolerance(&self) -> f64 {
+    fn calculate_tolerance(&self) -> ABCDResult<f64> {
         // Get distribution of scores from last generation then reduce by tolerance descent rate (configured) - crate exists for percentile => 
-        let score_distribution: Vec<f64> = self.gen
+        let score_distribution: ABCDResult<Vec<f64>> = self.gen
             .pop
             .normalised_particles()
             .iter()
             .map(|particle| {
                 let mean_scores: f64 = particle.scores.clone().mean();
                 assert!(!mean_scores.is_nan()); //TODO Put proper ABCDError here
-                let is_score_ok = match mean_scores.is_nan() {
+                match mean_scores.is_nan() {
                     true => Ok(mean_scores),
                     false => Err(ABCDError::AlgortihmError("Mean score is not a number.".into()))
-                };
-                mean_scores
+                }
             })
             .collect();
 
-        let mut score_distribution = Data::new(score_distribution);
+        let mut score_distribution = Data::new(score_distribution?);
         let new_tolerance = score_distribution.percentile(self.config.algorithm.tolerance_descent_percentile);
-        assert!(!new_tolerance.is_nan()); //TODO Put proper ABCDError here
-        let is_tolerance_ok = match new_tolerance.is_nan() {
+
+        match new_tolerance.is_nan() {
             true => Ok(new_tolerance),
             false => Err(ABCDError::AlgortihmError("Tolerance is not a number.".into()))
-        };
-        new_tolerance
+        }
     }
 
     fn weigh<M: Model<Parameters = P>>(&self, parameters: P, scores: Vec<f64>, tolerance: f64, model: &M) -> Particle<P> {
@@ -148,8 +148,8 @@ impl<P> GenerationOps<P> for PriorGeneration {
         Ok(model.prior_sample(random))
     }
 
-    fn calculate_tolerance(&self) -> f64 {
-        f64::MAX
+    fn calculate_tolerance(&self) -> ABCDResult<f64> {
+        Ok(f64::MAX)
     }
 
 
@@ -172,7 +172,7 @@ fn do_gen<M: Model, S: Storage>(
     gen_stuff: impl GenerationOps<M::Parameters>,
 ) -> ABCDResult<u16> {
     let prev_gen_number = storage.previous_gen_number()?;
-    let tolerance = gen_stuff.calculate_tolerance();
+    let tolerance = gen_stuff.calculate_tolerance()?;
 
     let mut failures = 0;
 
@@ -183,10 +183,6 @@ fn do_gen<M: Model, S: Storage>(
         //Particle loop
 
         // Particle loop
-        // TODO loop could go on forever?  
-        //   * Put something in the config for max num retries
-        //   * Log every failed attempt to generate a particles
-        //   * It's complicated by the fact that the loop is both a retry and an accumlator of particles - how to distinguish?
         // (B3) sample a (fitting) parameter set from gen (perturb based on weights and kernel if sampling from generation)
         // (B4) Check if prior probability is zero - if so sample again
         let parameters: <M as Model>::Parameters = match gen_stuff.propose(model, random){
@@ -218,15 +214,15 @@ fn do_gen<M: Model, S: Storage>(
         // (B6) Calculate not_normalised_weight for each particle from its f^hat (f^hat(p) * prior(p)) / denom)
         let particle: Particle<M::Parameters> = gen_stuff.weigh(parameters, scores, tolerance, model);
 
+
         // Save the non_normalised particle to storage
         let save_result = storage.save_particle(&particle); //TODO log if can't save, then try again?  Blow up?  Need to think about this
         let save_result = match save_result {
             Ok(save_result) => Ok(save_result), //This just holds path of where particle was saved - do we want to log that?
-            Err(ABCDError::StorageInitError) => {
-                log::error!("{}", "Problems saving particle to storage");
+            Err(e) => {
+                log::error!("Problems saving particle to storage: {}", e);
                 Err(ABCDError::StorageInitError)
             }
-            Err(e) => Err(e),
         }?;
 
         // Check if we now have the req'd num particles/reps, if so, break
