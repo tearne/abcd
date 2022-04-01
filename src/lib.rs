@@ -56,7 +56,12 @@ pub fn run<M: Model, S: Storage>(
 }
 
 trait GenerationOps<P> {
+    //TODO so we can reuse these ops in the diagnostic runner
+    // fn sample<M: Model<Parameters = P>>(&self, model: &M, random: &mut ThreadRng) -> ABCDResult<P>;
+    // fn sample_and_perturb<M: Model<Parameters = P>>(&self, model: &M, random: &mut ThreadRng) -> ABCDResult<P>;
     fn propose<M: Model<Parameters = P>>(&self, model: &M, random: &mut ThreadRng) -> ABCDResult<P>;
+    
+    
     fn calculate_tolerance(&self) -> ABCDResult<f64>;
     fn weigh<M: Model<Parameters = P>>(&self, params: P, scores: Vec<f64>, tolerance: f64, model: &M) -> Particle<P>;
 

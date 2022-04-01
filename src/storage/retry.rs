@@ -18,15 +18,15 @@ impl Retryer {
         }
     }
 
-    pub fn do_with_retry(&self, function: FnOnce<T>) -> ABCDResult<T> {
-        for duration in &backoff {
-            match function() {
-                Ok(t) => return Ok(t),
-                Err(err) => match duration {
-                    Some(duration) => thread::sleep(duration),
-                    None => return err,
-                }
-            }
-        }
-    }
+    // pub fn do_with_retry(&self, function: FnOnce<T>) -> ABCDResult<T> {
+    //     for duration in &backoff {
+    //         match function() {
+    //             Ok(t) => return Ok(t),
+    //             Err(err) => match duration {
+    //                 Some(duration) => thread::sleep(duration),
+    //                 None => return err,
+    //             }
+    //         }
+    //     }
+    // }
 }
