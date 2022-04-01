@@ -8,7 +8,7 @@ use etc::config::Config;
 use rand::prelude::*;
 use serde::Deserializer;
 use storage::Storage;
-pub use types::{ Model, Generation, Particle};
+pub use types::{ Model, Generation, Particle, Population};
 use statrs::statistics::{Statistics,OrderStatistics, Data};
 use rand::distributions::WeightedIndex;
 
