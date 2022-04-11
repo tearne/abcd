@@ -57,9 +57,21 @@ pub fn run<M: Model, S: Storage>(
 
 trait GenerationOps<P> {
     //TODO so we can reuse these ops in the diagnostic runner
-    // fn sample<M: Model<Parameters = P>>(&self, model: &M, random: &mut ThreadRng) -> ABCDResult<P>;
-    // fn sample_and_perturb<M: Model<Parameters = P>>(&self, model: &M, random: &mut ThreadRng) -> ABCDResult<P>;
-    fn propose<M: Model<Parameters = P>>(&self, model: &M, random: &mut ThreadRng) -> ABCDResult<P>;
+    fn sample<M>(&self, model: &M, random: &mut ThreadRng) -> ABCDResult<P> 
+    where 
+        M: Model<Parameters = P>,
+        P: Clone;
+
+    fn perturb<M: Model<Parameters = P>>(&self, parameters: &P, model: &M, random: &mut ThreadRng) -> ABCDResult<P> {
+        let params = model.perturb(&parameters,random);        
+        if model.prior_density(&params) > 0.0 {
+            Ok(params)
+        } else {
+            Err(ABCDError::AlgortihmError("Proposed particle out of prior bounds.".into()))
+        }
+    }
+    
+    // fn propose<M: Model<Parameters = P>>(&self, model: &M, random: &mut ThreadRng) -> ABCDResult<P>;
     
     
     fn calculate_tolerance(&self) -> ABCDResult<f64>;
@@ -80,9 +92,11 @@ struct EmpiricalGeneration<P>{
     config: Config
 }
 impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
-    fn propose<M: Model<Parameters = P>>(&self, model: &M, random: &mut ThreadRng) -> ABCDResult<P> {
-        //https://rust-random.github.io/rand/rand/distributions/weighted/struct.WeightedIndex.html
-        // 1. sample a particle from the previosu population
+    fn sample<M>(&self, model: &M, random: &mut ThreadRng) -> ABCDResult<P>
+    where 
+        M: Model<Parameters = P>,
+        P: Clone
+     {
         // TODO can't we pre-calculate the weights table to avoid rebuilding on every proposal?
         let particle_weights: Vec<f64> = self.gen
             .pop
@@ -91,16 +105,10 @@ impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
             .map(|p| p.weight)
             .collect();
 
-            let dist = WeightedIndex::new(&particle_weights).unwrap();
-            let sampled_particle_index: usize = dist.sample(random);
-            let sample_particle = &self.gen.pop.normalised_particles()[sampled_particle_index];
-        // 2. perturb it with model.perturb(p)
-        let params = model.perturb(&sample_particle.parameters,random);        
-        if model.prior_density(&params) > 0.0 {
-            Ok(params)
-        } else {
-            Err(ABCDError::AlgortihmError("Proposed particle out of prior bounds.".into()))
-        }
+        let dist = WeightedIndex::new(&particle_weights).unwrap();
+        let sampled_particle_index: usize = dist.sample(random);
+        let particle = self.gen.pop.normalised_particles()[sampled_particle_index].clone();
+        Ok(particle.parameters)
     }
 
     fn calculate_tolerance(&self) -> ABCDResult<f64> {
@@ -149,7 +157,7 @@ impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
 }
 struct PriorGeneration{}
 impl<P> GenerationOps<P> for PriorGeneration {
-    fn propose<M: Model<Parameters = P>> (&self, model: &M, random: &mut ThreadRng) -> ABCDResult<P> {
+    fn sample<M: Model<Parameters = P>> (&self, model: &M, random: &mut ThreadRng) -> ABCDResult<P> {
         Ok(model.prior_sample(random))
     }
 

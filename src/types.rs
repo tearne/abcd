@@ -14,7 +14,7 @@ pub trait Model {
     fn score(&self, p: &Self::Parameters) -> f64;
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct Particle<P> {
     pub parameters: P,
     pub scores: Vec<f64>,
