@@ -198,8 +198,12 @@ fn do_gen<M: Model, S: Storage>(
         // Particle loop
         // (B3) sample a (fitting) parameter set from gen (perturb based on weights and kernel if sampling from generation)
         // (B4) Check if prior probability is zero - if so sample again
-        let parameters: <M as Model>::Parameters = match gen_stuff.propose(model, random){
-            //TODO put this lot in the propose function?
+        
+        let proposed_result = gen_stuff.sample(model, random)
+            .and_then(|params| gen_stuff.perturb(&params, model, random));
+        
+        let parameters: <M as Model>::Parameters = match proposed_result {
+            //TODO does it make sense to put this lot in the propose function?
             Ok(parameters) => Ok(parameters),
             Err(ABCDError::AlgortihmError(msg)) => {
                 log::warn!("{}", msg);

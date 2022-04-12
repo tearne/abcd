@@ -3,7 +3,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::fmt::Debug;
 
 pub trait Model {
-    type Parameters: Serialize + DeserializeOwned + Debug;
+    type Parameters: Serialize + DeserializeOwned + Debug + Clone;
 
     fn prior_sample(&self, random: &mut ThreadRng) -> Self::Parameters; //TODO check density of sampled value is NOT 0
     fn prior_density(&self, p: &Self::Parameters) -> f64;
