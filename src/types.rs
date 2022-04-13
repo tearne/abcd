@@ -2,6 +2,8 @@ use rand::prelude::ThreadRng;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::fmt::Debug;
 
+use crate::error::ABCDResult;
+
 pub trait Model {
     type Parameters: Serialize + DeserializeOwned + Debug + Clone;
 
@@ -11,7 +13,7 @@ pub trait Model {
     fn perturb(&self, p: &Self::Parameters,random: &mut ThreadRng) -> Self::Parameters;
     fn pert_density(&self, from: &Self::Parameters, to: &Self::Parameters) -> f64;
 
-    fn score(&self, p: &Self::Parameters) -> f64;
+    fn score(&self, p: &Self::Parameters) -> ABCDResult<f64>;
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]

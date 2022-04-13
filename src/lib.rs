@@ -231,7 +231,7 @@ fn do_gen<M: Model, S: Storage>(
                     Err(ABCDError::WasWorkingOnAnOldGeneration("bad".into()))
                 } else {
                     // (B5a) run the model once to get a score
-                    Ok(model.score(&parameters))
+                    Ok(model.score(&parameters)?)
                 }
             })
             .collect();

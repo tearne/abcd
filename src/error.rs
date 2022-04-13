@@ -4,6 +4,7 @@ pub type ABCDResult<T> = std::result::Result<T, ABCDError>;
 
 #[derive(Debug)]
 pub enum ABCDError {
+    ModelError(String),
     AlgortihmError(String),
     Configuration(String),
     Io(std::io::Error),
@@ -23,6 +24,7 @@ pub enum ABCDError {
 impl std::fmt::Display for ABCDError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            ABCDError::ModelError(ref msg) => write!(f, "{}", msg),
             ABCDError::AlgortihmError(ref msg) => write!(f, "{}", msg),
             ABCDError::Configuration(ref msg) => write!(f, "{}", msg),
             ABCDError::Io(ref err) => err.fmt(f),
