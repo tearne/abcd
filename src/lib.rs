@@ -1,7 +1,7 @@
 pub mod error;
-mod etc;
-mod storage;
-mod types;
+pub mod etc;
+pub mod storage;
+pub mod types;
 
 use std::borrow::Cow;
 
