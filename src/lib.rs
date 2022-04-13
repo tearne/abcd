@@ -1,5 +1,5 @@
 mod error;
-mod etc;
+pub mod etc;
 mod storage;
 mod types;
 
