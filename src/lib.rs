@@ -3,10 +3,11 @@ mod etc;
 mod storage;
 mod types;
 
+use std::borrow::Cow;
+
 use error::{ABCDError, ABCDResult};
 use etc::config::Config;
 use rand::prelude::*;
-use serde::Deserializer;
 use storage::Storage;
 pub use types::{ Model, Generation, Particle, Population};
 use statrs::statistics::{Statistics,OrderStatistics, Data};
@@ -20,9 +21,17 @@ pub fn run<M: Model, S: Storage>(
 ) -> ABCDResult<()> {
 //TODO think about how to handle errors at this level (e.g. tolerance being nan)
 
-    match do_gen(&storage, &model, &config, random, PriorGeneration{}) {
-        Ok(gen_number) if gen_number == 1 => Ok(()),
-        Ok(gen_number) => Err(ABCDError::AlgortihmError("Should have generation 1 in prior generation".into())),
+    match do_gen(
+        &storage, 
+        &model, 
+        &config, 
+        random, 
+        PriorGeneration{}
+    ) {
+        Ok(gen_num) if gen_num == 1 => Ok(()),
+        Ok(gen_num) => Err(ABCDError::AlgortihmError(
+            format!("Generation {} was unexpectedly returned from the initial generation.", gen_num)
+        )),
         Err(ABCDError::WasWorkingOnAnOldGeneration(msg)) => {
             log::warn!("{}", msg);
             Ok(())
@@ -32,17 +41,17 @@ pub fn run<M: Model, S: Storage>(
 
     loop {
         let gen = storage.load_previous_gen()?;
-        let number = do_gen(
+        let completed_gen_number = do_gen(
             &storage,
             &model,
             &config,
             random,
             EmpiricalGeneration{gen, config: config.clone()},
         ); 
-        let number = match number {
-            Ok(number) => Ok(number),
+        let number = match completed_gen_number {
+            Ok(n) => Ok(n),
             Err(ABCDError::WasWorkingOnAnOldGeneration(msg)) => {
-                log::warn!("{}", msg);
+                log::warn!("Start another generation attempt.  Cause: {}", msg);
                 continue
             }
             Err(e) => Err(e),
@@ -56,14 +65,13 @@ pub fn run<M: Model, S: Storage>(
 }
 
 trait GenerationOps<P> {
-    //TODO so we can reuse these ops in the diagnostic runner
-    fn sample<M>(&self, model: &M, random: &mut ThreadRng) -> ABCDResult<P> 
+    fn sample<M>(&self, model: &M, random: &mut ThreadRng) -> ABCDResult<Cow<P>> 
     where 
         M: Model<Parameters = P>,
         P: Clone;
 
     fn perturb<M: Model<Parameters = P>>(&self, parameters: &P, model: &M, random: &mut ThreadRng) -> ABCDResult<P> {
-        let params = model.perturb(&parameters,random);        
+        let params = model.perturb(parameters,random);        
         if model.prior_density(&params) > 0.0 {
             Ok(params)
         } else {
@@ -71,13 +79,10 @@ trait GenerationOps<P> {
         }
     }
     
-    // fn propose<M: Model<Parameters = P>>(&self, model: &M, random: &mut ThreadRng) -> ABCDResult<P>;
-    
-    
     fn calculate_tolerance(&self) -> ABCDResult<f64>;
     fn weigh<M: Model<Parameters = P>>(&self, params: P, scores: Vec<f64>, tolerance: f64, model: &M) -> Particle<P>;
 
-    fn calculate_fhat(scores: &Vec<f64>, tolerance: f64) -> f64 {
+    fn calculate_fhat(scores: &[f64], tolerance: f64) -> f64 {
         // (B5b) Calculate f^hat by calc'ing proportion less than tolerance
         let number_reps = cast::f64(scores.len());
         let number_reps_less_than_tolerance = scores
@@ -92,7 +97,7 @@ struct EmpiricalGeneration<P>{
     config: Config
 }
 impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
-    fn sample<M>(&self, model: &M, random: &mut ThreadRng) -> ABCDResult<P>
+    fn sample<M>(&self, _model: &M, random: &mut ThreadRng) -> ABCDResult<Cow<P>>
     where 
         M: Model<Parameters = P>,
         P: Clone
@@ -107,8 +112,11 @@ impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
 
         let dist = WeightedIndex::new(&particle_weights).unwrap();
         let sampled_particle_index: usize = dist.sample(random);
-        let particle = self.gen.pop.normalised_particles()[sampled_particle_index].clone();
-        Ok(particle.parameters)
+        let particles = &self.gen
+            .pop
+            .normalised_particles()[sampled_particle_index];
+        let params = &particles.parameters;
+        Ok(Cow::Borrowed(params))
     }
 
     fn calculate_tolerance(&self) -> ABCDResult<f64> {
@@ -157,8 +165,12 @@ impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
 }
 struct PriorGeneration{}
 impl<P> GenerationOps<P> for PriorGeneration {
-    fn sample<M: Model<Parameters = P>> (&self, model: &M, random: &mut ThreadRng) -> ABCDResult<P> {
-        Ok(model.prior_sample(random))
+    fn sample<M> (&self, model: &M, random: &mut ThreadRng) -> ABCDResult<Cow<P>> 
+    where 
+        M: Model<Parameters = P>,
+        P: Clone,
+    {
+        Ok(Cow::Owned(model.prior_sample(random)))
     }
 
     fn calculate_tolerance(&self) -> ABCDResult<f64> {
@@ -234,8 +246,8 @@ fn do_gen<M: Model, S: Storage>(
 
         // Save the non_normalised particle to storage
         let save_result = storage.save_particle(&particle); //TODO log if can't save, then try again?  Blow up?  Need to think about this
-        let save_result = match save_result {
-            Ok(save_result) => Ok(save_result), //This just holds path of where particle was saved - do we want to log that?
+        match save_result {
+            Ok(_save_result) => Ok(()),
             Err(e) => {
                 log::error!("Problems saving particle to storage: {}", e);
                 Err(ABCDError::StorageInitError)
@@ -246,38 +258,18 @@ fn do_gen<M: Model, S: Storage>(
         if storage.num_accepted_particles()? >= config.job.num_particles {
             // Load all the non_normalised particles
             let particles: Vec<Particle<M::Parameters>> = storage.load_accepted_particles()?; //TODO think about the error case, tries again?
-            // let particles = storage.load_accepted_particles(); 
-            // let particles = match particles {
-            //     Ok(particles) => Ok(particles), 
-            //     Err(ABCDError::Other(msg)) => {
-            //         log::error!("{}", msg);
-            //         Err(ABCDError::Other(msg))          }
-            //     Err(ABCDError::SerdeError(msg)) => {
-            //             log::error!("{}", msg);
-            //             Err(ABCDError::SerdeError(msg) )          }
-            //     Err(e) => Err(e),
-            // }?;
             let rejections = storage.num_rejected_particles()?; //TODO think about the error case, tries again?
-            // let rejections = storage.num_rejected_particles();
-            // let rejections = match rejections {
-            //     Ok(rejections) => Ok(rejections), 
-            //     Err(ABCDError::StorageConsistencyError(msg)) => {
-            //         log::error!("{}", msg);
-            //         Err(ABCDError::StorageConsistencyError(msg))          }
-            //     Err(e) => Err(e),
-            // }?;
             let acceptance = {
                 let num: f64 = cast::f64(particles.len()); //TODO check we understand this, seems to be infallable??!
                 let rejected: f64 =  cast::f64(rejections);
                 num / (num + rejected)
             };
-             let new_generation = Generation::new( particles, prev_gen_number + 1, tolerance, acceptance);
-            // Save generation to storage
-            // storage.save_new_gen(&new_generation)?; //TODO think about the error case, tries again?
+             let new_generation = Generation::new(particles, prev_gen_number + 1, tolerance, acceptance);
+
             // Save the non_normalised particle to storage
             let save_gen_result = storage.save_new_gen(&new_generation); //TODO log if can't save, then try again?  Blow up?  Need to think about this
-            let save_gen_result = match save_gen_result {
-                Ok(save_gen_result) => Ok(save_gen_result), 
+            match save_gen_result {
+                Ok(_) => Ok(()), 
                 Err(ABCDError::StorageConsistencyError(msg)) => {
                        log::error!("{}", msg);
                        Err(ABCDError::StorageConsistencyError(msg) )          }   
