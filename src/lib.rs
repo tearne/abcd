@@ -102,21 +102,7 @@ impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
         M: Model<Parameters = P>,
         P: Clone
      {
-        // TODO can't we pre-calculate the weights table to avoid rebuilding on every proposal?
-        let particle_weights: Vec<f64> = self.gen
-            .pop
-            .normalised_particles()
-            .iter()
-            .map(|p| p.weight)
-            .collect();
-
-        let dist = WeightedIndex::new(&particle_weights).unwrap();
-        let sampled_particle_index: usize = dist.sample(random);
-        let particles = &self.gen
-            .pop
-            .normalised_particles()[sampled_particle_index];
-        let params = &particles.parameters;
-        Ok(Cow::Borrowed(params))
+        self.gen.sample(random)
     }
 
     fn calculate_tolerance(&self) -> ABCDResult<f64> {

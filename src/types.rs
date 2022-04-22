@@ -1,6 +1,9 @@
-use rand::prelude::ThreadRng;
+use rand::Rng;
+use rand::prelude::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::fmt::Debug;
+use std::borrow::Cow;
+use rand::distributions::WeightedIndex;
 
 use crate::error::ABCDResult;
 
@@ -76,5 +79,26 @@ impl<P> Generation<P> {
             pop: Population::<P>::new(tolerance,acceptance,particles),
             number:generation_number
         }
+    }
+    
+    pub fn sample(&self, random: &mut ThreadRng) -> ABCDResult<Cow<P>>
+    where 
+        P: Clone
+     {
+        // TODO can't we pre-calculate the weights table to avoid rebuilding on every proposal?
+        let particle_weights: Vec<f64> = self
+            .pop
+            .normalised_particles()
+            .iter()
+            .map(|p| p.weight)
+            .collect();
+
+        let dist = WeightedIndex::new(&particle_weights).unwrap();
+        let sampled_particle_index: usize = dist.sample(random);
+        let particles = &self
+            .pop
+            .normalised_particles()[sampled_particle_index];
+        let params = &particles.parameters;
+        Ok(Cow::Borrowed(params))
     }
 }
