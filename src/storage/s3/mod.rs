@@ -67,25 +67,24 @@ impl S3System {
             completed_prefix,
             completed_gen_re,
         };
-
         instance
             .runtime
             .block_on(instance.assert_versioning_active())?;
-
         Ok(instance)
     }
 
     async fn assert_versioning_active(&self) -> ABCDResult<()> {
+        println!("Got to assert_versioning_active with bucket {}",&self.bucket); 
         let enabled = self
             .client
             .get_bucket_versioning()
-            .bucket(&self.bucket)
+            .bucket(&self.bucket) //NOTE: self.bucket gives s3://s3-ranch-007 when all it wants is the name s3-ranch-007
+            //.bucket("s3-ranch-007") //NOTE: self.bucket gives s3://s3-ranch-007 when all it wants is the name s3-ranch-007
             .send()
             .await?
             .status
             .map(|s| s == BucketVersioningStatus::Enabled)
             .unwrap_or(false);
-
         if enabled {
             Ok(())
         } else {
@@ -272,8 +271,8 @@ impl S3System {
     }
 
     async fn previous_gen_number_async(&self) -> ABCDResult<u16> {
+        println!("Got to previous_gen_number with prefix {}",&self.completed_prefix); //Falls over on next line - doesn't seem to expand to full name
         let objects = self.list_objects_v2(&self.completed_prefix).await?;
-
         if !objects
             .iter()
             .filter_map(|o| o.key.as_ref())
@@ -281,9 +280,7 @@ impl S3System {
         {
             return Err(ABCDError::StorageInitError);
         }
-
         let key_strings = objects.into_iter().filter_map(|obj| obj.key);
-
         let gen_number = key_strings
             .filter_map(|key| {
                 let captures = self.completed_gen_re.captures(&key)?;
