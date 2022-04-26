@@ -1,5 +1,5 @@
 use std::fmt::Debug;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::storage::config::StorageConfig;
 
@@ -34,6 +34,11 @@ pub struct Algorithm {
     pub tolerance_descent_percentile: usize,
     pub max_num_failures: u16
 }
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
+pub struct RunConfig {
+    pub base_config_path: String, //Or is it value we want here - sorry can't remember?
+    pub model_server: String
+}
 //TODO validate - https://crates.io/crates/validator
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
@@ -41,6 +46,7 @@ pub struct Config {
     pub storage: StorageConfig,
     pub job: Job,
     pub algorithm: Algorithm,
+    pub run: RunConfig
 }
 impl Config {
     pub fn from_path<P>(config_path: P) -> Self
