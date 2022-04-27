@@ -74,7 +74,6 @@ impl S3System {
     }
 
     async fn assert_versioning_active(&self) -> ABCDResult<()> {
-        println!("Got to assert_versioning_active with bucket {}",&self.bucket); 
         let enabled = self
             .client
             .get_bucket_versioning()
@@ -271,7 +270,6 @@ impl S3System {
     }
 
     async fn previous_gen_number_async(&self) -> ABCDResult<u16> {
-        println!("Got to previous_gen_number with prefix {}",&self.completed_prefix); //Falls over on next line - doesn't seem to expand to full name
         let objects = self.list_objects_v2(&self.completed_prefix).await?;
         if !objects
             .iter()
