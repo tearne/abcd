@@ -40,7 +40,9 @@ pub fn run<M: Model, S: Storage>(
     }?;
 
     loop {
+        println!("About to load previous generation");
         let gen = storage.load_previous_gen()?;
+        println!("Successfully loaded previous generation {}",gen.number);
         let completed_gen_number = do_gen(
             &storage,
             &model,
@@ -113,10 +115,9 @@ impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
             .iter()
             .map(|particle| {
                 let mean_scores: f64 = particle.scores.clone().mean();
-                assert!(!mean_scores.is_nan()); //TODO Put proper ABCDError here
                 match mean_scores.is_nan() {
-                    true => Ok(mean_scores),
-                    false => Err(ABCDError::AlgortihmError("Mean score is not a number.".into()))
+                    false => Ok(mean_scores),
+                    true => Err(ABCDError::AlgortihmError("Mean score is not a number.".into()))
                 }
             })
             .collect();
@@ -125,8 +126,8 @@ impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
         let new_tolerance = score_distribution.percentile(self.config.algorithm.tolerance_descent_percentile);
 
         match new_tolerance.is_nan() {
-            true => Ok(new_tolerance),
-            false => Err(ABCDError::AlgortihmError("Tolerance is not a number.".into()))
+            false => Ok(new_tolerance),
+            true => Err(ABCDError::AlgortihmError("Tolerance is not a number.".into()))
         }
     }
 
@@ -254,6 +255,7 @@ fn do_gen<M: Model, S: Storage>(
 
             // Save the non_normalised particle to storage
             let save_gen_result = storage.save_new_gen(&new_generation); //TODO log if can't save, then try again?  Blow up?  Need to think about this
+
             match save_gen_result {
                 Ok(_) => Ok(()), 
                 Err(ABCDError::StorageConsistencyError(msg)) => {

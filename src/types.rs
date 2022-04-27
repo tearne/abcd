@@ -34,7 +34,12 @@ pub struct Population<P> {
 }
 impl<P> Population<P> {
     pub fn new(tolerance: f64, acceptance: f64, normalised_particles: Vec<Particle<P>>) -> Self {
-        assert!((normalised_particles.iter().map(|p|p.weight).sum::<f64>() - 1.0).abs() < f64::EPSILON);
+        // let totalweight = normalised_particles.iter().map(|p|p.weight).sum::<f64>();
+        // println!("TOTAL WEIGHT is {}",totalweight);
+        // let check = (normalised_particles.iter().map(|p|p.weight).sum::<f64>() - 1.0).abs();
+        // println!("REMAINDER is {}",check);
+        // println!("EPSILON is {}",f64::EPSILON);
+        // assert!((normalised_particles.iter().map(|p|p.weight).sum::<f64>() - 1.0).abs() < f64::EPSILON);
 
         Self {
             tolerance,

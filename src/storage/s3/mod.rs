@@ -6,7 +6,8 @@ use aws_sdk_s3::model::{
     BucketVersioningStatus, Delete, Object, ObjectCannedAcl, ObjectIdentifier,
 };
 use aws_sdk_s3::output::{GetObjectOutput, ListObjectsV2Output, PutObjectOutput};
-use aws_sdk_s3::{ByteStream, Client, Region, SdkError};
+use aws_sdk_s3::types::{ByteStream, SdkError, AggregatedBytes};
+use aws_sdk_s3::{Client, Region};
 use bytes::Bytes;
 use futures::{Future, FutureExt, TryFutureExt, TryStreamExt};
 use regex::Regex;
@@ -167,11 +168,14 @@ impl S3System {
     }
 
     async fn read_to_string(output: ABCDResult<GetObjectOutput>) -> ABCDResult<String> {
-        let bytes = output?
+        let bytes: Bytes = output?
             .body
-            .try_next()
-            .await?
-            .ok_or_else(|| ABCDError::S3OperationError("Empty byte stream".into()))?;
+            .collect()
+            .await
+            .map_err(|e| 
+                ABCDError::S3OperationError(format!("Empty byte stream: {}", e))
+            )?
+            .into_bytes();
 
         let string = std::str::from_utf8(&bytes).unwrap();
         Ok(string.into())
@@ -314,7 +318,7 @@ impl Storage for S3System {
             };
 
             let version_id = self.ensure_only_original_verions(&object_key).await?;
-
+            println!("About to load gen obj string");
             let obj_string = self
                 .client
                 .get_object()
@@ -326,7 +330,12 @@ impl Storage for S3System {
                 .then(Self::read_to_string)
                 .await?;
 
+            //let fixed_string = &obj_string.replace("\n","");
+
+            println!("Gen json is {} ",obj_string);
+
             let gen: Generation<P> = serde_json::from_str(&obj_string)?;
+            println!("Gen number from json is {} ",gen.number);
 
             if gen.number == prev_gen_no {
                 Ok(gen)
