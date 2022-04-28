@@ -70,7 +70,10 @@ impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
         let new_tolerance = score_distribution.percentile(self.config.algorithm.tolerance_descent_percentile);
 
         match new_tolerance.is_nan() {
-            false => Ok(new_tolerance),
+            false => {
+                log::info!("Tolerance calculated as {new_tolerance}");
+                Ok(new_tolerance)
+            },
             true => Err(ABCDError::AlgortihmError("Tolerance is not a number.".into()))
         }
     }
@@ -105,6 +108,7 @@ impl<P> GenerationOps<P> for PriorGeneration {
     }
 
     fn calculate_tolerance(&self) -> ABCDResult<f64> {
+        log::info!("Tolerance for the prior generation is fixed at {}", f64::MAX);
         Ok(f64::MAX)
     }
 

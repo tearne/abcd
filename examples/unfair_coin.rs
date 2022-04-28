@@ -139,6 +139,6 @@ fn main() -> Result<()> {
     let storage = config.storage.build_s3()?;
 
     abcd::run(m, config, storage, &mut random)?;
-    //println!("{:?}", &m);
+
     Ok(())
 }

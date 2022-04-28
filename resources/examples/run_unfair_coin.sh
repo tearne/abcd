@@ -17,4 +17,6 @@ aws s3 sync empty_prefix s3://${TEST_BUCKET}/${TEST_PREFIX}/ --delete --acl buck
 export RUST_LOG=error,abcd=info,unfair_coin=info 
 cargo run --example unfair_coin
 
-aws s3 sync s3://${TEST_BUCKET}/${TEST_PREFIX} ../out
+printf "About to download the completed generations..."
+sleep 5
+aws s3 sync s3://${TEST_BUCKET}/${TEST_PREFIX}/completed ../../out
