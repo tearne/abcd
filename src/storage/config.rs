@@ -29,8 +29,9 @@ impl StorageConfig {
                 let mut options = ExpandOptions::new();
                 options.expansion_type = Some(ExpansionType::Unix);
                 let bucket = envmnt::expand(bucket, Some(options));
+                let prefix = envmnt::expand(prefix, Some(options));
 
-                S3System::new(bucket, prefix.clone())
+                S3System::new(bucket, prefix)
             }
         }
     }

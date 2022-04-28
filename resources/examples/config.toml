@@ -1,0 +1,19 @@
+[storage]
+type = "S3"
+bucket = "${TEST_BUCKET}"
+prefix = "${TEST_PREFIX}"
+
+[job]
+num_generations = 5
+terminate_at_target_gen = false
+num_replicates = 4
+num_particles = 100
+
+[algorithm]
+tolerance_descent_percentile = 75
+max_num_failures = 50
+
+[run]
+# TODO want to make this optional, is meaningless for unfair coin
+base_config_path = "resources/base_config.json"
+model_server = "~/"
