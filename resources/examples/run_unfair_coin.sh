@@ -14,6 +14,7 @@ cd $DIR
 
 aws s3 sync empty_prefix s3://${TEST_BUCKET}/${TEST_PREFIX}/ --delete --acl bucket-owner-full-control
 
-cargo run --example unfair-coin
+export RUST_LOG=error,abcd=info,unfair_coin=info 
+cargo run --example unfair_coin
 
 aws s3 sync s3://${TEST_BUCKET}/${TEST_PREFIX} ../out

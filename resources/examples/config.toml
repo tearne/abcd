@@ -5,7 +5,7 @@ prefix = "${TEST_PREFIX}"
 
 [job]
 num_generations = 5
-terminate_at_target_gen = false
+terminate_at_target_gen = true
 num_replicates = 4
 num_particles = 100
 

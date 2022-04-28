@@ -21,6 +21,7 @@ pub fn run<M: Model, S: Storage>(
 ) -> ABCDResult<()> {
 //TODO think about how to handle errors at this level (e.g. tolerance being nan)
 
+    log::info!("Starting work on generation 1.");
     match do_gen(
         &storage, 
         &model, 
@@ -28,7 +29,9 @@ pub fn run<M: Model, S: Storage>(
         random, 
         PriorGeneration{}
     ) {
-        Ok(gen_num) if gen_num == 1 => Ok(()),
+        Ok(gen_num) if gen_num == 1 => {
+            Ok(())
+        },
         Ok(gen_num) => Err(ABCDError::AlgortihmError(
             format!("Generation {} was unexpectedly returned from the initial generation.", gen_num)
         )),
@@ -40,9 +43,8 @@ pub fn run<M: Model, S: Storage>(
     }?;
 
     loop {
-        println!("About to load previous generation");
         let gen = storage.load_previous_gen()?;
-        println!("Successfully loaded previous generation {}",gen.number);
+        log::info!("Loaded generation {}.  Starting the next...", gen.number);
         let completed_gen_number = do_gen(
             &storage,
             &model,
@@ -51,7 +53,10 @@ pub fn run<M: Model, S: Storage>(
             EmpiricalGeneration::new(gen, config.clone()),
         ); 
         let number = match completed_gen_number {
-            Ok(n) => Ok(n),
+            Ok(n) => {
+                log::info!("... completed generation {}", n);
+                Ok(n)
+            },
             Err(ABCDError::WasWorkingOnAnOldGeneration(msg)) => {
                 log::warn!("Start another generation attempt.  Cause: {}", msg);
                 continue
@@ -132,7 +137,10 @@ fn do_gen<M: Model, S: Storage>(
         }?;
 
         // Check if we now have the req'd num particles/reps, if so, break
-        if storage.num_accepted_particles()? >= config.job.num_particles {
+        let num_accepted = storage.num_accepted_particles()?;
+        if num_accepted < config.job.num_particles {
+            log::info!("There are {num_accepted} accepted particles in the bucket.");
+        } else {
             // Load all the non_normalised particles
             let particles: Vec<Particle<M::Parameters>> = storage.load_accepted_particles()?; //TODO think about the error case, tries again?
             let rejections = storage.num_rejected_particles()?; //TODO think about the error case, tries again?
@@ -141,7 +149,8 @@ fn do_gen<M: Model, S: Storage>(
                 let rejected: f64 =  cast::f64(rejections);
                 num / (num + rejected)
             };
-             let new_generation = Generation::new(particles, prev_gen_number + 1, tolerance, acceptance);
+            log::info!("Acceptance rate was {acceptance:.3}");
+            let new_generation = Generation::new(particles, prev_gen_number + 1, tolerance, acceptance);
 
             // Save the non_normalised particle to storage
             let save_gen_result = storage.save_new_gen(&new_generation); //TODO log if can't save, then try again?  Blow up?  Need to think about this

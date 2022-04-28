@@ -1,6 +1,6 @@
 use std::{ops::Range, path::Path};
 
-use abcd::{Model, error::ABCDResult, etc::config::Config, storage::config::StorageConfig};
+use abcd::{Model, error::ABCDResult, etc::config::Config};
 use path_absolutize::Absolutize;
 use serde::{Deserialize, Serialize};
 use rand::{Rng, prelude::ThreadRng};
@@ -13,35 +13,46 @@ struct MyParameters {
 }
 
 #[derive(Debug)]
-struct UniformParams {
+struct Uniform {
     range: Range<f64>,
-    normal: Normal,
+    
 }
-impl UniformParams {
+impl Uniform {
     fn new(lower: f64, upper: f64) -> Self {
         assert!(lower < upper);
         Self{
             range: Range{start: lower, end: upper},
-            normal: Normal::new(0.0,0.2).unwrap()
         }
     }
     
-    fn prior_sample(&self, random: &mut ThreadRng) -> f64 {
+    fn sample(&self, random: &mut ThreadRng) -> f64 {
         random.gen_range(self.range.clone())
     }
 
-    fn prior_density(&self, v: f64) -> f64 {
+    fn density(&self, v: f64) -> f64 {
         let low = self.range.start;
         let high = self.range.end;
         if v > high || v < low { 0.0 }
         else { 1.0 }
     }
+}
 
-    fn kernel_sample(&self, random: &mut ThreadRng) -> f64 {
+#[derive(Debug)]
+struct Kernel {
+    normal: Normal,
+}
+impl Kernel {
+    fn new(std_dev: f64) -> Self {
+        Self{ 
+            normal: Normal::new(0.0,std_dev).unwrap()
+        }
+    }
+
+    fn sample(&self, random: &mut ThreadRng) -> f64 {
         random.sample(self.normal)
     }
 
-    fn kernel_density(&self, v: f64) -> f64 {
+    fn density(&self, v: f64) -> f64 {
         use statrs::distribution::Continuous;
         self.normal.pdf(v)
     }
@@ -49,13 +60,19 @@ impl UniformParams {
 
 #[derive(Debug)]
 struct MyModel {
-    heads_range: UniformParams,
+    prior: Uniform,
+    kernel: Kernel,
+    observed: f64,
+    reps: u64,
 }
 
 impl MyModel {
-    pub fn new() -> Self {
+    pub fn new(observed_proportion_heads: f64, reps: u64) -> Self {
         MyModel { 
-            heads_range: UniformParams::new(0.0,1.0),
+            prior: Uniform::new(0.0,1.0),
+            kernel: Kernel::new(0.05),
+            observed: observed_proportion_heads,
+            reps,
         }
     }
 }
@@ -64,7 +81,7 @@ impl Model for MyModel {
     type Parameters = MyParameters;
 
     fn prior_sample(&self, random: &mut ThreadRng) -> Self::Parameters {
-        let heads: f64 = self.heads_range.prior_sample(random);
+        let heads: f64 = self.prior.sample(random);
         MyParameters {
             heads
         }
@@ -72,12 +89,12 @@ impl Model for MyModel {
 
     fn prior_density(&self, p: &Self::Parameters) -> f64 {
         let density : f64 = {
-        self.heads_range.prior_density(p.heads)};
+        self.prior.density(p.heads)};
         density
     }
 
     fn perturb(&self, _p: &Self::Parameters, random: &mut ThreadRng) -> Self::Parameters {
-        let heads: f64 = _p.heads + self.heads_range.kernel_sample(random);
+        let heads: f64 = _p.heads + self.kernel.sample(random);
         MyParameters {
             heads
         }
@@ -85,38 +102,39 @@ impl Model for MyModel {
 
     fn pert_density(&self, _from: &Self::Parameters, _to: &Self::Parameters) -> f64 {
         let pert_density : f64 = {
-            self.heads_range.kernel_density(_from.heads - _to.heads) };
+            self.kernel.density(_from.heads - _to.heads) };
             pert_density
     }
 
     fn score(&self, p: &Self::Parameters) -> ABCDResult<f64> {
         let mut random = rand::thread_rng();
-        let mut heads_count:f64 = 0.0;
+        let mut heads_count: u64 = 0;
 
-        for numTrials in 1..100 {
+        for _ in 0..self.reps {
             let coin_toss = random.gen_bool(p.heads);
             if coin_toss  {
-                heads_count = heads_count + 1.0;
+                heads_count += 1;
             }
         }
 
-        let simulated_heads = heads_count / 100.0;
-        if simulated_heads == 0.7 { Ok(0.0) }
-        else { Ok(1.0) }
+        let simulated = heads_count as f64 / self.reps as f64;
+        let diff = (self.observed - simulated).abs();
+        Ok(diff)
     }
 }
 
 fn main() -> Result<()> {
     env_logger::init();
 
-    let m = MyModel::new();
+    let observed_proportion_heads = 0.7;
+    let reps = 100;
+
+    let m = MyModel::new(observed_proportion_heads, reps);
     let mut random = rand::thread_rng();
 
-    let path = Path::new("./config.toml"); 
-    println!("Config path {:?}", path.absolutize().unwrap());
+    let path = Path::new("./config.toml").absolutize().unwrap(); 
+    log::info!("Load config from {:?}", path);
     let config = Config::from_path(path);
-
-    log::info!("You are running with config\n {:#?}", &config);
 
     let storage = config.storage.build_s3()?;
 

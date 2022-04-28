@@ -318,7 +318,6 @@ impl Storage for S3System {
             };
 
             let version_id = self.ensure_only_original_verions(&object_key).await?;
-            println!("About to load gen obj string");
             let obj_string = self
                 .client
                 .get_object()
@@ -330,12 +329,7 @@ impl Storage for S3System {
                 .then(Self::read_to_string)
                 .await?;
 
-            //let fixed_string = &obj_string.replace("\n","");
-
-            println!("Gen json is {} ",obj_string);
-
             let gen: Generation<P> = serde_json::from_str(&obj_string)?;
-            println!("Gen number from json is {} ",gen.number);
 
             if gen.number == prev_gen_no {
                 Ok(gen)
