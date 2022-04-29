@@ -91,7 +91,9 @@ impl S3System {
         }
 
         let mut versions = list_obj_ver.versions.unwrap_or_default();
-        let delete_markers = list_obj_ver.delete_markers.unwrap_or_default();
+        let delete_markers = list_obj_ver.delete_markers.unwrap_or_default()
+
+        delete_markers.iter().
 
         if !delete_markers.is_empty() {
             return Err(ABCDError::S3OperationError("Detected delete markers, which would result in potentially stale data being read.".into()));
