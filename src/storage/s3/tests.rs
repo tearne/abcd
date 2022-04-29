@@ -522,3 +522,8 @@ fn test_save_generation() {
 
     assert_eq!(expected, actual);
 }
+
+#[test]
+fn test_purge_old_versions() {
+    todo!()
+}

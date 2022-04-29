@@ -74,6 +74,78 @@ impl S3System {
         Ok(instance)
     }
 
+    fn purge_old_versions(&self) -> ABCDResult<()> {
+        let list_obj_ver = self
+            .client
+            .list_object_versions()
+            .bucket(&self.bucket)
+            .prefix(&self.prefix)
+            .send()
+            .await?;
+
+        if list_obj_ver.is_truncated {
+            return Err(ABCDError::S3OperationError(format!(
+                "Too many object verions - pagination not currently in use: {:?}",
+                list_obj_ver
+            )));
+        }
+
+        let mut versions = list_obj_ver.versions.unwrap_or_default();
+        let delete_markers = list_obj_ver.delete_markers.unwrap_or_default();
+
+        if !delete_markers.is_empty() {
+            return Err(ABCDError::S3OperationError("Detected delete markers, which would result in potentially stale data being read.".into()));
+        }
+
+        if versions.len() == 1 {
+            if let Some(version) = versions.swap_remove(0).version_id {
+                return Ok(version);
+            } else {
+                return Err(ABCDError::S3OperationError(format!(
+                    "Only verion of {} has ID None",
+                    key
+                )));
+            }
+        }
+
+        let oldest_version_id = if let Some(version) = versions.pop().and_then(|ov| ov.version_id) {
+            version
+        } else {
+            return Err(ABCDError::S3OperationError(format!(
+                "Oldest verion of {} has ID None",
+                key
+            )));
+        };
+
+        let vers_to_delete = versions.into_iter().filter_map(|ov| {
+            if ov.key.is_some() && ov.version_id.is_some() {
+                Some((ov.key.unwrap(), ov.version_id.unwrap()))
+            } else {
+                None
+            }
+        });
+       
+        let to_delete: Vec<ObjectIdentifier> = {
+            vers_to_delete
+                .map(|(key, id)| {
+                    ObjectIdentifier::builder()
+                        .set_version_id(Some(id))
+                        .set_key(Some(key))
+                        .build()
+                })
+                .collect()
+        };
+
+        self.client
+            .delete_objects()
+            .bucket(&self.bucket)
+            .delete(Delete::builder().set_objects(Some(to_delete)).build())
+            .send()
+            .await?;
+
+        Ok(oldest_version_id)
+    }
+
     async fn assert_versioning_active(&self) -> ABCDResult<()> {
         let enabled = self
             .client
