@@ -6,7 +6,9 @@ use statrs::statistics::{Data, Statistics, OrderStatistics};
 use crate::{error::{ABCDResult, ABCDError}, Model, Generation, etc::config::Config, Particle};
 
 pub trait GenerationOps<P> {
-    fn sample<M>(&self, model: &M, random: &mut ThreadRng) -> ABCDResult<Cow<P>> 
+    fn generation_number(&self) -> u16;
+
+    fn sample<M>(&self, model: &M, random: &mut ThreadRng) -> Cow<P>
     where 
         M: Model<Parameters = P>,
         P: Clone;
@@ -43,7 +45,11 @@ impl<P> EmpiricalGeneration<P> {
     }
 }
 impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
-    fn sample<M>(&self, _model: &M, random: &mut ThreadRng) -> ABCDResult<Cow<P>>
+    fn generation_number(&self) -> u16 {
+        self.gen.number
+    }
+
+    fn sample<M>(&self, _model: &M, random: &mut ThreadRng) -> Cow<P>
     where 
         M: Model<Parameters = P>,
         P: Clone
@@ -99,12 +105,16 @@ impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
 }
 pub struct PriorGeneration{}
 impl<P> GenerationOps<P> for PriorGeneration {
-    fn sample<M> (&self, model: &M, random: &mut ThreadRng) -> ABCDResult<Cow<P>> 
+    fn generation_number(&self) -> u16 {
+        0
+    }
+
+    fn sample<M> (&self, model: &M, random: &mut ThreadRng) -> Cow<P>
     where 
         M: Model<Parameters = P>,
         P: Clone,
     {
-        Ok(Cow::Owned(model.prior_sample(random)))
+        Cow::Owned(model.prior_sample(random))
     }
 
     fn calculate_tolerance(&self) -> ABCDResult<f64> {

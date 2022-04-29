@@ -86,7 +86,7 @@ impl<P> Generation<P> {
         }
     }
     
-    pub fn sample(&self, random: &mut ThreadRng) -> ABCDResult<Cow<P>>
+    pub fn sample(&self, random: &mut ThreadRng) -> Cow<P>
     where 
         P: Clone
      {
@@ -104,6 +104,6 @@ impl<P> Generation<P> {
             .pop
             .normalised_particles()[sampled_particle_index];
         let params = &particles.parameters;
-        Ok(Cow::Borrowed(params))
+        Cow::Borrowed(params)
     }
 }

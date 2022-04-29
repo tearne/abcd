@@ -200,7 +200,11 @@ impl S3System {
         let mut versions = list_obj_ver.versions.unwrap_or_default();
         let delete_markers = list_obj_ver.delete_markers.unwrap_or_default();
 
-        if versions.len() == 1 && delete_markers.is_empty() {
+        if !delete_markers.is_empty() {
+            return Err(ABCDError::S3OperationError("Detected delete markers, which would result in potentially stale data being read.".into()));
+        }
+
+        if versions.len() == 1 {
             if let Some(version) = versions.swap_remove(0).version_id {
                 return Ok(version);
             } else {
@@ -227,16 +231,9 @@ impl S3System {
                 None
             }
         });
-        let dms_to_delete = delete_markers.into_iter().filter_map(|ov| {
-            if ov.key.is_some() && ov.version_id.is_some() {
-                Some((ov.key.unwrap(), ov.version_id.unwrap()))
-            } else {
-                None
-            }
-        });
+       
         let to_delete: Vec<ObjectIdentifier> = {
             vers_to_delete
-                .chain(dms_to_delete)
                 .map(|(key, id)| {
                     ObjectIdentifier::builder()
                         .set_version_id(Some(id))
@@ -431,6 +428,7 @@ impl Storage for S3System {
     }
 
     fn save_new_gen<P: Serialize>(&self, gen: &Generation<P>) -> ABCDResult<()> {
+        
         self.runtime.block_on(async {
             let expected_new_gen_number = self.previous_gen_number_async().await? + 1;
             if gen.number != expected_new_gen_number {
@@ -458,6 +456,9 @@ impl Storage for S3System {
                 .key(&object_path)
                 .send()
                 .await;
+
+                let json = &serde_json::to_string_pretty(gen)?;
+                println!("JSON about to be placed into Gen file is: {:?}",&json);
 
             match get_acl_output {
                 Err(SdkError::ServiceError {
