@@ -524,6 +524,20 @@ fn test_save_generation() {
 }
 
 #[test]
-fn test_purge_old_versions() {
-    todo!()
+fn test_purge_all_versions_of_everything() {
+    let instance = storage_using_prefix("test_purge_all_versions_of_everything");
+    let helper = StorageTestHelper::new(&instance, true);
+
+    //Put a bunch of files
+    helper.put_recursive("resources/test/storage/normal");
+    helper.put_recursive("resources/test/storage/normal");
+
+    instance.purge_all_versions_of_everything_in_prefix().unwrap();
+
+    //There should be no versions of anything left
+    let versions = instance.runtime.block_on(async{
+        instance.get_versions(&instance.prefix).await
+    }).unwrap();
+    assert!(versions.versions().is_none());
+    assert!(versions.delete_markers().is_none());
 }

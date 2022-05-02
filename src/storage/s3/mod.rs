@@ -5,11 +5,11 @@ use aws_sdk_s3::error::GetObjectAclError;
 use aws_sdk_s3::model::{
     BucketVersioningStatus, Delete, Object, ObjectCannedAcl, ObjectIdentifier,
 };
-use aws_sdk_s3::output::{GetObjectOutput, ListObjectsV2Output, PutObjectOutput};
-use aws_sdk_s3::types::{ByteStream, SdkError, AggregatedBytes};
+use aws_sdk_s3::output::{GetObjectOutput, ListObjectsV2Output, PutObjectOutput, ListObjectVersionsOutput};
+use aws_sdk_s3::types::{ByteStream, SdkError};
 use aws_sdk_s3::{Client, Region};
 use bytes::Bytes;
-use futures::{Future, FutureExt, TryFutureExt, TryStreamExt};
+use futures::{Future, FutureExt, TryFutureExt};
 use regex::Regex;
 use serde::{de::DeserializeOwned, Serialize};
 use std::convert::TryInto;
@@ -26,7 +26,7 @@ use uuid::Uuid;
 pub struct S3System {
     pub bucket: String,
     client: Client,
-    runtime: Runtime,
+    pub(super) runtime: Runtime,
     pub prefix: String, 
     particle_prefix: String, 
     completed_prefix: String, 
@@ -74,78 +74,69 @@ impl S3System {
         Ok(instance)
     }
 
-    fn purge_old_versions(&self) -> ABCDResult<()> {
-        let list_obj_ver = self
-            .client
-            .list_object_versions()
-            .bucket(&self.bucket)
-            .prefix(&self.prefix)
-            .send()
-            .await?;
+    pub fn purge_all_versions_of_everything_in_prefix(&self) -> ABCDResult<()> {
+        self.runtime.block_on(async{
+            let list_obj_ver = self.get_versions(&self.prefix).await?;
 
-        if list_obj_ver.is_truncated {
-            return Err(ABCDError::S3OperationError(format!(
-                "Too many object verions - pagination not currently in use: {:?}",
-                list_obj_ver
-            )));
-        }
+            let ver_markers = list_obj_ver
+                    .versions
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter_map(|v| {
+                        if v.key.is_some() && v.version_id.is_some() {
+                            Some((v.key.unwrap(), v.version_id.unwrap()))
+                        } else {
+                            None
+                        }
+                    });
+            let del_markers = list_obj_ver
+                .delete_markers
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|v| {
+                    if v.key.is_some() && v.version_id.is_some() {
+                        Some((v.key.unwrap(), v.version_id.unwrap()))
+                    } else {
+                        None
+                    }
+                });
 
-        let mut versions = list_obj_ver.versions.unwrap_or_default();
-        let delete_markers = list_obj_ver.delete_markers.unwrap_or_default()
-
-        delete_markers.iter().
-
-        if !delete_markers.is_empty() {
-            return Err(ABCDError::S3OperationError("Detected delete markers, which would result in potentially stale data being read.".into()));
-        }
-
-        if versions.len() == 1 {
-            if let Some(version) = versions.swap_remove(0).version_id {
-                return Ok(version);
-            } else {
-                return Err(ABCDError::S3OperationError(format!(
-                    "Only verion of {} has ID None",
-                    key
-                )));
-            }
-        }
-
-        let oldest_version_id = if let Some(version) = versions.pop().and_then(|ov| ov.version_id) {
-            version
-        } else {
-            return Err(ABCDError::S3OperationError(format!(
-                "Oldest verion of {} has ID None",
-                key
-            )));
-        };
-
-        let vers_to_delete = versions.into_iter().filter_map(|ov| {
-            if ov.key.is_some() && ov.version_id.is_some() {
-                Some((ov.key.unwrap(), ov.version_id.unwrap()))
-            } else {
-                None
-            }
-        });
-       
-        let to_delete: Vec<ObjectIdentifier> = {
-            vers_to_delete
+            let object_identifiers: Vec<ObjectIdentifier> = ver_markers
+                .chain(del_markers)
                 .map(|(key, id)| {
                     ObjectIdentifier::builder()
                         .set_version_id(Some(id))
                         .set_key(Some(key))
                         .build()
                 })
-                .collect()
-        };
+                .collect();
 
-        self.client
-            .delete_objects()
-            .bucket(&self.bucket)
-            .delete(Delete::builder().set_objects(Some(to_delete)).build())
-            .send()
-            .await?;
+            self.client
+                .delete_objects()
+                .bucket(&self.bucket)
+                .delete(
+                    Delete::builder()
+                        .set_objects(Some(object_identifiers))
+                        .build(),
+                )
+                .send()
+                .await
+                .expect("delete objects failed");
 
-        Ok(oldest_version_id)
+            let remaining = self
+                .client
+                .list_objects_v2()
+                .bucket(&self.bucket)
+                .prefix(&self.prefix)
+                .send()
+                .await
+                .unwrap();
+
+            match remaining.key_count {
+                0 => Ok(()),
+                _ => panic!("Failed to delete all objects: {:?}", &remaining),
+            }
+        })
     }
 
     async fn assert_versioning_active(&self) -> ABCDResult<()> {
@@ -255,12 +246,12 @@ impl S3System {
         Ok(string.into())
     }
 
-    async fn ensure_only_original_verions(&self, key: &str) -> ABCDResult<String> {
+    async fn get_versions(&self, prefix: &str) -> ABCDResult<ListObjectVersionsOutput> {
         let list_obj_ver = self
             .client
             .list_object_versions()
             .bucket(&self.bucket)
-            .prefix(key)
+            .prefix(prefix)
             .send()
             .await?;
 
@@ -271,11 +262,17 @@ impl S3System {
             )));
         }
 
+        Ok(list_obj_ver)
+    }
+
+    async fn ensure_only_original_verions(&self, key: &str) -> ABCDResult<String> {
+        let list_obj_ver = self.get_versions(key).await?;
+
         let mut versions = list_obj_ver.versions.unwrap_or_default();
         let delete_markers = list_obj_ver.delete_markers.unwrap_or_default();
 
         if !delete_markers.is_empty() {
-            return Err(ABCDError::S3OperationError("Detected delete markers, which would result in potentially stale data being read.".into()));
+            return Err(ABCDError::S3OperationError("Detected delete markers, which could result in stale data being read.".into()));
         }
 
         if versions.len() == 1 {
