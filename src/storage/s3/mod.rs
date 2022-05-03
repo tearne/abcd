@@ -3,7 +3,7 @@ mod tests;
 
 use aws_sdk_s3::error::GetObjectAclError;
 use aws_sdk_s3::model::{
-    BucketVersioningStatus, Delete, Object, ObjectCannedAcl, ObjectIdentifier, DeleteMarkerEntry
+    BucketVersioningStatus, Delete, Object, ObjectCannedAcl, ObjectIdentifier, DeleteMarkerEntry, ObjectVersion
 };
 use aws_sdk_s3::output::{GetObjectOutput, ListObjectsV2Output, PutObjectOutput, ListObjectVersionsOutput};
 use aws_sdk_s3::types::{ByteStream, SdkError};
@@ -301,6 +301,43 @@ impl S3System {
         Ok(acc)
     
     }
+
+    // async fn get_versionid_marker_versions_with_pagination(&self, prefix: &str) -> ABCDResult< Vec<ObjectVersion> > {
+        
+    //     let mut acc: Vec<ObjectVersion> = Vec::new();
+
+    //     async fn next_page(
+    //         client: &Client,
+    //         bucket: &str,
+    //         prefix: &str,
+    //         c_tok: Option<String>,
+    //     ) -> ABCDResult<ListObjectVersionsOutput> {
+    //         client
+    //             .list_object_versions()
+    //             .bucket(bucket)
+    //             .prefix(prefix)
+    //             .set_key_marker(c_tok)
+    //             .send()
+    //             .await
+    //             .map_err(|e| e.into())
+    //     }
+
+    //     let mut c_token = None;
+    //     loop {
+    //         let list_output = next_page(&self.client, &self.bucket, prefix, c_token).await?;
+    //         if let Some(mut items) = list_output.version_id_marker {
+    //             acc.append(&mut items);
+    //         }
+
+    //         c_token = list_output.key_marker;
+    //         if c_token.is_none() {
+    //             break;
+    //         }
+    //     }
+
+    //     Ok(acc)
+    
+    // }
 
     async fn ensure_only_original_verions(&self, key: &str) -> ABCDResult<String> {
         let list_obj_ver = self.get_versions(key).await?;
