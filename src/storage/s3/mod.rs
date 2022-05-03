@@ -75,7 +75,14 @@ impl S3System {
     }
 
     pub fn purge_all_versions_of_everything_in_prefix(&self) -> ABCDResult<()> {
+        
+        println!("aaa");
         self.runtime.block_on(async{
+            println!("bbb");
+
+            self.get_versions_with_pagination(&self.prefix).await?;
+
+            panic!(" ---=== END ===---");
             let list_obj_ver = self.get_versions(&self.prefix).await?;
 
             let ver_markers = list_obj_ver
@@ -265,7 +272,7 @@ impl S3System {
         Ok(list_obj_ver)
     }
 
-    async fn get_delete_marker_versions_with_pagination(&self, prefix: &str) -> ABCDResult< Vec<DeleteMarkerEntry> > {
+    async fn get_versions_with_pagination(&self, prefix: &str) -> ABCDResult< Vec<DeleteMarkerEntry> > {
         
         let mut acc: Vec<DeleteMarkerEntry> = Vec::new();
 
@@ -273,27 +280,43 @@ impl S3System {
             client: &Client,
             bucket: &str,
             prefix: &str,
-            c_tok: Option<String>,
+            next_key: Option<String>,
+            next_version: Option<String>,
         ) -> ABCDResult<ListObjectVersionsOutput> {
             client
                 .list_object_versions()
                 .bucket(bucket)
                 .prefix(prefix)
-                .set_key_marker(c_tok)
+                .set_key_marker(next_key)
+                .set_version_id_marker(next_version)
+                .set_max_keys(Some(3))
                 .send()
                 .await
                 .map_err(|e| e.into())
         }
 
-        let mut c_token = None;
+        let mut next_key = None;
+        let mut next_version = None;
         loop {
-            let list_output = next_page(&self.client, &self.bucket, prefix, c_token).await?;
-            if let Some(mut items) = list_output.delete_markers {
-                acc.append(&mut items);
+            let list_output = 
+                next_page(
+                    &self.client, 
+                    &self.bucket, 
+                    prefix, 
+                    next_key,
+                    next_version
+                )
+                .await?;
+
+            if let Some(ref items) = list_output.delete_markers {
+                println!("New page: {:#?}", &items);
+                acc.append(&mut items.clone());
             }
 
-            c_token = list_output.key_marker;
-            if c_token.is_none() {
+            next_key = list_output.next_key_marker().map(String::from);
+            next_version = list_output.next_version_id_marker().map(String::from);
+
+            if next_key.is_none() && next_version.is_none() {
                 break;
             }
         }
@@ -301,43 +324,6 @@ impl S3System {
         Ok(acc)
     
     }
-
-    // async fn get_versionid_marker_versions_with_pagination(&self, prefix: &str) -> ABCDResult< Vec<ObjectVersion> > {
-        
-    //     let mut acc: Vec<ObjectVersion> = Vec::new();
-
-    //     async fn next_page(
-    //         client: &Client,
-    //         bucket: &str,
-    //         prefix: &str,
-    //         c_tok: Option<String>,
-    //     ) -> ABCDResult<ListObjectVersionsOutput> {
-    //         client
-    //             .list_object_versions()
-    //             .bucket(bucket)
-    //             .prefix(prefix)
-    //             .set_key_marker(c_tok)
-    //             .send()
-    //             .await
-    //             .map_err(|e| e.into())
-    //     }
-
-    //     let mut c_token = None;
-    //     loop {
-    //         let list_output = next_page(&self.client, &self.bucket, prefix, c_token).await?;
-    //         if let Some(mut items) = list_output.version_id_marker {
-    //             acc.append(&mut items);
-    //         }
-
-    //         c_token = list_output.key_marker;
-    //         if c_token.is_none() {
-    //             break;
-    //         }
-    //     }
-
-    //     Ok(acc)
-    
-    // }
 
     async fn ensure_only_original_verions(&self, key: &str) -> ABCDResult<String> {
         let list_obj_ver = self.get_versions(key).await?;
