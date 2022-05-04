@@ -3,7 +3,7 @@ mod tests;
 
 use aws_sdk_s3::error::GetObjectAclError;
 use aws_sdk_s3::model::{
-    BucketVersioningStatus, Delete, Object, ObjectCannedAcl, ObjectIdentifier, DeleteMarkerEntry, ObjectVersion
+    BucketVersioningStatus, Delete, Object, ObjectCannedAcl, ObjectIdentifier
 };
 use aws_sdk_s3::output::{GetObjectOutput, ListObjectsV2Output, PutObjectOutput, ListObjectVersionsOutput};
 use aws_sdk_s3::types::{ByteStream, SdkError};
@@ -21,7 +21,6 @@ use crate::error::{ABCDError, ABCDResult};
 use crate::{Generation, Particle};
 use tokio;
 use uuid::Uuid;
-
 
 pub struct S3System {
     pub bucket: String,
@@ -75,75 +74,49 @@ impl S3System {
     }
 
     pub fn purge_all_versions_of_everything_in_prefix(&self) -> ABCDResult<()> {
-        
-        println!("aaa");
         self.runtime.block_on(async{
-            println!("bbb");
+            //TODO remove unwrap()
+            let version_pages = self.get_versions(&self.prefix).await.unwrap();
 
-            self.get_versions_with_pagination(&self.prefix).await?;
+            for page in version_pages {
+                let mut object_identifiers = Vec::new();
 
-            panic!(" ---=== END ===---");
-            let list_obj_ver = self.get_versions(&self.prefix).await?;
+                let object_versions = page.versions.unwrap_or_default();
+                let delete_markers = page.delete_markers.unwrap_or_default();
 
-            let ver_markers = list_obj_ver
-                    .versions
-                    .unwrap_or_default()
-                    .into_iter()
-                    .filter_map(|v| {
-                        if v.key.is_some() && v.version_id.is_some() {
-                            Some((v.key.unwrap(), v.version_id.unwrap()))
-                        } else {
-                            None
-                        }
-                    });
-            let del_markers = list_obj_ver
-                .delete_markers
-                .unwrap_or_default()
-                .into_iter()
-                .filter_map(|v| {
-                    if v.key.is_some() && v.version_id.is_some() {
-                        Some((v.key.unwrap(), v.version_id.unwrap()))
-                    } else {
-                        None
-                    }
-                });
-
-            let object_identifiers: Vec<ObjectIdentifier> = ver_markers
-                .chain(del_markers)
-                .map(|(key, id)| {
+                let it = delete_markers.into_iter().map(|item|{
                     ObjectIdentifier::builder()
-                        .set_version_id(Some(id))
-                        .set_key(Some(key))
+                        .set_version_id(item.version_id)
+                        .set_key(item.key)
                         .build()
-                })
-                .collect();
+                });
+                object_identifiers.extend(it);
 
-            self.client
-                .delete_objects()
-                .bucket(&self.bucket)
-                .delete(
-                    Delete::builder()
-                        .set_objects(Some(object_identifiers))
-                        .build(),
-                )
-                .send()
-                .await
-                .expect("delete objects failed");
+                let it = object_versions.into_iter().map(|item|{
+                    ObjectIdentifier::builder()
+                        .set_version_id(item.version_id)
+                        .set_key(item.key)
+                        .build()
+                });
+                object_identifiers.extend(it);
 
-            let remaining = self
-                .client
-                .list_objects_v2()
-                .bucket(&self.bucket)
-                .prefix(&self.prefix)
-                .send()
-                .await
-                .unwrap();
+                log::info!("Deleting {} identifiers", object_identifiers.len());
 
-            match remaining.key_count {
-                0 => Ok(()),
-                _ => panic!("Failed to delete all objects: {:?}", &remaining),
-            }
-        })
+                self.client
+                    .delete_objects()
+                    .bucket(&self.bucket)
+                    .delete(
+                        Delete::builder()
+                            .set_objects(Some(object_identifiers))
+                            .build(),
+                    )
+                    .send()
+                    .await
+                    .expect("delete objects failed");
+            };
+        });
+
+        Ok(())
     }
 
     async fn assert_versioning_active(&self) -> ABCDResult<()> {
@@ -253,29 +226,7 @@ impl S3System {
         Ok(string.into())
     }
 
-    async fn get_versions(&self, prefix: &str) -> ABCDResult<ListObjectVersionsOutput> {
-        let list_obj_ver = self
-            .client
-            .list_object_versions()
-            .bucket(&self.bucket)
-            .prefix(prefix)
-            .send()
-            .await?;
-
-        if list_obj_ver.is_truncated {
-            return Err(ABCDError::S3OperationError(format!(
-                "Too many object verions - pagination not currently in use: {:?}",
-                list_obj_ver
-            )));
-        }
-
-        Ok(list_obj_ver)
-    }
-
-    async fn get_versions_with_pagination(&self, prefix: &str) -> ABCDResult< Vec<DeleteMarkerEntry> > {
-        
-        let mut acc: Vec<DeleteMarkerEntry> = Vec::new();
-
+    async fn get_versions(&self, prefix: &str) -> ABCDResult<Vec<ListObjectVersionsOutput>> {
         async fn next_page(
             client: &Client,
             bucket: &str,
@@ -289,7 +240,6 @@ impl S3System {
                 .prefix(prefix)
                 .set_key_marker(next_key)
                 .set_version_id_marker(next_version)
-                .set_max_keys(Some(3))
                 .send()
                 .await
                 .map_err(|e| e.into())
@@ -297,8 +247,11 @@ impl S3System {
 
         let mut next_key = None;
         let mut next_version = None;
+
+        let mut acc: Vec<ListObjectVersionsOutput> = Vec::new();
+
         loop {
-            let list_output = 
+            let out = 
                 next_page(
                     &self.client, 
                     &self.bucket, 
@@ -308,13 +261,12 @@ impl S3System {
                 )
                 .await?;
 
-            if let Some(ref items) = list_output.delete_markers {
-                println!("New page: {:#?}", &items);
-                acc.append(&mut items.clone());
-            }
+            next_key = out.next_key_marker.clone().map(String::from);
+            next_version = out.next_version_id_marker.clone().map(String::from);
 
-            next_key = list_output.next_key_marker().map(String::from);
-            next_version = list_output.next_version_id_marker().map(String::from);
+            acc.push(out);
+
+            log::info!("Accumulated {} pages of version identifiers.", acc.len());
 
             if next_key.is_none() && next_version.is_none() {
                 break;
@@ -322,14 +274,16 @@ impl S3System {
         }
 
         Ok(acc)
-    
     }
 
     async fn ensure_only_original_verions(&self, key: &str) -> ABCDResult<String> {
-        let list_obj_ver = self.get_versions(key).await?;
+        let mut version_pages = self.get_versions(key).await?;
+        //TODO better
+        assert!(version_pages.len() == 1); //For simplicity, since it's only one file
+        let first_page = version_pages.swap_remove(0);
 
-        let mut versions = list_obj_ver.versions.unwrap_or_default();
-        let delete_markers = list_obj_ver.delete_markers.unwrap_or_default();
+        let mut versions = first_page.versions.unwrap_or_default();
+        let delete_markers = first_page.delete_markers.unwrap_or_default();
 
         if !delete_markers.is_empty() {
             return Err(ABCDError::S3OperationError("Detected delete markers, which could result in stale data being read.".into()));
@@ -416,8 +370,7 @@ impl S3System {
                 let captures = self.completed_gen_re.captures(&key)?;
                 captures
                     .name("gid")
-                    .map(|m| m.as_str().parse::<u16>().ok())
-                    .flatten()
+                    .and_then(|m| m.as_str().parse::<u16>().ok())
             })
             .max()
             .unwrap_or(0);

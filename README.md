@@ -8,4 +8,4 @@
 
 ## Purge a bucket/prefix
 WARNING: Super dangerous!
-`target/release/purge --bucket some_bucket --prefix some_prefix`
+`RUST_LOG=error,abcd=info,unfair_coin=info cargo run --release --bin purge -- --bucket some_bucket --prefix unfaircoin`
