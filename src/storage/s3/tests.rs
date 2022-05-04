@@ -535,9 +535,12 @@ fn test_purge_all_versions_of_everything() {
     instance.purge_all_versions_of_everything_in_prefix().unwrap();
 
     //There should be no versions of anything left
-    let versions = instance.runtime.block_on(async{
+    let mut pages = instance.runtime.block_on(async{
         instance.get_versions(&instance.prefix).await
     }).unwrap();
+    assert!(pages.len() == 1);
+    
+    let versions = pages.swap_remove(0);
     assert!(versions.versions().is_none());
     assert!(versions.delete_markers().is_none());
 }
