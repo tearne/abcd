@@ -34,3 +34,4 @@ structopt = "0.3"
 tempfile = "3"
 anyhow = "1"
 path-absolutize = "3.0.13"
+plotly = { version = "0.7.0", features = ["kaleido"] }
