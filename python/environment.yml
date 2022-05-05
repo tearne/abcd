@@ -1,0 +1,7 @@
+name: abcd
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - pandas
+  - plotly
