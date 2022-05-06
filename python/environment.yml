@@ -4,4 +4,7 @@ channels:
   - nodefaults
 dependencies:
   - pandas
-  - plotly
+  - jupyter
+  - scipy
+  - numpy
+  - seaborn
