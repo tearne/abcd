@@ -541,8 +541,7 @@ impl Storage for S3System {
                 .send()
                 .await;
 
-                let json = &serde_json::to_string_pretty(gen)?;
-                println!("JSON about to be placed into Gen file is: {:?}",&json);
+            let json = &serde_json::to_string_pretty(gen)?;
 
             match get_acl_output {
                 Err(SdkError::ServiceError {

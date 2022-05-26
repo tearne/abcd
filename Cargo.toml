@@ -13,11 +13,11 @@ uuid = { version = "0.8", features = ["serde", "v4"] }
 regex = "1.4.3"
 #rusoto_core = { version = "0.46.0", default_features = false, features=["rustls"] }
 #rusoto_s3 = { version = "0.46.0", default_features = false, features=["rustls"] }
-aws-config = "0.10.1"
+aws-config = "0.12.0"
 aws-smithy-http = "0.40.2"
 #aws-smithy-types-convert = { version = "0.37.0", features = ["convert-chrono"] }
 bytes = "1.1.0"
-aws-sdk-s3 = "0.10.1"
+aws-sdk-s3 = "0.12.0"
 tokio = {version = "1.5.0", features = ["full"]}
 futures = "0.3.15"
 toml = "0.5"
