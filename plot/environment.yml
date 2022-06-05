@@ -4,8 +4,12 @@ channels:
   - nodefaults
 dependencies:
   - pandas
-  - jupyter
-  - scipy
-  - numpy
+  - matplotlib
   - seaborn
-  - altair
+  - jupyter
+  - pyarrow
+  - boto3
+  - dpath
+  - pip
+  - pip:
+    - polars
