@@ -66,7 +66,9 @@ impl S3System {
             completed_prefix,
             completed_gen_re,
         };
-        handle.block_on(instance.assert_versioning_active())?;
+
+        instance.handle.block_on(instance.assert_versioning_active())?;
+        
         Ok(instance)
     }
 
