@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use envmnt::{ExpandOptions, ExpansionType};
+use tokio::runtime::Handle;
 
 
 use crate::error::ABCDResult;
@@ -14,7 +15,7 @@ pub enum StorageConfig {
     S3 { bucket: String, prefix: String },
 }
 impl StorageConfig {
-    pub fn build_s3(&self) -> ABCDResult<S3System> {
+    pub fn build_s3(&self, handle: Handle) -> ABCDResult<S3System> {
         match self {
             StorageConfig::FileSystem { base_path: _ } => {
                 panic!("Can't build FileSystem from S3 config")
@@ -31,7 +32,7 @@ impl StorageConfig {
                 let bucket = envmnt::expand(bucket, Some(options));
                 let prefix = envmnt::expand(prefix, Some(options));
 
-                S3System::new(bucket, prefix)
+                S3System::new(bucket, prefix, handle)
             }
         }
     }

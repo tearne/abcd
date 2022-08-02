@@ -14,7 +14,7 @@ use regex::Regex;
 use serde::{de::DeserializeOwned, Serialize};
 use std::convert::TryInto;
 use std::fmt::Debug;
-use tokio::runtime::Runtime;
+use tokio::runtime::Handle;
 
 use super::Storage;
 use crate::error::{ABCDError, ABCDResult};
@@ -25,17 +25,16 @@ use uuid::Uuid;
 pub struct S3System {
     pub bucket: String,
     client: Client,
-    pub(super) runtime: Runtime,
+    pub(super) handle: Handle,
     pub prefix: String, 
     particle_prefix: String, 
     completed_prefix: String, 
     completed_gen_re: Regex,
 }
 impl S3System {
-    pub fn new(bucket: String, prefix: String) -> ABCDResult<Self> {
-        let runtime = Runtime::new().unwrap();
+    pub fn new(bucket: String, prefix: String, handle: Handle) -> ABCDResult<Self> {        
         let client = {
-            let config = runtime.block_on(
+            let config = handle.block_on(
                 aws_config::from_env()
                     .region(Region::new("eu-west-1"))
                     .load(),
@@ -61,20 +60,18 @@ impl S3System {
         let instance = S3System {
             bucket,
             client,
-            runtime,
+            handle,
             prefix, 
             particle_prefix,
             completed_prefix,
             completed_gen_re,
         };
-        instance
-            .runtime
-            .block_on(instance.assert_versioning_active())?;
+        handle.block_on(instance.assert_versioning_active())?;
         Ok(instance)
     }
 
     pub fn purge_all_versions_of_everything_in_prefix(&self) -> ABCDResult<()> {
-        self.runtime.block_on(async{
+        self.handle.block_on(async{
             //TODO remove unwrap()
             let version_pages = self.get_versions(&self.prefix).await.unwrap();
 
@@ -380,14 +377,14 @@ impl S3System {
 }
 impl Storage for S3System {
     fn previous_gen_number(&self) -> ABCDResult<u16> {
-        self.runtime.block_on(self.previous_gen_number_async())
+        self.handle.block_on(self.previous_gen_number_async())
     }
 
     fn load_previous_gen<P>(&self) -> ABCDResult<Generation<P>>
     where
         P: DeserializeOwned + Debug,
     {
-        self.runtime.block_on(async {
+        self.handle.block_on(async {
             let prev_gen_no = self.previous_gen_number_async().await?;
             let object_key = {
                 let prev_gen_file_name = format!("gen_{:03}.json", prev_gen_no);
@@ -424,7 +421,7 @@ impl Storage for S3System {
     }
 
     fn save_particle<P: Serialize>(&self, w: &Particle<P>) -> ABCDResult<String> {
-        self.runtime.block_on(async {
+        self.handle.block_on(async {
             let object_path = {
                 let gen_file_dir = {
                     let gen_no = self.previous_gen_number_async().await? + 1;
@@ -458,7 +455,7 @@ impl Storage for S3System {
 
     fn num_accepted_particles(&self) -> ABCDResult<u32> {
         let files_in_folder = self
-            .runtime
+            .handle
             .block_on(self.get_files_in_accepted_dir());
 
         match files_in_folder {
@@ -471,7 +468,7 @@ impl Storage for S3System {
     where
         P: DeserializeOwned,
     {
-        self.runtime.block_on(async {
+        self.handle.block_on(async {
             let object_names = self
                 .get_files_in_accepted_dir()
                 .await?
@@ -513,7 +510,7 @@ impl Storage for S3System {
 
     fn save_new_gen<P: Serialize>(&self, gen: &Generation<P>) -> ABCDResult<()> {
         
-        self.runtime.block_on(async {
+        self.handle.block_on(async {
             let expected_new_gen_number = self.previous_gen_number_async().await? + 1;
             if gen.number != expected_new_gen_number {
                 return Err(ABCDError::StorageConsistencyError(format!(
@@ -565,7 +562,7 @@ impl Storage for S3System {
     }
 
     fn num_rejected_particles(&self) -> ABCDResult<u64> {
-        self.runtime.block_on(async {
+        self.handle.block_on(async {
             let prefix = {
                 let current_gen = self.previous_gen_number_async().await? + 1;
                 let gen_dir = format!("gen_{:03}", current_gen);
