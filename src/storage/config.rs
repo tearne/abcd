@@ -44,6 +44,8 @@ impl StorageConfig {
 
 #[cfg(test)]
 mod tests {
+    use tokio::runtime::Runtime;
+
     use super::StorageConfig;
     use crate::error::ABCDResult;
 
@@ -61,7 +63,9 @@ mod tests {
         // let string = std::fs::read_to_string(&path).unwrap();
         // println!("----- {}", &string);
         // let config: StorageConfig = toml::from_str(&string).unwrap();
-        let storage = storage_config.build_s3()?;
+        let runtime = Runtime::new().unwrap();
+        let handle = runtime.handle();
+        let storage = storage_config.build_s3(handle.clone())?;
 
         assert_eq!("s3://env-var-bucket", storage.bucket);
         assert_eq!("a-prefix", storage.prefix);

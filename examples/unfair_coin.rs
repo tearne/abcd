@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use rand::{Rng, prelude::ThreadRng};
 use statrs::distribution::Normal;
 use anyhow::Result;
+use tokio::runtime::Runtime;
 
 #[derive(Serialize, Deserialize, Debug,Clone)]
 struct MyParameters {
@@ -136,7 +137,10 @@ fn main() -> Result<()> {
     log::info!("Load config from {:?}", path);
     let config = Config::from_path(path);
 
-    let storage = config.storage.build_s3()?;
+    let runtime = Runtime::new().unwrap();
+    let handle = runtime.handle();
+
+    let storage = config.storage.build_s3(handle.clone())?;
 
     abcd::run(m, config, storage, &mut random)?;
 

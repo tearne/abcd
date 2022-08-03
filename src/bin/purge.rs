@@ -1,5 +1,6 @@
 use abcd::storage::s3::S3System;
 use structopt::StructOpt;
+use tokio::runtime::Runtime;
 
 
 #[derive(StructOpt, Debug)]
@@ -17,9 +18,13 @@ fn main() {
     let purge = Purge::from_args();
     println!("{:#?}", purge);
 
+    let runtime = Runtime::new().unwrap();
+    let handle = runtime.handle();
+
     let s3 = S3System::new(
         purge.bucket,
         purge.prefix,
+        handle.clone()
     ).unwrap();
 
     s3.purge_all_versions_of_everything_in_prefix().unwrap();

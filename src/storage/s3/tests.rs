@@ -5,6 +5,7 @@ use aws_sdk_s3::{
     Region,
 };
 use futures::TryStreamExt;
+use tokio::runtime::Runtime;
 
 use crate::{
     storage::{
@@ -20,13 +21,11 @@ struct StorageTestHelper {
     prefix: String,
     delete_prefix_on_drop: bool,
     client: Client,
-    runtime: Runtime,
+    handle: Handle,
 }
 impl StorageTestHelper {
     pub fn new(storage: &S3System, delete_prefix_on_drop: bool) -> Self {
-        let runtime = Runtime::new().unwrap();
-
-        let config = runtime.block_on(
+        let config = storage.handle.block_on(
             aws_config::from_env()
                 .region(Region::new("eu-west-1"))
                 .load(),
@@ -38,7 +37,7 @@ impl StorageTestHelper {
             prefix: storage.prefix.clone(),
             delete_prefix_on_drop,
             client,
-            runtime,
+            handle: storage.handle.clone(),
         };
 
         //Delete anything that happens to already be in there
@@ -80,7 +79,7 @@ impl StorageTestHelper {
     fn put_object(&self, key: &str, body: &str) {
         let bytes = ByteStream::from(Bytes::from(body.to_string()));
 
-        self.runtime.block_on(async {
+        self.handle.block_on(async {
             self.client
                 .put_object()
                 .bucket(&self.bucket)
@@ -94,7 +93,7 @@ impl StorageTestHelper {
     }
 
     fn get_object(&self, key: &str) -> String {
-        self.runtime.block_on(async {
+        self.handle.block_on(async {
             let bytes = self
                 .client
                 .get_object()
@@ -118,7 +117,7 @@ impl StorageTestHelper {
             .map(|p| format!("{}/{}", self.prefix, p))
             .unwrap_or_else(|| self.prefix.clone());
 
-        let response = self.runtime.block_on({
+        let response = self.handle.block_on({
             self.client
                 .list_objects_v2()
                 .bucket(&self.bucket)
@@ -143,7 +142,7 @@ impl StorageTestHelper {
                 return;
             }
 
-            self.runtime.block_on(async {
+            self.handle.block_on(async {
                 let list_obj_ver = self
                     .client
                     .list_object_versions()
@@ -223,7 +222,7 @@ impl Drop for StorageTestHelper {
     }
 }
 
-fn storage_using_prefix(prefix: &str) -> S3System {
+fn storage_using_prefix(prefix: &str, runtime: &Runtime) -> S3System {
     if !envmnt::exists("TEST_BUCKET") {
         panic!("You need to set the environment variable 'TEST_BUCKET' before running");
     }
@@ -234,14 +233,15 @@ fn storage_using_prefix(prefix: &str) -> S3System {
     };
 
     storage_cfg
-        .build_s3()
+        .build_s3(runtime.handle().clone())
         .expect("Failed to bulid storage instance")
 }
 
 
 #[test]
 fn test_previous_gen_num_two() {
-    let instance = storage_using_prefix("test_previous_gen_num_two");
+    let runtime = Runtime::new().unwrap();
+    let instance = storage_using_prefix("test_previous_gen_num_two",&runtime);
 
     let helper = StorageTestHelper::new(&instance, true);
     helper.put_recursive("resources/test/storage/normal");
@@ -251,7 +251,8 @@ fn test_previous_gen_num_two() {
 
 #[test]
 fn test_previous_gen_num_zero() {
-    let instance = storage_using_prefix("test_previous_gen_num_zero");
+    let runtime = Runtime::new().unwrap();
+    let instance = storage_using_prefix("test_previous_gen_num_zero",&runtime);
 
     let helper = StorageTestHelper::new(&instance, true);
     helper.put_recursive("resources/test/storage/gen0");
@@ -261,7 +262,8 @@ fn test_previous_gen_num_zero() {
 
 #[test]
 fn test_restore_overwritten_gen() {
-    let instance = storage_using_prefix("test_multiple_gen");
+    let runtime = Runtime::new().unwrap();
+    let instance = storage_using_prefix("test_multiple_gen",&runtime);
 
     let helper = StorageTestHelper::new(&instance, true);
     helper.put_recursive("resources/test/storage/normal");
@@ -280,7 +282,8 @@ fn test_restore_overwritten_gen() {
 
 #[test]
 fn test_load_previous_gen() {
-    let instance = storage_using_prefix("test_load_previous_gen");
+    let runtime = Runtime::new().unwrap();
+    let instance = storage_using_prefix("test_load_previous_gen",&runtime);
 
     let helper = StorageTestHelper::new(&instance, true);
     helper.put_recursive("resources/test/storage/normal");
@@ -292,7 +295,8 @@ fn test_load_previous_gen() {
 
 #[test]
 fn test_exception_if_save_without_init() {
-    let instance = storage_using_prefix("test_exception_if_save_without_init");
+    let runtime = Runtime::new().unwrap();
+    let instance = storage_using_prefix("test_exception_if_save_without_init",&runtime);
 
     let helper = StorageTestHelper::new(&instance, true);
     helper.put_recursive("resources/test/storage/empty");
@@ -313,7 +317,8 @@ fn test_exception_if_save_without_init() {
 
 #[test]
 fn test_save_particle() {
-    let instance = storage_using_prefix("test_save_particle");
+    let runtime = Runtime::new().unwrap();
+    let instance = storage_using_prefix("test_save_particle",&runtime);
 
     let helper = StorageTestHelper::new(&instance, true);
     helper.put_recursive("resources/test/storage/normal");
@@ -339,7 +344,8 @@ fn test_save_particle() {
 
 #[test]
 fn test_save_particle_zero_weight() {
-    let instance = storage_using_prefix("test_save_particle_zero_weight");
+    let runtime = Runtime::new().unwrap();
+    let instance = storage_using_prefix("test_save_particle_zero_weight",&runtime);
 
     let helper = StorageTestHelper::new(&instance, true);
     helper.put_recursive("resources/test/storage/normal");
@@ -365,7 +371,8 @@ fn test_save_particle_zero_weight() {
 
 #[test]
 fn test_exception_if_accepted_contains_imposter() {
-    let instance = storage_using_prefix("test_exception_if_accepted_contains_imposter");
+    let runtime = Runtime::new().unwrap();
+    let instance = storage_using_prefix("test_exception_if_accepted_contains_imposter",&runtime);
 
     let helper = StorageTestHelper::new(&instance, true);
     helper.put_recursive("resources/test/storage/accepted_imposter_none_rejected");
@@ -383,7 +390,8 @@ fn test_exception_if_accepted_contains_imposter() {
 
 #[test]
 fn test_exception_if_rejected_contains_imposter(){
-    let instance = storage_using_prefix("test_exception_if_rejected_contains_imposter");
+    let runtime = Runtime::new().unwrap();
+    let instance = storage_using_prefix("test_exception_if_rejected_contains_imposter",&runtime);
 
     let helper = StorageTestHelper::new(&instance, true);
     helper.put_recursive("resources/test/storage/rejected_imposter_none_accepted");
@@ -397,7 +405,8 @@ fn test_exception_if_rejected_contains_imposter(){
 
 #[test]
 fn test_exception_if_save_inconsistent_gen_number() {
-    let instance = storage_using_prefix("test_exception_saving_inconsistent_gen_number");
+    let runtime = Runtime::new().unwrap();
+    let instance = storage_using_prefix("test_exception_saving_inconsistent_gen_number",&runtime);
 
     let helper = StorageTestHelper::new(&instance, true);
     helper.put_recursive("resources/test/storage/normal");
@@ -414,7 +423,8 @@ fn test_exception_if_save_inconsistent_gen_number() {
 
 #[test]
 fn test_num_accepted_particles() {
-    let instance = storage_using_prefix("test_num_accepted_particles");
+    let runtime = Runtime::new().unwrap();
+    let instance = storage_using_prefix("test_num_accepted_particles",&runtime);
 
     let helper = StorageTestHelper::new(&instance, true);
     helper.put_recursive("resources/test/storage/normal");
@@ -424,7 +434,8 @@ fn test_num_accepted_particles() {
 
 #[test]
 fn test_num_accepted_particles_zero() {
-    let instance = storage_using_prefix("test_num_working_particles_zero");
+    let runtime = Runtime::new().unwrap();
+    let instance = storage_using_prefix("test_num_working_particles_zero",&runtime);
 
     let helper = StorageTestHelper::new(&instance, true);
     helper.put_recursive("resources/test/storage/rejected_imposter_none_accepted");
@@ -434,7 +445,8 @@ fn test_num_accepted_particles_zero() {
 
 #[test]
 fn test_load_accepted_particles() {
-    let instance = storage_using_prefix("test_load_accepted_particles");
+    let runtime = Runtime::new().unwrap();
+    let instance = storage_using_prefix("test_load_accepted_particles",&runtime);
 
     let helper = StorageTestHelper::new(&instance, true);
     helper.put_recursive("resources/test/storage/normal");
@@ -467,7 +479,8 @@ fn test_load_accepted_particles() {
 
 #[test]
 fn test_num_rejected_particles() {
-    let instance = storage_using_prefix("test_num_rejected_particles");
+    let runtime = Runtime::new().unwrap();
+    let instance = storage_using_prefix("test_num_rejected_particles",&runtime);
 
     let helper = StorageTestHelper::new(&instance, true);
     helper.put_recursive("resources/test/storage/normal");
@@ -480,7 +493,8 @@ fn test_num_rejected_particles() {
 
 #[test]
 fn test_num_rejected_particles_none() {
-    let instance = storage_using_prefix("test_num_rejected_particles_none");
+    let runtime = Runtime::new().unwrap();
+    let instance = storage_using_prefix("test_num_rejected_particles_none",&runtime);
 
     let helper = StorageTestHelper::new(&instance, true);
     helper.put_recursive("resources/test/storage/accepted_imposter_none_rejected");
@@ -493,7 +507,8 @@ fn test_num_rejected_particles_none() {
 
 #[test]
 fn test_save_generation() {
-    let instance = storage_using_prefix("test_save_generation");
+    let runtime = Runtime::new().unwrap();
+    let instance = storage_using_prefix("test_save_generation",&runtime);
 
     let helper = StorageTestHelper::new(&instance, true);
     helper.put_recursive("resources/test/storage/normal");
@@ -525,7 +540,8 @@ fn test_save_generation() {
 
 #[test]
 fn test_purge_all_versions_of_everything() {
-    let instance = storage_using_prefix("test_purge_all_versions_of_everything");
+    let runtime = Runtime::new().unwrap();
+    let instance = storage_using_prefix("test_purge_all_versions_of_everything", &runtime);
     let helper = StorageTestHelper::new(&instance, true);
 
     //Put a bunch of files
@@ -535,7 +551,7 @@ fn test_purge_all_versions_of_everything() {
     instance.purge_all_versions_of_everything_in_prefix().unwrap();
 
     //There should be no versions of anything left
-    let mut pages = instance.runtime.block_on(async{
+    let mut pages = runtime.block_on(async{
         instance.get_versions(&instance.prefix).await
     }).unwrap();
     assert!(pages.len() == 1);
