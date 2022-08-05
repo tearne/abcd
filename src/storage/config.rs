@@ -26,7 +26,7 @@ impl StorageConfig {
                 //     Err(ABCDError::Configuration(format!""))
                 // }
 
-                // Expand bucket environment variables a appropriate
+                // Expand bucket environment variables as appropriate
                 let mut options = ExpandOptions::new();
                 options.expansion_type = Some(ExpansionType::Unix);
                 let bucket = envmnt::expand(bucket, Some(options));
@@ -52,7 +52,7 @@ mod tests {
     #[test]
     fn build_s3_storage_properties_from_config_expanding_env_var() -> ABCDResult<()> {
         let storage_config = StorageConfig::S3 {
-            bucket: "s3://${ABCDBgucket}".into(),
+            bucket: "s3://${ABCDBucket}".into(),
             prefix: "a-prefix".into(),
         };
         // println!("===== {}", &toml::to_string_pretty(&c).unwrap());
