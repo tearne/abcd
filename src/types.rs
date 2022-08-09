@@ -9,7 +9,7 @@ use crate::error::ABCDResult;
 pub trait Model {
     type Parameters: Serialize + DeserializeOwned + Debug + Clone;
 
-    fn prior_sample(&self, rng: &mut impl Rng) -> Self::Parameters; //TODO check density of sampled value is NOT 0
+    fn prior_sample(&self, rng: &mut impl Rng) -> Self::Parameters;
     fn prior_density(&self, p: &Self::Parameters) -> f64;
 
     fn perturb(&self, p: &Self::Parameters, rng: &mut impl Rng) -> Self::Parameters;

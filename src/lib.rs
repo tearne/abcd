@@ -102,7 +102,11 @@ fn do_gen<M: Model, S: Storage>(
         
         let proposed_result = {
             let sampled = thing_containing_prev_gen.sample(model, random);
-            thing_containing_prev_gen.perturb(&sampled, model, random)
+            if model.prior_density(&sampled) == 0.0 {
+                Err(ABCDError::AlgortihmError("Sampled particle out of prior bounds.".into()))
+            } else {
+                thing_containing_prev_gen.perturb(&sampled, model, random)
+            }
         };
         
         let parameters: <M as Model>::Parameters = match proposed_result {

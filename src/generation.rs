@@ -18,7 +18,7 @@ pub trait GenerationOps<P> {
         if model.prior_density(&params) > 0.0 {
             Ok(params)
         } else {
-            Err(ABCDError::AlgortihmError("Proposed particle out of prior bounds.".into()))
+            Err(ABCDError::AlgortihmError("Perturbed particle out of prior bounds.".into()))
         }
     }
     
