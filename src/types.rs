@@ -1,4 +1,3 @@
-use rand::Rng;
 use rand::prelude::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::fmt::Debug;
@@ -10,10 +9,10 @@ use crate::error::ABCDResult;
 pub trait Model {
     type Parameters: Serialize + DeserializeOwned + Debug + Clone;
 
-    fn prior_sample(&self, random: &mut ThreadRng) -> Self::Parameters; //TODO check density of sampled value is NOT 0
+    fn prior_sample(&self, rng: &mut impl Rng) -> Self::Parameters; //TODO check density of sampled value is NOT 0
     fn prior_density(&self, p: &Self::Parameters) -> f64;
 
-    fn perturb(&self, p: &Self::Parameters,random: &mut ThreadRng) -> Self::Parameters;
+    fn perturb(&self, p: &Self::Parameters, rng: &mut impl Rng) -> Self::Parameters;
     fn pert_density(&self, from: &Self::Parameters, to: &Self::Parameters) -> f64;
 
     fn score(&self, p: &Self::Parameters) -> ABCDResult<f64>;
@@ -86,7 +85,7 @@ impl<P> Generation<P> {
         }
     }
     
-    pub fn sample(&self, random: &mut ThreadRng) -> Cow<P>
+    pub fn sample(&self, rng: &mut impl Rng) -> Cow<P>
     where 
         P: Clone
      {
@@ -99,7 +98,7 @@ impl<P> Generation<P> {
             .collect();
 
         let dist = WeightedIndex::new(&particle_weights).unwrap();
-        let sampled_particle_index: usize = dist.sample(random);
+        let sampled_particle_index: usize = dist.sample(rng);
         let particles = &self
             .pop
             .normalised_particles()[sampled_particle_index];

@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use rand::prelude::ThreadRng;
+use rand::Rng;
 use statrs::statistics::{Data, Statistics, OrderStatistics};
 
 use crate::{error::{ABCDResult, ABCDError}, Model, Generation, etc::config::Config, Particle};
@@ -8,13 +8,13 @@ use crate::{error::{ABCDResult, ABCDError}, Model, Generation, etc::config::Conf
 pub trait GenerationOps<P> {
     fn generation_number(&self) -> u16;
 
-    fn sample<M>(&self, model: &M, random: &mut ThreadRng) -> Cow<P>
+    fn sample<M>(&self, model: &M, rng: &mut impl Rng) -> Cow<P>
     where 
         M: Model<Parameters = P>,
         P: Clone;
 
-    fn perturb<M: Model<Parameters = P>>(&self, parameters: &P, model: &M, random: &mut ThreadRng) -> ABCDResult<P> {
-        let params = model.perturb(parameters,random);        
+    fn perturb<M: Model<Parameters = P>>(&self, parameters: &P, model: &M, rng: &mut impl Rng) -> ABCDResult<P> {
+        let params = model.perturb(parameters, rng);        
         if model.prior_density(&params) > 0.0 {
             Ok(params)
         } else {
@@ -49,12 +49,12 @@ impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
         self.gen.number
     }
 
-    fn sample<M>(&self, _model: &M, random: &mut ThreadRng) -> Cow<P>
+    fn sample<M>(&self, _model: &M, rng: &mut impl Rng) -> Cow<P>
     where 
         M: Model<Parameters = P>,
         P: Clone
      {
-        self.gen.sample(random)
+        self.gen.sample(rng)
     }
 
     fn calculate_tolerance(&self) -> ABCDResult<f64> {
@@ -109,12 +109,12 @@ impl<P> GenerationOps<P> for PriorGeneration {
         0
     }
 
-    fn sample<M> (&self, model: &M, random: &mut ThreadRng) -> Cow<P>
+    fn sample<M> (&self, model: &M, rng: &mut impl Rng) -> Cow<P>
     where 
         M: Model<Parameters = P>,
         P: Clone,
     {
-        Cow::Owned(model.prior_sample(random))
+        Cow::Owned(model.prior_sample(rng))
     }
 
     fn calculate_tolerance(&self) -> ABCDResult<f64> {

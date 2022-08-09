@@ -3,7 +3,7 @@ use std::{ops::Range, path::Path};
 use abcd::{Model, error::ABCDResult, etc::config::Config};
 use path_absolutize::Absolutize;
 use serde::{Deserialize, Serialize};
-use rand::{Rng, prelude::ThreadRng};
+use rand::Rng;
 use statrs::distribution::Normal;
 use anyhow::Result;
 use tokio::runtime::Runtime;
@@ -26,8 +26,8 @@ impl Uniform {
         }
     }
     
-    fn sample(&self, random: &mut ThreadRng) -> f64 {
-        random.gen_range(self.range.clone())
+    fn sample(&self, rng: &mut impl Rng) -> f64 {
+        rng.gen_range(self.range.clone())
     }
 
     fn density(&self, v: f64) -> f64 {
@@ -49,8 +49,8 @@ impl Kernel {
         }
     }
 
-    fn sample(&self, random: &mut ThreadRng) -> f64 {
-        random.sample(self.normal)
+    fn sample(&self, rng: &mut impl Rng) -> f64 {
+        rng.sample(self.normal)
     }
 
     fn density(&self, v: f64) -> f64 {
@@ -81,8 +81,8 @@ impl MyModel {
 impl Model for MyModel {
     type Parameters = MyParameters;
 
-    fn prior_sample(&self, random: &mut ThreadRng) -> Self::Parameters {
-        let heads: f64 = self.prior.sample(random);
+    fn prior_sample(&self, rng: &mut impl Rng) -> Self::Parameters {
+        let heads: f64 = self.prior.sample(rng);
         MyParameters {
             heads
         }
@@ -94,8 +94,8 @@ impl Model for MyModel {
         density
     }
 
-    fn perturb(&self, _p: &Self::Parameters, random: &mut ThreadRng) -> Self::Parameters {
-        let heads: f64 = _p.heads + self.kernel.sample(random);
+    fn perturb(&self, _p: &Self::Parameters, rng: &mut impl Rng) -> Self::Parameters {
+        let heads: f64 = _p.heads + self.kernel.sample(rng);
         MyParameters {
             heads
         }
