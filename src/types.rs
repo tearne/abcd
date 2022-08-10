@@ -1,8 +1,6 @@
 use rand::prelude::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::fmt::Debug;
-use std::borrow::Cow;
-use rand::distributions::WeightedIndex;
 
 use crate::error::ABCDResult;
 
@@ -28,11 +26,12 @@ pub struct Particle<P> {
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct Population<P> {
     tolerance: f64,
-    acceptance: f64,
+    acceptance: f32,
     normalised_particles: Vec<Particle<P>>,
 }
 impl<P> Population<P> {
-    pub fn new(tolerance: f64, acceptance: f64, normalised_particles: Vec<Particle<P>>) -> Self {
+    pub fn new(tolerance: f64, acceptance: f32, normalised_particles: Vec<Particle<P>>) -> Self {
+        //TODO can delete?
         // let totalweight = normalised_particles.iter().map(|p|p.weight).sum::<f64>();
         // println!("TOTAL WEIGHT is {}",totalweight);
         // let check = (normalised_particles.iter().map(|p|p.weight).sum::<f64>() - 1.0).abs();
@@ -45,14 +44,6 @@ impl<P> Population<P> {
             acceptance,
             normalised_particles
         }
-    }
-
-    pub fn tolerance(&self) -> f64 {
-        self.tolerance
-    }
-
-    pub fn acceptance(&self) -> f64 {
-        self.acceptance
     }
 
     pub fn normalised_particles(&self) -> &Vec<Particle<P>> {
@@ -70,7 +61,7 @@ impl<P> Generation<P> {
         mut particles: Vec<Particle<P>>,
         generation_number: u16,
         tolerance: f64,
-        acceptance: f64 //TODO change to an f16?
+        acceptance: f32
     ) -> Self{
         let total_weight : f64 = particles.iter().map(|p|p.weight).sum();
         
@@ -80,7 +71,7 @@ impl<P> Generation<P> {
             .for_each(|p| p.weight = p.weight / total_weight );
 
         Self{
-            pop: Population::<P>::new(tolerance,acceptance,particles),
+            pop: Population::<P>::new(tolerance, acceptance, particles),
             number:generation_number
         }
     }

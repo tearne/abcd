@@ -160,7 +160,7 @@ fn do_gen<M: Model, S: Storage>(
             let acceptance = {
                 let num: f64 = cast::f64(particles.len()); //TODO check we understand this, seems to be infallable??!
                 let rejected: f64 =  cast::f64(rejections);
-                num / (num + rejected)
+                (num / (num + rejected)) as f32
             };
             log::info!("Acceptance rate was {acceptance:.3}");
             log::info!("Tolerance is {tolerance:.3}");
