@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use rand::prelude::ThreadRng;
+use rand::{Rng, distributions::WeightedIndex, prelude::Distribution};
 use statrs::statistics::{Data, Statistics, OrderStatistics};
 
 use crate::{error::{ABCDResult, ABCDError}, Model, Generation, etc::config::Config, Particle};
@@ -8,17 +8,17 @@ use crate::{error::{ABCDResult, ABCDError}, Model, Generation, etc::config::Conf
 pub trait GenerationOps<P> {
     fn generation_number(&self) -> u16;
 
-    fn sample<M>(&self, model: &M, random: &mut ThreadRng) -> Cow<P>
+    fn sample<M>(&self, model: &M, rng: &mut impl Rng) -> Cow<P>
     where 
         M: Model<Parameters = P>,
         P: Clone;
 
-    fn perturb<M: Model<Parameters = P>>(&self, parameters: &P, model: &M, random: &mut ThreadRng) -> ABCDResult<P> {
-        let params = model.perturb(parameters,random);        
+    fn perturb<M: Model<Parameters = P>>(&self, parameters: &P, model: &M, rng: &mut impl Rng) -> ABCDResult<P> {
+        let params = model.perturb(parameters, rng);        
         if model.prior_density(&params) > 0.0 {
             Ok(params)
         } else {
-            Err(ABCDError::AlgortihmError("Proposed particle out of prior bounds.".into()))
+            Err(ABCDError::AlgortihmError("Perturbed particle out of prior bounds.".into()))
         }
     }
     
@@ -37,11 +37,25 @@ pub trait GenerationOps<P> {
 }
 pub struct EmpiricalGeneration<P>{
     gen: Generation<P>,
+    dist: WeightedIndex<f64>,
     config: Config
 }
 impl<P> EmpiricalGeneration<P> {
     pub fn new(gen: Generation<P>, config: Config) -> Self {
-        Self { gen, config }
+        let particle_weights: Vec<f64> = gen
+            .pop
+            .normalised_particles()
+            .iter()
+            .map(|p| p.weight)
+            .collect();
+
+        let dist = WeightedIndex::new(&particle_weights).unwrap();
+        
+        Self { 
+            gen, 
+            dist,
+            config 
+        }
     }
 }
 impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
@@ -49,12 +63,18 @@ impl<P> GenerationOps<P> for EmpiricalGeneration<P> {
         self.gen.number
     }
 
-    fn sample<M>(&self, _model: &M, random: &mut ThreadRng) -> Cow<P>
+    fn sample<M>(&self, _model: &M, rng: &mut impl Rng) -> Cow<P>
     where 
         M: Model<Parameters = P>,
         P: Clone
      {
-        self.gen.sample(random)
+        let sampled_particle_index: usize = self.dist.sample(rng);
+        let particles = &self
+            .gen
+            .pop
+            .normalised_particles()[sampled_particle_index];
+        let params = &particles.parameters;
+        Cow::Borrowed(params)
     }
 
     fn calculate_tolerance(&self) -> ABCDResult<f64> {
@@ -109,12 +129,12 @@ impl<P> GenerationOps<P> for PriorGeneration {
         0
     }
 
-    fn sample<M> (&self, model: &M, random: &mut ThreadRng) -> Cow<P>
+    fn sample<M> (&self, model: &M, rng: &mut impl Rng) -> Cow<P>
     where 
         M: Model<Parameters = P>,
         P: Clone,
     {
-        Cow::Owned(model.prior_sample(random))
+        Cow::Owned(model.prior_sample(rng))
     }
 
     fn calculate_tolerance(&self) -> ABCDResult<f64> {

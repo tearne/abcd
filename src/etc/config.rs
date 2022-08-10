@@ -32,12 +32,11 @@ pub struct Job {
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 pub struct Algorithm {
     pub tolerance_descent_percentile: usize,
-    pub max_num_failures: u16
+    pub max_num_failures: usize
 }
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 pub struct RunConfig {
-    pub base_config_path: String, //Or is it value we want here - sorry can't remember?
-    pub model_server: String
+    pub base_config_path: String,
 }
 //TODO validate - https://crates.io/crates/validator
 
