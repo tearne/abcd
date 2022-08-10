@@ -88,13 +88,13 @@ fn do_gen<M: Model, S: Storage>(
     //TODO what if this differs from the gen that was passed in?
     let tolerance = thing_containing_prev_gen.calculate_tolerance()?;
 
-    let mut failures = 0;
+    let mut failure_messages = Vec::<String>::new();
 
     loop {
-        if failures > config.algorithm.max_num_failures {
-            return Err(ABCDError::AlgortihmError("Too many particle failures".into())); //TODO make this different to the particle propose error
+        if failure_messages.len() > config.algorithm.max_num_failures {
+            return Err(ABCDError::ParticleMaxRetries("Too many particle failures".into())); //TODO make this different to the particle propose error
         }
-        //Particle loop
+        //Particle loop.
 
         // Particle loop
         // (B3) sample a (fitting) parameter set from gen (perturb based on weights and kernel if sampling from generation)
@@ -114,7 +114,7 @@ fn do_gen<M: Model, S: Storage>(
             Ok(parameters) => Ok(parameters),
             Err(ABCDError::AlgortihmError(msg)) => {
                 log::warn!("{}", msg);
-                failures += 1;
+                failure_messages.push(msg);
                 continue;
             },
             Err(e) => Err(e),
@@ -140,12 +140,13 @@ fn do_gen<M: Model, S: Storage>(
         let particle: Particle<M::Parameters> = thing_containing_prev_gen.weigh(parameters, scores, tolerance, model);
 
         // Save the non_normalised particle to storage
-        let save_result = storage.save_particle(&particle); //TODO log if can't save, then try again?  Blow up?  Need to think about this
-        match save_result {
+        match storage.save_particle(&particle) {
             Ok(_save_result) => Ok(()),
             Err(e) => {
-                log::error!("Problems saving particle to storage: {}", e);
-                Err(ABCDError::StorageInitError)
+                let message = format!("Couldn't save particle to storage: {}", e); 
+                log::error!("{}", message);
+                failure_messages.push(message);
+                continue;
             }
         }?;
 
@@ -171,16 +172,18 @@ fn do_gen<M: Model, S: Storage>(
             .for_each(|p| println!("scores after new gen {:?}",p.scores) );
 
             // Save the non_normalised particle to storage
-            let save_gen_result = storage.save_new_gen(&new_generation); //TODO log if can't save, then try again?  Blow up?  Need to think about this
+            let save_gen_result = storage.save_new_gen(&new_generation); 
 
             match save_gen_result {
                 Ok(_) => Ok(()), 
                 Err(ABCDError::StorageConsistencyError(msg)) => {
                        log::error!("{}", msg);
-                       Err(ABCDError::StorageConsistencyError(msg) )          }   
+                       Err(ABCDError::StorageConsistencyError(msg) )
+                }
                 Err(ABCDError::GenAlreadySaved(msg)) => {
                         log::error!("{}", msg);
-                        Err(ABCDError::GenAlreadySaved(msg) )          }             
+                        Err(ABCDError::GenAlreadySaved(msg) )
+                }
                 Err(e) => Err(e),
             }?;
              return Ok(new_generation.number);

@@ -6,6 +6,7 @@ pub type ABCDResult<T> = std::result::Result<T, ABCDError>;
 pub enum ABCDError {
     ModelError(String),
     AlgortihmError(String),
+    ParticleMaxRetries(Vec<String>),
     Configuration(String),
     Io(std::io::Error),
     Os(std::ffi::OsString),
@@ -26,6 +27,7 @@ impl std::fmt::Display for ABCDError {
         match self {
             ABCDError::ModelError(ref msg) => write!(f, "{}", msg),
             ABCDError::AlgortihmError(ref msg) => write!(f, "{}", msg),
+            ABCDError::ParticleMaxRetries(ref messages) => write!(f, "{:#?}", messages),
             ABCDError::Configuration(ref msg) => write!(f, "{}", msg),
             ABCDError::Io(ref err) => err.fmt(f),
             ABCDError::Os(ref original) => {

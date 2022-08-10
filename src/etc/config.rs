@@ -32,7 +32,7 @@ pub struct Job {
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 pub struct Algorithm {
     pub tolerance_descent_percentile: usize,
-    pub max_num_failures: u16
+    pub max_num_failures: usize
 }
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 pub struct RunConfig {
