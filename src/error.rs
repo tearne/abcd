@@ -1,5 +1,14 @@
 use std::num::TryFromIntError;
 
+// pub enum CriticalError {
+
+// }
+
+// enum InternalError {
+
+// }
+
+
 pub type ABCDResult<T> = std::result::Result<T, ABCDError>;
 
 #[derive(Debug)]
@@ -21,6 +30,10 @@ pub enum ABCDError {
     Other(String),
     CastError(TryFromIntError),
 }
+
+//TODO split up errors
+// Critical errors which will abort everything and propogate out to the caller
+// Retryable errors which we can handle internally and the client doesn't care about.
 
 impl std::fmt::Display for ABCDError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

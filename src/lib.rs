@@ -143,7 +143,7 @@ fn do_gen<M: Model, S: Storage>(
         match storage.save_particle(&particle) {
             Ok(_save_result) => ABCDResult::Ok(()),
             Err(e) => {
-                let message = format!("Couldn't save particle to storage: {}", e); 
+                let message = format!("Failed to save particle: {}", e); 
                 log::error!("{}", message);
                 failure_messages.push(message);
                 continue;
@@ -155,40 +155,67 @@ fn do_gen<M: Model, S: Storage>(
         if num_accepted < config.job.num_particles {
             log::info!("There are {num_accepted} accepted particles in the bucket.");
         } else {
-            // Load all the non_normalised particles
-            let particles: Vec<Particle<M::Parameters>> = storage.load_accepted_particles()?; //TODO think about the error case, tries again?
-            let rejections = storage.num_rejected_particles()?; //TODO think about the error case, tries again?
-            let acceptance = {
-                let num: f64 = cast::f64(particles.len());
-                let rejected: f64 =  cast::f64(rejections);
-                (num / (num + rejected)) as f32
-            };
-            log::info!("Acceptance rate was {acceptance:.3}");
-            log::info!("Tolerance is {tolerance:.3}");
+            let new_gen_number = thing_containing_prev_gen.generation_number() + 1;
 
-            let new_generation = Generation::new(particles, thing_containing_prev_gen.generation_number() + 1, tolerance, acceptance);
+            let save_result = finalise_generation::<M,S>(
+                storage, 
+                tolerance,
+                new_gen_number
+            );
 
-            new_generation.pop.normalised_particles().iter()
-            .for_each(|p| println!("scores after new gen {:?}",p.scores) );
-
-            // Save the non_normalised particle to storage
-            let save_gen_result = storage.save_new_gen(&new_generation); 
-
-            match save_gen_result {
-                Ok(_) => Ok(()), 
+            match save_result {
+                Ok(()) => ABCDResult::Ok(()),
+                //TODO think about critical vs internal retryable errors
                 Err(ABCDError::StorageConsistencyError(msg)) => {
-                       log::error!("{}", msg);
-                       Err(ABCDError::StorageConsistencyError(msg) )
+                    log::error!("{}", msg);
+                    Err(ABCDError::StorageConsistencyError(msg) )
                 }
                 Err(ABCDError::GenAlreadySaved(msg)) => {
                         log::error!("{}", msg);
                         Err(ABCDError::GenAlreadySaved(msg) )
                 }
-                Err(e) => Err(e),
+                Err(e) => {
+                    let message = format!("Failed to save generation: {}", e); 
+                    log::error!("{}", message);
+                    failure_messages.push(message);
+                    continue;
+                }
             }?;
-             return Ok(new_generation.number);
+
+            return Ok(new_gen_number);
         }
     }
+}
+
+fn finalise_generation<M: Model, S: Storage>(storage: &S, tolerance: f64, new_gen_number: u16) -> ABCDResult<()> {
+    // Load all the non_normalised particles
+    let particles: Vec<Particle<M::Parameters>> = storage.load_accepted_particles()?; 
+    let rejections = storage.num_rejected_particles()?;
+    let acceptance = {
+        let num: f64 = cast::f64(particles.len());
+        let rejected: f64 =  cast::f64(rejections);
+        (num / (num + rejected)) as f32
+    };
+
+    log::info!("Acceptance rate was {acceptance:.3}");
+    log::info!("Tolerance is {tolerance:.3}");
+
+    let new_generation = 
+        Generation::new(
+            particles, 
+            new_gen_number, 
+            tolerance, 
+            acceptance);
+
+    new_generation
+        .pop
+        .normalised_particles()
+        .iter()
+        .for_each(|p| println!("scores after new gen {:?}",p.scores) );
+
+    storage.save_new_gen(&new_generation)?; 
+
+    Ok(())
 }
 
 
