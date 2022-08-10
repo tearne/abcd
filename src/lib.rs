@@ -92,7 +92,7 @@ fn do_gen<M: Model, S: Storage>(
 
     loop {
         if failure_messages.len() > config.algorithm.max_num_failures {
-            return Err(ABCDError::ParticleMaxRetries("Too many particle failures".into())); //TODO make this different to the particle propose error
+            return Err(ABCDError::ParticleMaxRetries(failure_messages));
         }
         //Particle loop.
 
@@ -141,7 +141,7 @@ fn do_gen<M: Model, S: Storage>(
 
         // Save the non_normalised particle to storage
         match storage.save_particle(&particle) {
-            Ok(_save_result) => Ok(()),
+            Ok(_save_result) => ABCDResult::Ok(()),
             Err(e) => {
                 let message = format!("Couldn't save particle to storage: {}", e); 
                 log::error!("{}", message);
