@@ -159,7 +159,7 @@ fn do_gen<M: Model, S: Storage>(
             let particles: Vec<Particle<M::Parameters>> = storage.load_accepted_particles()?; //TODO think about the error case, tries again?
             let rejections = storage.num_rejected_particles()?; //TODO think about the error case, tries again?
             let acceptance = {
-                let num: f64 = cast::f64(particles.len()); //TODO check we understand this, seems to be infallable??!
+                let num: f64 = cast::f64(particles.len());
                 let rejected: f64 =  cast::f64(rejections);
                 (num / (num + rejected)) as f32
             };
