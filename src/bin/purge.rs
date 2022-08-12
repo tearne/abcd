@@ -2,6 +2,8 @@ use abcd::storage::s3::S3System;
 use structopt::StructOpt;
 use tokio::runtime::Runtime;
 
+// E.g. run me with
+// cargo run --release --bin purge -- --bucket $TEST_BUCKET --prefix $TEST_PREFIX
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "basic")]

@@ -317,7 +317,7 @@ fn test_exception_if_save_without_init() {
     let result = instance.save_particle(&w1);
 
     match result {
-        Err(ABCDError::StorageInitError) => (),
+        Err(ABCDErr::InfrastructureError(_)) => (),
         _ => panic!("Expected exception"),
     }
 }
@@ -382,13 +382,15 @@ fn test_exception_if_accepted_contains_imposter() {
     helper.put_recursive("resources/test/storage/accepted_imposter_none_rejected");
 
     match instance.num_accepted_particles() {
-        Err(ABCDError::StorageConsistencyError(_)) => (),
-        _ => panic!("Expected error")
+        Err(ABCDErr::SystemError(_)) => (),
+        Err(e) => panic!("Expected SystemErr, got: {}", e),
+        Ok(_) => panic!("Expected SystemErr, got Ok")
     }
 
     match instance.load_accepted_particles::<DummyParams>() {
-        Err(ABCDError::StorageConsistencyError(_)) => (),
-        _ => panic!("Expected error")
+        Err(ABCDErr::SystemError(_)) => (),
+        Err(e) => panic!("Expected SystemErr, got: {}", e),
+        Ok(_) => panic!("Expected SystemErr, got Ok")
     }
 }
 
@@ -400,8 +402,9 @@ fn test_exception_if_rejected_contains_imposter(){
     helper.put_recursive("resources/test/storage/rejected_imposter_none_accepted");
 
     match instance.num_rejected_particles() {
-        Err(ABCDError::StorageConsistencyError(_)) => (),
-        _ => panic!("Expected error")
+        Err(ABCDErr::SystemError(_)) => (),
+        Err(e) => panic!("Expected SystemErr, got: {}", e),
+        Ok(_) => panic!("Expected SystemErr, got Ok")
     }
 }
 
@@ -418,8 +421,9 @@ fn test_exception_if_save_inconsistent_gen_number() {
     let result = instance.save_new_gen(&dummy_generation);
 
     match result {
-        Err(ABCDError::StorageConsistencyError(_)) => (),
-        _ => panic!("Expected exception"),
+        Err(ABCDErr::SystemError(_)) => (),
+        Err(e) => panic!("Expected SystemErr, got: {}", e),
+        Ok(_) => panic!("Expected SystemErr, got Ok")
     }
 }
 

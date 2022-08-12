@@ -17,7 +17,7 @@ use std::fmt::Debug;
 use tokio::runtime::Handle;
 
 use super::Storage;
-use crate::error::{ABCDError, ABCDResult};
+use crate::error::{ABCDErr, ABCDResult};
 use crate::{Generation, Particle};
 use tokio;
 use uuid::Uuid;
@@ -132,8 +132,8 @@ impl S3System {
         if enabled {
             Ok(())
         } else {
-            Err(ABCDError::S3OperationError(
-                "Versioning must be enabled".into(),
+            Err(ABCDErr::InfrastructureError(
+                "S3 bucket versioning must be enabled".into(),
             ))
         }
     }
@@ -182,7 +182,7 @@ impl S3System {
         };
 
         if objects.iter().any(is_not_json_file) {
-            Err(ABCDError::StorageConsistencyError(
+            Err(ABCDErr::SystemError(
                 format!(
                     "Prefix {} contains a non-json file.",
                     prefix
@@ -217,7 +217,7 @@ impl S3System {
             .collect()
             .await
             .map_err(|e| 
-                ABCDError::S3OperationError(format!("Empty byte stream: {}", e))
+                ABCDErr::InfrastructureError(format!("Empty S3 byte stream: {}", e))
             )?
             .into_bytes();
 
@@ -265,7 +265,7 @@ impl S3System {
 
             acc.push(out);
 
-            log::info!("Accumulated {} pages of version identifiers.", acc.len());
+            log::debug!("Found {} page(s) of version identifiers.", acc.len());
 
             if next_key.is_none() && next_version.is_none() {
                 break;
@@ -285,15 +285,15 @@ impl S3System {
         let delete_markers = first_page.delete_markers.unwrap_or_default();
 
         if !delete_markers.is_empty() {
-            return Err(ABCDError::S3OperationError("Detected delete markers, which could result in stale data being read.".into()));
+            return Err(ABCDErr::InfrastructureError("Detected S3 delete markers, which could result in stale data being read.".into()));
         }
 
         if versions.len() == 1 {
             if let Some(version) = versions.swap_remove(0).version_id {
                 return Ok(version);
             } else {
-                return Err(ABCDError::S3OperationError(format!(
-                    "Only verion of {} has ID None",
+                return Err(ABCDErr::InfrastructureError(format!(
+                    "In S3, the only verion of {} has ID None",
                     key
                 )));
             }
@@ -302,8 +302,8 @@ impl S3System {
         let oldest_version_id = if let Some(version) = versions.pop().and_then(|ov| ov.version_id) {
             version
         } else {
-            return Err(ABCDError::S3OperationError(format!(
-                "Oldest verion of {} has ID None",
+            return Err(ABCDErr::InfrastructureError(format!(
+                "In S3, the oldest verion of {} has ID None",
                 key
             )));
         };
@@ -351,7 +351,7 @@ impl S3System {
             .body(bytes)
             .acl(ObjectCannedAcl::BucketOwnerFullControl)
             .send()
-            .map_err(Into::<ABCDError>::into)
+            .map_err(Into::<ABCDErr>::into)
     }
 
     async fn previous_gen_number_async(&self) -> ABCDResult<u16> {
@@ -361,7 +361,7 @@ impl S3System {
             .filter_map(|o| o.key.as_ref())
             .any(|k| k.ends_with("abcd.init"))
         {
-            return Err(ABCDError::StorageInitError);
+            return Err(ABCDErr::InfrastructureError("abcd.init marker not found in S3.".into()));
         }
         let key_strings = objects.into_iter().filter_map(|obj| obj.key);
         let gen_number = key_strings
@@ -405,7 +405,7 @@ impl Storage for S3System {
                 .key(&object_key)
                 .version_id(version_id)
                 .send()
-                .map_err(Into::<ABCDError>::into)
+                .map_err(Into::<ABCDErr>::into)
                 .then(Self::read_to_string)
                 .await?;
 
@@ -414,9 +414,10 @@ impl Storage for S3System {
             if gen.number == prev_gen_no {
                 Ok(gen)
             } else {
-                Err(ABCDError::StorageConsistencyError(format!(
-                    "Expected gen number {} but got {}",
-                    prev_gen_no, gen.number
+                Err(ABCDErr::SystemError(format!(
+                    "Expected object to contain gen number {} but upon deserialisation found {}",
+                    prev_gen_no, 
+                    gen.number
                 )))
             }
         })
@@ -478,7 +479,7 @@ impl Storage for S3System {
                 .map(|t| t.key)
                 .collect::<Option<Vec<String>>>()
                 .ok_or_else(|| {
-                    ABCDError::Other("failed to identify all particle file names".into())
+                    ABCDErr::InfrastructureError("In S3, failed to identify all particle file names".into())
                 })?;
 
             let particle_futures = object_names.into_iter().map(|filename| {
@@ -487,13 +488,13 @@ impl Storage for S3System {
                     .bucket(&self.bucket)
                     .key(&filename)
                     .send()
-                    .map_err(Into::<ABCDError>::into)
+                    .map_err(Into::<ABCDErr>::into)
                     .then(Self::read_to_string)
                     .map(|res| {
                         res.and_then(move |s| {
                             serde_json::from_str::<Particle<P>>(&s).map_err(|e| {
-                                ABCDError::SerdeError(format!(
-                                    "Failed to deserialise {}: {}",
+                                ABCDErr::SystemError(format!(
+                                    "After load from S3, Serde failed to deserialise {}: {}",
                                     filename.clone(),
                                     e
                                 ))
@@ -503,7 +504,7 @@ impl Storage for S3System {
             });
 
             let joined = futures::future::join_all(particle_futures);
-            let particles: Vec<Result<Particle<P>, ABCDError>> = joined.await;
+            let particles: Vec<Result<Particle<P>, ABCDErr>> = joined.await;
 
             let result_of_vec: ABCDResult<Vec<Particle<P>>> = particles.into_iter().collect();
             result_of_vec
@@ -511,12 +512,11 @@ impl Storage for S3System {
     }
 
     fn save_new_gen<P: Serialize>(&self, gen: &Generation<P>) -> ABCDResult<()> {
-        
         self.handle.block_on(async {
             let expected_new_gen_number = self.previous_gen_number_async().await? + 1;
             if gen.number != expected_new_gen_number {
-                return Err(ABCDError::StorageConsistencyError(format!(
-                    "Asked to save gen {}, but was due to save {}",
+                return Err(ABCDErr::SystemError(format!(
+                    "Asked to save gen {} to S3, but was expecting to save {}",
                     &gen.number, &expected_new_gen_number
                 )));
             }
@@ -554,8 +554,8 @@ impl Storage for S3System {
                 }
                 _ => {
                     //This is bad, the file shouldn't exist before we've saved it!
-                    Err(ABCDError::GenAlreadySaved(format!(
-                        "Gen file already existed at {:?}",
+                    Err(ABCDErr::SystemError(format!(
+                        "Gen file already existed in S3 at {:?}",
                         object_path
                     )))
                 }

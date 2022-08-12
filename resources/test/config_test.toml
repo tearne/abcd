@@ -7,7 +7,7 @@ prefix = "test_data"
 num_generations = 10
 terminate_at_target_gen = false
 num_replicates = 10
-num_particles = 10000
+num_particles = 1000
 
 [algorithm]
 tolerance_descent_percentile = 75

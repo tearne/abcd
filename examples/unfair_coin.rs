@@ -1,11 +1,11 @@
 use std::{ops::Range, path::Path};
 
-use abcd::{Model, error::ABCDResult, etc::config::Config};
+use abcd::{Model, etc::config::Config, ABCD};
+use color_eyre::eyre;
 use path_absolutize::Absolutize;
 use serde::{Deserialize, Serialize};
 use rand::Rng;
 use statrs::distribution::Normal;
-use anyhow::Result;
 use tokio::runtime::Runtime;
 
 #[derive(Serialize, Deserialize, Debug,Clone)]
@@ -107,7 +107,7 @@ impl Model for MyModel {
             pert_density
     }
 
-    fn score(&self, p: &Self::Parameters) -> ABCDResult<f64> {
+    fn score<E: std::error::Error>(&self, p: &Self::Parameters) -> Result<f64, E> {
         let mut random = rand::thread_rng();
         let mut heads_count: u64 = 0;
 
@@ -120,11 +120,11 @@ impl Model for MyModel {
 
         let simulated = heads_count as f64 / self.reps as f64;
         let diff = (self.observed - simulated).abs();
-        Ok(diff)
+        eyre::Result::Ok(diff)
     }
 }
 
-fn main() -> Result<()> {
+fn main() -> eyre::Result<()> {
     env_logger::init();
 
     let observed_proportion_heads = 0.7;
@@ -135,14 +135,14 @@ fn main() -> Result<()> {
 
     let path = Path::new("./config.toml").absolutize().unwrap(); 
     log::info!("Load config from {:?}", path);
-    let config = Config::from_path(path);
+    let config = Config::from_path(path)?;
 
     let runtime = Runtime::new().unwrap();
     let handle = runtime.handle();
 
     let storage = config.storage.build_s3(handle.clone())?;
 
-    abcd::run(m, config, storage, &mut random)?;
+    ABCD::run(m, config, storage, &mut random)?;
 
     Ok(())
 }

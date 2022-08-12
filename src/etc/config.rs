@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 
@@ -48,14 +49,13 @@ pub struct Config {
     pub run: RunConfig
 }
 impl Config {
-    pub fn from_path<P>(config_path: P) -> Self
+    pub fn from_path<P>(config_path: P) -> Result<Self, std::io::Error>
     where
         P: AsRef<Path> + Debug,
     {
-        let str = std::fs::read_to_string(config_path.as_ref())
-            .unwrap_or_else(|e| panic!("Failed to load config from {:?}: {}", config_path, e));
+        let str = std::fs::read_to_string(config_path.as_ref())?;
         let config: Config = toml::from_str(&str).unwrap();
         log::info!("Loading config: {:#?}", config);
-        config
+        Ok(config)
     }
 }
