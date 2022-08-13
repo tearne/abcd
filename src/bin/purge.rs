@@ -1,19 +1,21 @@
 use abcd::storage::s3::S3System;
-use structopt::StructOpt;
+use clap::Parser;
 use tokio::runtime::Runtime;
 
-// E.g. run me with
-// cargo run --release --bin purge -- --bucket $TEST_BUCKET --prefix $TEST_PREFIX
-
-#[derive(StructOpt, Debug)]
-#[structopt(name = "basic")]
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
 struct Purge {
-    #[structopt(short, long)]
+    #[clap(short, long)]
     bucket: String,
-    #[structopt(short, long)]
+    #[clap(short, long)]
     prefix: String,
 }
 
+/// Run the purger to delete all versions of all objects
+/// 
+/// ```
+/// cargo run --release --bin purge -- --bucket $TEST_BUCKET --prefix $TEST_PREFIX
+/// ```
 fn main() {
     env_logger::init();
 

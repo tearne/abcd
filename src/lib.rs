@@ -10,7 +10,6 @@ use generation::GenWrapper;
 use rand::prelude::*;
 use storage::Storage;
 pub use types::{Model, Generation, Particle, Population};
-
 pub struct ABCD<M: Model, S: Storage>{
     model: M,
     config: Config,
