@@ -1,15 +1,13 @@
-use std::{borrow::Cow, fmt::Debug};
-
-use rand::{distributions::WeightedIndex, prelude::Distribution, Rng};
-use serde::de::DeserializeOwned;
-use statrs::statistics::{Data, OrderStatistics, Statistics};
-
 use crate::{
+    config::Config,
     error::{ABCDErr, ABCDResult},
-    etc::config::Config,
     storage::Storage,
     Generation, Model, Particle,
 };
+use rand::{distributions::WeightedIndex, prelude::Distribution, Rng};
+use serde::de::DeserializeOwned;
+use statrs::statistics::{Data, OrderStatistics, Statistics};
+use std::{borrow::Cow, fmt::Debug};
 
 pub enum GenWrapper<P> {
     Empirical(Box<Emp<P>>),

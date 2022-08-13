@@ -1,26 +1,6 @@
-use std::error::Error;
-use std::fmt::Debug;
-use std::path::{Path, PathBuf};
-
 use crate::storage::config::StorageConfig;
-
-// #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
-// pub struct Storage {
-//     pub location: String,
-//     pub kind: String,
-// }
-// impl Storage {
-//     pub fn get_path_string(&self) -> String {
-//         match self.kind.as_str() {
-//             "s3" => format!("s3://{}", self.location),
-//             "envvar" => {
-//                 println!(" --> {}", &self.location);
-//                 envmnt::get_or_panic(&self.location)
-//             },
-//             _ => unimplemented!(),
-//         }
-//     }
-// }
+use std::fmt::Debug;
+use std::path::Path;
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 pub struct Job {

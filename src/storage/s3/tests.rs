@@ -28,7 +28,7 @@ struct StorageTestHelper {
 impl StorageTestHelper {
     pub fn new(prefix: &str, delete_prefix_on_drop: bool) -> Self {
         if !envmnt::exists("TEST_BUCKET") {
-            panic!("You need to set the environment variable 'TEST_BUCKET' before running");
+            panic!("You need to set the environment variable 'TEST_BUCKET' before running this test.");
         }
 
         // Expand bucket environment variables as appropriate

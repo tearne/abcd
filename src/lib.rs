@@ -1,15 +1,15 @@
+pub mod config;
 pub mod error;
-pub mod etc;
-pub mod generation;
 pub mod storage;
 pub mod types;
+pub mod wrapper;
 
+use config::Config;
 use error::{ABCDErr, ABCDResult};
-use etc::config::Config;
-use generation::GenWrapper;
 use rand::prelude::*;
 use storage::Storage;
 pub use types::{Generation, Model, Particle, Population};
+use wrapper::GenWrapper;
 pub struct ABCD<M: Model, S: Storage> {
     model: M,
     config: Config,

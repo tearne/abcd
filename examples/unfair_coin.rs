@@ -1,11 +1,10 @@
-use std::{ops::Range, path::Path};
-
-use abcd::{etc::config::Config, Model, ABCD};
+use abcd::{config::Config, Model, ABCD};
 use color_eyre::eyre;
 use path_absolutize::Absolutize;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use statrs::distribution::Normal;
+use std::{ops::Range, path::Path};
 use tokio::runtime::Runtime;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

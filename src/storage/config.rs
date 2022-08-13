@@ -40,6 +40,8 @@ impl StorageConfig {
 
 #[cfg(test)]
 mod tests {
+    use std::env;
+
     use tokio::runtime::Runtime;
 
     use super::StorageConfig;
@@ -47,24 +49,24 @@ mod tests {
 
     #[test]
     fn build_s3_storage_properties_from_config_expanding_env_var() -> ABCDResult<()> {
+        if !envmnt::exists("TEST_BUCKET") {
+            panic!("You need to set the environment variable 'TEST_BUCKET' before running this test.");
+        }
+        if !envmnt::exists("TEST_PREFIX") {
+            panic!("You need to set the environment variable 'TEST_PREFIX' before running this test.");
+        }
+
         let storage_config = StorageConfig::S3 {
-            bucket: "s3://${ABCDBucket}".into(),
-            prefix: "a-prefix".into(),
+            bucket: "$TEST_BUCKET".into(),
+            prefix: "$TEST_PREFIX".into(),
         };
-        // println!("===== {}", &toml::to_string_pretty(&c).unwrap());
 
-        envmnt::set("ABCDBucket", "env-var-bucket");
-
-        // let path = local_test_file_path("resources/test/config_test.toml");
-        // let string = std::fs::read_to_string(&path).unwrap();
-        // println!("----- {}", &string);
-        // let config: StorageConfig = toml::from_str(&string).unwrap();
-        let runtime = Runtime::new().unwrap();
+        let runtime = Runtime::new()?;
         let handle = runtime.handle();
         let storage = storage_config.build_s3(handle.clone())?;
 
-        assert_eq!("s3://env-var-bucket", storage.bucket);
-        assert_eq!("a-prefix", storage.prefix);
+        assert_eq!(env::var("TEST_BUCKET").unwrap(), storage.bucket);
+        assert_eq!(env::var("TEST_PREFIX").unwrap(), storage.prefix);
 
         Ok(())
     }
