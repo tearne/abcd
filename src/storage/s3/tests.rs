@@ -428,6 +428,24 @@ fn test_exception_if_save_inconsistent_gen_number() {
 }
 
 #[test]
+fn test_exception_if_save_gen_which_already_exists() {
+    let helper = StorageTestHelper::new("test_exception_if_save_gen_which_already_exists", true);
+    let instance = build_instance(&helper);
+
+    helper.put_recursive("resources/test/storage/normal");
+
+    let dummy_generation = make_dummy_generation(2);
+
+    let result = instance.save_new_gen(&dummy_generation);
+
+    match result {
+        Err(ABCDErr::SystemError(_)) => (),
+        Err(e) => panic!("Expected SystemErr, got: {}", e),
+        Ok(_) => panic!("Expected SystemErr, got Ok")
+    }
+}
+
+#[test]
 fn test_num_accepted_particles() {
     let helper = StorageTestHelper::new("test_num_accepted_particles", true);
     let instance = build_instance(&helper);
@@ -536,24 +554,6 @@ fn test_save_generation() {
             .unwrap();
 
     assert_eq!(expected, actual);
-}
-
-#[test]
-fn test_exception_if_save_gen_which_already_exists() {
-    let helper = StorageTestHelper::new("test_exception_if_save_gen_which_already_exists", true);
-    let instance = build_instance(&helper);
-
-    helper.put_recursive("resources/test/storage/normal");
-
-    let dummy_generation = make_dummy_generation(2);
-
-    let result = instance.save_new_gen(&dummy_generation);
-
-    match result {
-        Err(ABCDErr::SystemError(_)) => (),
-        Err(e) => panic!("Expected SystemErr, got: {}", e),
-        Ok(_) => panic!("Expected SystemErr, got Ok")
-    }
 }
 
 #[test]

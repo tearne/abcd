@@ -74,9 +74,8 @@ impl S3System {
 
     pub fn purge_all_versions_of_everything_in_prefix(&self) -> ABCDResult<()> {
         self.handle.block_on(async{
-            //TODO remove unwrap()
-            //TODO check the bucket/prefix actually exists first, else throws nasty error
-            let version_pages = self.get_versions(&self.prefix).await.unwrap();
+            self.assert_versioning_active().await?;
+            let version_pages = self.get_versions(&self.prefix).await?;
 
             for page in version_pages {
                 let mut object_identifiers = Vec::new();
@@ -100,23 +99,26 @@ impl S3System {
                 });
                 object_identifiers.extend(it);
 
-                log::info!("Deleting {} identifiers", object_identifiers.len());
-
-                self.client
-                    .delete_objects()
-                    .bucket(&self.bucket)
-                    .delete(
-                        Delete::builder()
-                            .set_objects(Some(object_identifiers))
-                            .build(),
-                    )
-                    .send()
-                    .await
-                    .expect("delete objects failed");
+                if !object_identifiers.is_empty(){
+                    log::info!("Deleting {} identifiers", object_identifiers.len());
+                    self.client
+                        .delete_objects()
+                        .bucket(&self.bucket)
+                        .delete(
+                            Delete::builder()
+                                .set_objects(Some(object_identifiers))
+                                .build(),
+                        )
+                        .send()
+                        .await
+                        .expect("delete objects failed");
+                } else {
+                    log::info!("Nothing to delete")
+                }
             };
-        });
 
-        Ok(())
+            ABCDResult::Ok(())
+        })
     }
 
     async fn assert_versioning_active(&self) -> ABCDResult<()> {
@@ -278,8 +280,6 @@ impl S3System {
 
     async fn ensure_only_original_verions(&self, key: &str) -> ABCDResult<String> {
         let mut version_pages = self.get_versions(key).await?;
-        //TODO better
-        assert!(version_pages.len() == 1); //For simplicity, since it's only one file
         let first_page = version_pages.swap_remove(0);
 
         let mut versions = first_page.versions.unwrap_or_default();

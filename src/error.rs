@@ -5,9 +5,8 @@ pub type ABCDResult<T> = Result<T, ABCDErr>;
 #[derive(Debug)]
 pub enum ABCDErr {
     /// Returned when found we were working on an out of date previous generation
-    StaleGenerationErr(String), //TODO make impossible for clients to see this, somehow?
-    
-    ParticleErr(String),        //TODO make impossible for clients to see this, somehow?
+    StaleGenerationErr(String),
+    ParticleErr(String),
     TooManyRetriesError(String, Vec<String>),
     InfrastructureError(String),
     SystemError(String),

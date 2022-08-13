@@ -39,7 +39,6 @@ pub struct Algorithm {
 pub struct RunConfig {
     pub base_config_path: String,
 }
-//TODO validate - https://crates.io/crates/validator
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 pub struct Config {

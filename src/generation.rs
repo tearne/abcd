@@ -163,7 +163,7 @@ impl<P> Emp<P> {
                 log::info!("Tolerance calculated as {new_tolerance}");
                 Ok(new_tolerance)
             },
-            true => Err(ABCDErr::InfrastructureError("Tolerance is not a number.".into()))//TODO rename SystemError?
+            true => Err(ABCDErr::SystemError("Tolerance (from percentile) was not a number.".into()))
         }
     }
 

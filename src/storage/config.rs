@@ -4,7 +4,7 @@ use envmnt::{ExpandOptions, ExpansionType};
 use tokio::runtime::Handle;
 
 
-use crate::error::ABCDResult;
+use crate::error::{ABCDResult, ABCDErr};
 
 use super::s3::S3System;
 
@@ -21,10 +21,12 @@ impl StorageConfig {
                 panic!("Can't build FileSystem from S3 config")
             }
             StorageConfig::S3 { bucket, prefix } => {
-                //TODO error ...
-                // if bucket.starts_with("s3://") {
-                //     Err(ABCDError::Configuration(format!""))
-                // }
+
+                if bucket.starts_with("s3://") {
+                    return Err(ABCDErr::SystemError(
+                        "Bucket in config shouldn't start with 's3://'.  Just provide the bucket name.".into()
+                    ))
+                }
 
                 // Expand bucket environment variables as appropriate
                 let mut options = ExpandOptions::new();
@@ -36,10 +38,6 @@ impl StorageConfig {
             }
         }
     }
-
-    // pub fn build_fs(&self) -> FileSystem {
-    //     todo!()
-    // }
 }
 
 #[cfg(test)]
@@ -72,19 +70,4 @@ mod tests {
 
         Ok(())
     }
-
-    // #[test]
-    // fn expand_bucket_if_env_var() {
-    //     envmnt::set("ABCDBucket", "env-var-bucket");
-
-    //     let path = local_test_file_path("resources/test/config_test.toml");
-    //     let config = Config::from_path(path);
-
-    //     let bucket = match config.storage {
-    //         crate::storage::config::StorageConfig::FileSystem { base_path:_ } => panic!("expected S3 config"),
-    //         crate::storage::config::StorageConfig::S3 { bucket, prefix:_ } => bucket,
-    //     };
-
-    //     assert_eq!("s3://env-var-bucket", bucket);
-    // }
 }
