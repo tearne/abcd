@@ -1,9 +1,10 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, fmt::Debug};
 
 use rand::{Rng, distributions::WeightedIndex, prelude::Distribution};
+use serde::de::DeserializeOwned;
 use statrs::statistics::{Data, Statistics, OrderStatistics};
 
-use crate::{error::{ABCDResult, ABCDErr}, Model, Generation, etc::config::Config, Particle};
+use crate::{error::{ABCDResult, ABCDErr}, Model, Generation, etc::config::Config, Particle, storage::Storage};
 
 pub enum GenWrapper<P>{
     Empirical(Box<Emp<P>>),
@@ -22,6 +23,21 @@ impl<P> GenWrapper<P> {
         match self {
             GenWrapper::Empirical(g) => g.generation_number(),
             GenWrapper::Prior => 0,
+        }
+    }
+
+    pub fn load_previous_gen<M: Model, S: Storage>(storage: &S, config: &Config) -> ABCDResult<GenWrapper<M::Parameters>>
+    where 
+        M: Model<Parameters = P>,
+        P: DeserializeOwned + Debug
+    {
+        if storage.previous_gen_number()? == 0 {
+            Ok(GenWrapper::from_prior())
+        } else {
+            Ok(GenWrapper::from_generation(
+                storage.load_previous_gen()?, 
+                config.clone()
+            ))
         }
     }
 

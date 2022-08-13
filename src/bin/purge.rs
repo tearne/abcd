@@ -14,6 +14,7 @@ struct Purge {
 /// Run the purger to delete all versions of all objects
 /// 
 /// ```
+/// export RUST_LOG=error,abcd=info
 /// cargo run --release --bin purge -- --bucket $TEST_BUCKET --prefix $TEST_PREFIX
 /// ```
 fn main() {

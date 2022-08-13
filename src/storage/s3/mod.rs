@@ -75,6 +75,7 @@ impl S3System {
     pub fn purge_all_versions_of_everything_in_prefix(&self) -> ABCDResult<()> {
         self.handle.block_on(async{
             //TODO remove unwrap()
+            //TODO check the bucket/prefix actually exists first, else throws nasty error
             let version_pages = self.get_versions(&self.prefix).await.unwrap();
 
             for page in version_pages {

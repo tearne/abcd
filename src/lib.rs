@@ -40,10 +40,20 @@ impl<M: Model, S: Storage> ABCD<M, S> {
                 );
             }
 
-            let new_gen = match self.make_a_generation(rng) {
-                o@ Ok(_) => o,
+            let mut new_gen_result = ||{
+                //Several thing that could go wrong here, so wrap in closure for easy use of '?'
+                let prev_gen = GenWrapper::<M::Parameters>::load_previous_gen::<M, S>(
+                    &self.storage, 
+                    &self.config
+                )?;
+                self.make_particles_loop(&prev_gen, rng)?;   
+                ABCDResult::Ok(prev_gen)
+            };
+
+            let new_gen = match new_gen_result() {
+                o@Ok(_) => o,
                 Err(e) => {
-                    let msg = format!("In generation loop, failed to make a new generation: {}", e); 
+                    let msg = format!("In generation loop, failed to make a new generation but will try again: {}", e); 
                     log::error!("{}", msg);
                     gen_failures.push(msg);
                     continue
@@ -59,28 +69,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
         Ok(())
     }
 
-    fn make_a_generation(        
-        &self,
-        rng: &mut impl Rng
-    ) -> ABCDResult<GenWrapper<M::Parameters>> {
-        //TODO warning/error if generation didn't advance or went backwards?
-        let prev_gen = self.load_previous_gen()?;
-        self.do_particles(&prev_gen, rng)?;   
-        self.load_previous_gen()
-    }
-
-    fn load_previous_gen(&self) -> ABCDResult<GenWrapper<M::Parameters>>{
-        if self.storage.previous_gen_number()? == 0 {
-            Ok(GenWrapper::from_prior())
-        } else {
-            Ok(GenWrapper::from_generation(
-                self.storage.load_previous_gen()?, 
-                self.config.clone()
-            ))
-        }
-    }
-
-    fn do_particles(
+    fn make_particles_loop(
         &self,
         prev_gen: &GenWrapper<M::Parameters>,
         rng: &mut impl Rng
@@ -99,7 +88,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
                 ));
             }
 
-            let new_particle_result = self.make_a_particle(
+            let new_particle_result = self.make_one_particle(
                 tolerance,
                 prev_gen,
                 rng
@@ -129,21 +118,23 @@ impl<M: Model, S: Storage> ABCD<M, S> {
     }
 
     fn check_still_working_on_correct_generation(&self, prev_gen: &GenWrapper<M::Parameters>) -> ABCDResult<()> {
-        if self.storage.previous_gen_number().unwrap() != prev_gen.generation_number() {
-            Err(ABCDErr::StaleGenerationErr("Storage reports that previous generation moved on without us.".into()))
+        let current = prev_gen.generation_number();
+        let newest = self.storage.previous_gen_number()?;
+        if newest != current {
+            Err(ABCDErr::StaleGenerationErr(
+                "We were building on gen {current}, but storage reports {newest} is now available.".into()
+            ))
         } else {
             Ok(())
         }
     }
 
-    fn make_a_particle(
+    fn make_one_particle(
         &self, 
         tolerance: f64, 
         prev_gen: &GenWrapper<M::Parameters>, 
         rng: &mut impl Rng
     ) -> ABCDResult<()> {
-        self.check_still_working_on_correct_generation(prev_gen)?;
-        
         let parameters = {
             let sampled = prev_gen.sample(&self.model, rng);
             if self.model.prior_density(&sampled) == 0.0 {
@@ -152,6 +143,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
                 prev_gen.perturb(&sampled, &self.model, rng)
             }
         }?;
+        log::info!("Sampled (and perturbed) parameters\n {:#?}", &parameters);
 
         let scores: Vec<f64> = (0..self.config.job.num_replicates)
             .map(|_| {
@@ -161,7 +153,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
             })
             .collect::<ABCDResult<Vec<f64>>>()?;
 
-        log::info!("Scores {:?} were obatined for parameters\n {:#?}",scores, parameters);
+        log::info!("Scores = {:?}", &scores);
 
         // We now have a collection of scores for the particle
         // (B5b) Calculate f^hat by calc'ing proportion less than tolerance
@@ -193,8 +185,8 @@ impl<M: Model, S: Storage> ABCD<M, S> {
             (num / (num + rejected)) as f32
         };
 
-        log::info!("Acceptance rate was {acceptance:.3}");
-        log::info!("Tolerance is {tolerance:.3}");
+        log::info!("Acceptance rate: {acceptance:.3}");
+        log::info!("Tolerance: {tolerance:.3}");
 
         let new_generation = 
             Generation::new(
