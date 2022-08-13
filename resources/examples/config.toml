@@ -12,7 +12,3 @@ num_particles = 50
 [algorithm]
 tolerance_descent_percentile = 75
 max_num_failures = 50
-
-[run]
-# TODO want to make this optional, is meaningless for unfair coin
-base_config_path = "resources/base_config.json"

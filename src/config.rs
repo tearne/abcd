@@ -15,17 +15,12 @@ pub struct Algorithm {
     pub tolerance_descent_percentile: usize,
     pub max_num_failures: usize,
 }
-#[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
-pub struct RunConfig {
-    pub base_config_path: String,
-}
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 pub struct Config {
     pub storage: StorageConfig,
     pub job: Job,
     pub algorithm: Algorithm,
-    pub run: RunConfig,
 }
 impl Config {
     pub fn from_path<P>(config_path: P) -> Result<Self, std::io::Error>
