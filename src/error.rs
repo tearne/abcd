@@ -1,4 +1,4 @@
-use std::{num::TryFromIntError, fmt::Display};
+use std::{fmt::Display, num::TryFromIntError};
 
 pub type ABCDResult<T> = Result<T, ABCDErr>;
 
@@ -19,7 +19,9 @@ impl Display for ABCDErr {
             Self::ParticleErr(ref msg) => write!(f, "ParticleErr:{}", msg),
             Self::InfrastructureError(ref msg) => write!(f, "InfrastructureErr: {}", msg),
             Self::SystemError(ref msg) => write!(f, "SystemErr: {}", msg),
-            Self::TooManyRetriesError(ref msg, ref history) => write!(f, "{}\n  {:#?}", msg, history),
+            Self::TooManyRetriesError(ref msg, ref history) => {
+                write!(f, "{}\n  {:#?}", msg, history)
+            }
         }
     }
 }
@@ -75,13 +77,17 @@ impl From<aws_sdk_s3::types::SdkError<aws_sdk_s3::error::PutObjectError>> for AB
 }
 
 impl From<aws_sdk_s3::types::SdkError<aws_sdk_s3::error::GetBucketVersioningError>> for ABCDErr {
-    fn from(value: aws_sdk_s3::types::SdkError<aws_sdk_s3::error::GetBucketVersioningError>) -> Self {
+    fn from(
+        value: aws_sdk_s3::types::SdkError<aws_sdk_s3::error::GetBucketVersioningError>,
+    ) -> Self {
         ABCDErr::InfrastructureError(format!("Failed to get bucket version data: {}", value))
     }
 }
 
 impl From<aws_sdk_s3::types::SdkError<aws_sdk_s3::error::ListObjectVersionsError>> for ABCDErr {
-    fn from(value: aws_sdk_s3::types::SdkError<aws_sdk_s3::error::ListObjectVersionsError>) -> Self {
+    fn from(
+        value: aws_sdk_s3::types::SdkError<aws_sdk_s3::error::ListObjectVersionsError>,
+    ) -> Self {
         ABCDErr::InfrastructureError(format!("Failed to list object version data: {}", value))
     }
 }

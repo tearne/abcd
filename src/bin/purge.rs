@@ -12,7 +12,7 @@ struct Purge {
 }
 
 /// Run the purger to delete all versions of all objects
-/// 
+///
 /// ```
 /// export RUST_LOG=error,abcd=info
 /// cargo run --release --bin purge -- --bucket $TEST_BUCKET --prefix $TEST_PREFIX
@@ -26,11 +26,7 @@ fn main() {
     let runtime = Runtime::new().unwrap();
     let handle = runtime.handle();
 
-    let s3 = S3System::new(
-        purge.bucket,
-        purge.prefix,
-        handle.clone()
-    ).unwrap();
+    let s3 = S3System::new(purge.bucket, purge.prefix, handle.clone()).unwrap();
 
     s3.purge_all_versions_of_everything_in_prefix().unwrap();
 }

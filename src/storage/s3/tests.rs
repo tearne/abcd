@@ -10,7 +10,8 @@ use tokio::runtime::Runtime;
 
 use crate::{
     storage::{
-        config::StorageConfig, test_helper::{DummyParams, gen_002, make_dummy_generation}
+        config::StorageConfig,
+        test_helper::{gen_002, make_dummy_generation, DummyParams},
     },
     test_helper::test_data_path,
 };
@@ -37,7 +38,7 @@ impl StorageTestHelper {
         let prefix = envmnt::expand(prefix, Some(options));
 
         let runtime = Runtime::new().unwrap();
-            
+
         let client = {
             let config = runtime.block_on(
                 aws_config::from_env()
@@ -243,12 +244,11 @@ fn build_instance(helper: &StorageTestHelper) -> S3System {
         bucket: helper.bucket.clone(),
         prefix: helper.prefix.clone(),
     };
-   
+
     storage_config
         .build_s3(helper.runtime.handle().clone())
         .expect("Failed to bulid storage instance")
 }
-
 
 #[test]
 fn test_previous_gen_num_two() {
@@ -326,7 +326,7 @@ fn test_exception_if_save_without_init() {
 fn test_save_particle() {
     let helper = StorageTestHelper::new("test_save_particle", true);
     let instance = build_instance(&helper);
-    
+
     helper.put_recursive("resources/test/storage/normal");
 
     let particle = Particle {
@@ -368,10 +368,7 @@ fn test_save_particle_zero_weight() {
     let loaded: Particle<DummyParams> =
         serde_json::from_str(&helper.get_object(&save_path)).unwrap();
 
-    assert_eq!(
-        zero_wt_particle, 
-        loaded
-    );
+    assert_eq!(zero_wt_particle, loaded);
 }
 
 #[test]
@@ -384,18 +381,18 @@ fn test_exception_if_accepted_contains_imposter() {
     match instance.num_accepted_particles() {
         Err(ABCDErr::SystemError(_)) => (),
         Err(e) => panic!("Expected SystemErr, got: {}", e),
-        Ok(_) => panic!("Expected SystemErr, got Ok")
+        Ok(_) => panic!("Expected SystemErr, got Ok"),
     }
 
     match instance.load_accepted_particles::<DummyParams>() {
         Err(ABCDErr::SystemError(_)) => (),
         Err(e) => panic!("Expected SystemErr, got: {}", e),
-        Ok(_) => panic!("Expected SystemErr, got Ok")
+        Ok(_) => panic!("Expected SystemErr, got Ok"),
     }
 }
 
 #[test]
-fn test_exception_if_rejected_contains_imposter(){
+fn test_exception_if_rejected_contains_imposter() {
     let helper = StorageTestHelper::new("test_exception_if_rejected_contains_imposter", true);
     let instance = build_instance(&helper);
 
@@ -404,10 +401,9 @@ fn test_exception_if_rejected_contains_imposter(){
     match instance.num_rejected_particles() {
         Err(ABCDErr::SystemError(_)) => (),
         Err(e) => panic!("Expected SystemErr, got: {}", e),
-        Ok(_) => panic!("Expected SystemErr, got Ok")
+        Ok(_) => panic!("Expected SystemErr, got Ok"),
     }
 }
-
 
 #[test]
 fn test_exception_if_save_inconsistent_gen_number() {
@@ -423,7 +419,7 @@ fn test_exception_if_save_inconsistent_gen_number() {
     match result {
         Err(ABCDErr::SystemError(_)) => (),
         Err(e) => panic!("Expected SystemErr, got: {}", e),
-        Ok(_) => panic!("Expected SystemErr, got Ok")
+        Ok(_) => panic!("Expected SystemErr, got Ok"),
     }
 }
 
@@ -441,7 +437,7 @@ fn test_exception_if_save_gen_which_already_exists() {
     match result {
         Err(ABCDErr::SystemError(_)) => (),
         Err(e) => panic!("Expected SystemErr, got: {}", e),
-        Ok(_) => panic!("Expected SystemErr, got Ok")
+        Ok(_) => panic!("Expected SystemErr, got Ok"),
     }
 }
 
@@ -505,10 +501,7 @@ fn test_num_rejected_particles() {
 
     helper.put_recursive("resources/test/storage/normal");
 
-    assert_eq!(
-        2, 
-        instance.num_rejected_particles().unwrap()
-    );
+    assert_eq!(2, instance.num_rejected_particles().unwrap());
 }
 
 #[test]
@@ -518,10 +511,7 @@ fn test_num_rejected_particles_none() {
 
     helper.put_recursive("resources/test/storage/accepted_imposter_none_rejected");
 
-    assert_eq!(
-        0, 
-        instance.num_rejected_particles().unwrap()
-    );
+    assert_eq!(0, instance.num_rejected_particles().unwrap());
 }
 
 #[test]
@@ -541,17 +531,11 @@ fn test_save_generation() {
     let expected = dummy_generation;
 
     //Manually load what was saved to S3 to check
-    let actual: Generation<DummyParams> =
-        serde_json::from_str(
-            &helper.get_object(
-                &format!(
-                        "{}/completed/gen_{:03}.json", 
-                        &instance.prefix,
-                        gen_number, 
-                    )
-                )
-            )
-            .unwrap();
+    let actual: Generation<DummyParams> = serde_json::from_str(&helper.get_object(&format!(
+        "{}/completed/gen_{:03}.json",
+        &instance.prefix, gen_number,
+    )))
+    .unwrap();
 
     assert_eq!(expected, actual);
 }
@@ -565,14 +549,17 @@ fn test_purge_all_versions_of_everything() {
     helper.put_recursive("resources/test/storage/normal");
     helper.put_recursive("resources/test/storage/normal");
 
-    instance.purge_all_versions_of_everything_in_prefix().unwrap();
+    instance
+        .purge_all_versions_of_everything_in_prefix()
+        .unwrap();
 
     //There should be no versions of anything left
-    let mut pages = helper.runtime.block_on(async{
-        instance.get_versions(&instance.prefix).await
-    }).unwrap();
+    let mut pages = helper
+        .runtime
+        .block_on(async { instance.get_versions(&instance.prefix).await })
+        .unwrap();
     assert!(pages.len() == 1);
-    
+
     let versions = pages.swap_remove(0);
     assert!(versions.versions().is_none());
     assert!(versions.delete_markers().is_none());

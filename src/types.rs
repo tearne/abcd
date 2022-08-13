@@ -32,7 +32,7 @@ impl<P> Population<P> {
         Self {
             tolerance,
             acceptance,
-            normalised_particles
+            normalised_particles,
         }
     }
 
@@ -51,18 +51,19 @@ impl<P> Generation<P> {
         mut particles: Vec<Particle<P>>,
         generation_number: u16,
         tolerance: f64,
-        acceptance: f32
-    ) -> Self{
-        let total_weight : f64 = particles.iter().map(|p|p.weight).sum();
-        
+        acceptance: f32,
+    ) -> Self {
+        let total_weight: f64 = particles.iter().map(|p| p.weight).sum();
+
         //(B7) Normalise all the weights together
         #[allow(clippy::assign_op_pattern)]
-        particles.iter_mut()
-            .for_each(|p| p.weight = p.weight / total_weight );
+        particles
+            .iter_mut()
+            .for_each(|p| p.weight = p.weight / total_weight);
 
-        Self{
+        Self {
             pop: Population::<P>::new(tolerance, acceptance, particles),
-            number:generation_number
+            number: generation_number,
         }
     }
 }

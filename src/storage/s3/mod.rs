@@ -3,9 +3,11 @@ mod tests;
 
 use aws_sdk_s3::error::GetObjectAclError;
 use aws_sdk_s3::model::{
-    BucketVersioningStatus, Delete, Object, ObjectCannedAcl, ObjectIdentifier
+    BucketVersioningStatus, Delete, Object, ObjectCannedAcl, ObjectIdentifier,
 };
-use aws_sdk_s3::output::{GetObjectOutput, ListObjectsV2Output, PutObjectOutput, ListObjectVersionsOutput};
+use aws_sdk_s3::output::{
+    GetObjectOutput, ListObjectVersionsOutput, ListObjectsV2Output, PutObjectOutput,
+};
 use aws_sdk_s3::types::{ByteStream, SdkError};
 use aws_sdk_s3::{Client, Region};
 use bytes::Bytes;
@@ -26,13 +28,13 @@ pub struct S3System {
     pub bucket: String,
     client: Client,
     pub(super) handle: Handle,
-    pub prefix: String, 
-    particle_prefix: String, 
-    completed_prefix: String, 
+    pub prefix: String,
+    particle_prefix: String,
+    completed_prefix: String,
     completed_gen_re: Regex,
 }
 impl S3System {
-    pub fn new(bucket: String, prefix: String, handle: Handle) -> ABCDResult<Self> {        
+    pub fn new(bucket: String, prefix: String, handle: Handle) -> ABCDResult<Self> {
         let client = {
             let config = handle.block_on(
                 aws_config::from_env()
@@ -42,15 +44,9 @@ impl S3System {
             Client::new(&config)
         };
 
-        let completed_prefix = format!(
-            "{}/completed",
-            &prefix,
-        );
+        let completed_prefix = format!("{}/completed", &prefix,);
 
-        let particle_prefix = format!(
-            "{}/particles",
-            &prefix
-        );
+        let particle_prefix = format!("{}/particles", &prefix);
 
         let completed_gen_re = {
             let string = format!(r#"^{}/completed/gen_(?P<gid>\d*).json"#, &prefix);
@@ -61,19 +57,21 @@ impl S3System {
             bucket,
             client,
             handle,
-            prefix, 
+            prefix,
             particle_prefix,
             completed_prefix,
             completed_gen_re,
         };
 
-        instance.handle.block_on(instance.assert_versioning_active())?;
-        
+        instance
+            .handle
+            .block_on(instance.assert_versioning_active())?;
+
         Ok(instance)
     }
 
     pub fn purge_all_versions_of_everything_in_prefix(&self) -> ABCDResult<()> {
-        self.handle.block_on(async{
+        self.handle.block_on(async {
             self.assert_versioning_active().await?;
             let version_pages = self.get_versions(&self.prefix).await?;
 
@@ -83,7 +81,7 @@ impl S3System {
                 let object_versions = page.versions.unwrap_or_default();
                 let delete_markers = page.delete_markers.unwrap_or_default();
 
-                let it = delete_markers.into_iter().map(|item|{
+                let it = delete_markers.into_iter().map(|item| {
                     ObjectIdentifier::builder()
                         .set_version_id(item.version_id)
                         .set_key(item.key)
@@ -91,7 +89,7 @@ impl S3System {
                 });
                 object_identifiers.extend(it);
 
-                let it = object_versions.into_iter().map(|item|{
+                let it = object_versions.into_iter().map(|item| {
                     ObjectIdentifier::builder()
                         .set_version_id(item.version_id)
                         .set_key(item.key)
@@ -99,7 +97,7 @@ impl S3System {
                 });
                 object_identifiers.extend(it);
 
-                if !object_identifiers.is_empty(){
+                if !object_identifiers.is_empty() {
                     log::info!("Deleting {} identifiers", object_identifiers.len());
                     self.client
                         .delete_objects()
@@ -115,7 +113,7 @@ impl S3System {
                 } else {
                     log::info!("Nothing to delete")
                 }
-            };
+            }
 
             ABCDResult::Ok(())
         })
@@ -177,20 +175,18 @@ impl S3System {
     }
 
     fn assert_only_json(objects: &[Object], prefix: &str) -> ABCDResult<()> {
-        let is_not_json_file = |o:&Object|{
+        let is_not_json_file = |o: &Object| {
             o.key
                 .as_ref()
-                .map(|k|!k.ends_with(".json"))
+                .map(|k| !k.ends_with(".json"))
                 .unwrap_or(true)
         };
 
         if objects.iter().any(is_not_json_file) {
-            Err(ABCDErr::SystemError(
-                format!(
-                    "Prefix {} contains a non-json file.",
-                    prefix
-                )
-            ))
+            Err(ABCDErr::SystemError(format!(
+                "Prefix {} contains a non-json file.",
+                prefix
+            )))
         } else {
             Ok(())
         }
@@ -200,11 +196,7 @@ impl S3System {
         let prefix = {
             let gen_no = self.previous_gen_number_async().await? + 1;
             let gen_dir = format!("gen_{:03}", gen_no);
-            format!(
-                "{}/{}/accepted", 
-                &self.particle_prefix, 
-                gen_dir
-            )
+            format!("{}/{}/accepted", &self.particle_prefix, gen_dir)
         };
 
         let objects = self.list_objects_v2(&prefix).await?;
@@ -219,9 +211,7 @@ impl S3System {
             .body
             .collect()
             .await
-            .map_err(|e| 
-                ABCDErr::InfrastructureError(format!("Empty S3 byte stream: {}", e))
-            )?
+            .map_err(|e| ABCDErr::InfrastructureError(format!("Empty S3 byte stream: {}", e)))?
             .into_bytes();
 
         let string = std::str::from_utf8(&bytes).unwrap();
@@ -253,15 +243,7 @@ impl S3System {
         let mut acc: Vec<ListObjectVersionsOutput> = Vec::new();
 
         loop {
-            let out = 
-                next_page(
-                    &self.client, 
-                    &self.bucket, 
-                    prefix, 
-                    next_key,
-                    next_version
-                )
-                .await?;
+            let out = next_page(&self.client, &self.bucket, prefix, next_key, next_version).await?;
 
             next_key = out.next_key_marker.clone().map(String::from);
             next_version = out.next_version_id_marker.clone().map(String::from);
@@ -286,7 +268,9 @@ impl S3System {
         let delete_markers = first_page.delete_markers.unwrap_or_default();
 
         if !delete_markers.is_empty() {
-            return Err(ABCDErr::InfrastructureError("Detected S3 delete markers, which could result in stale data being read.".into()));
+            return Err(ABCDErr::InfrastructureError(
+                "Detected S3 delete markers, which could result in stale data being read.".into(),
+            ));
         }
 
         if versions.len() == 1 {
@@ -316,7 +300,7 @@ impl S3System {
                 None
             }
         });
-       
+
         let to_delete: Vec<ObjectIdentifier> = {
             vers_to_delete
                 .map(|(key, id)| {
@@ -362,7 +346,9 @@ impl S3System {
             .filter_map(|o| o.key.as_ref())
             .any(|k| k.ends_with("abcd.init"))
         {
-            return Err(ABCDErr::InfrastructureError("abcd.init marker not found in S3.".into()));
+            return Err(ABCDErr::InfrastructureError(
+                "abcd.init marker not found in S3.".into(),
+            ));
         }
         let key_strings = objects.into_iter().filter_map(|obj| obj.key);
         let gen_number = key_strings
@@ -391,11 +377,7 @@ impl Storage for S3System {
             let prev_gen_no = self.previous_gen_number_async().await?;
             let object_key = {
                 let prev_gen_file_name = format!("gen_{:03}.json", prev_gen_no);
-                format!(
-                    "{}/{}",
-                    &self.completed_prefix,
-                    prev_gen_file_name
-                )
+                format!("{}/{}", &self.completed_prefix, prev_gen_file_name)
             };
 
             let version_id = self.ensure_only_original_verions(&object_key).await?;
@@ -417,8 +399,7 @@ impl Storage for S3System {
             } else {
                 Err(ABCDErr::SystemError(format!(
                     "Expected object to contain gen number {} but upon deserialisation found {}",
-                    prev_gen_no, 
-                    gen.number
+                    prev_gen_no, gen.number
                 )))
             }
         })
@@ -437,16 +418,15 @@ impl Storage for S3System {
                     file_uuid.to_string() + ".json"
                 };
 
-                let status = 
-                    if w.weight > 0.0 { "accepted" }
-                    else { "rejected" };
+                let status = if w.weight > 0.0 {
+                    "accepted"
+                } else {
+                    "rejected"
+                };
 
                 format!(
                     "{}/{}/{}/{}",
-                    &self.particle_prefix,
-                    &gen_file_dir,
-                    &status,
-                    particle_file_name,
+                    &self.particle_prefix, &gen_file_dir, &status, particle_file_name,
                 )
             };
 
@@ -458,9 +438,7 @@ impl Storage for S3System {
     }
 
     fn num_accepted_particles(&self) -> ABCDResult<u32> {
-        let files_in_folder = self
-            .handle
-            .block_on(self.get_files_in_accepted_dir());
+        let files_in_folder = self.handle.block_on(self.get_files_in_accepted_dir());
 
         match files_in_folder {
             Ok(files) => Ok(files.len().try_into()?),
@@ -480,7 +458,9 @@ impl Storage for S3System {
                 .map(|t| t.key)
                 .collect::<Option<Vec<String>>>()
                 .ok_or_else(|| {
-                    ABCDErr::InfrastructureError("In S3, failed to identify all particle file names".into())
+                    ABCDErr::InfrastructureError(
+                        "In S3, failed to identify all particle file names".into(),
+                    )
                 })?;
 
             let particle_futures = object_names.into_iter().map(|filename| {
@@ -525,11 +505,7 @@ impl Storage for S3System {
             let object_path = {
                 let object_name = format!("gen_{:03}.json", gen.number);
 
-                format!(
-                    "{}/{}", 
-                    &self.completed_prefix, 
-                    object_name
-                )
+                format!("{}/{}", &self.completed_prefix, object_name)
             };
 
             //Test if the file is somehow already there
@@ -570,13 +546,9 @@ impl Storage for S3System {
                 let current_gen = self.previous_gen_number_async().await? + 1;
                 let gen_dir = format!("gen_{:03}", current_gen);
 
-                format!(
-                    "{}/{}/rejected",
-                    &self.particle_prefix,
-                    &gen_dir
-                )
+                format!("{}/{}/rejected", &self.particle_prefix, &gen_dir)
             };
-            
+
             let objects = self.list_objects_v2(&prefix).await?;
             Self::assert_only_json(&objects, &prefix)?;
 

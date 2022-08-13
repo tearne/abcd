@@ -1,14 +1,14 @@
 use std::{ops::Range, path::Path};
 
-use abcd::{Model, etc::config::Config, ABCD};
+use abcd::{etc::config::Config, Model, ABCD};
 use color_eyre::eyre;
 use path_absolutize::Absolutize;
-use serde::{Deserialize, Serialize};
 use rand::Rng;
+use serde::{Deserialize, Serialize};
 use statrs::distribution::Normal;
 use tokio::runtime::Runtime;
 
-#[derive(Serialize, Deserialize, Debug,Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct MyParameters {
     heads: f64,
 }
@@ -16,16 +16,18 @@ struct MyParameters {
 #[derive(Debug)]
 struct Uniform {
     range: Range<f64>,
-    
 }
 impl Uniform {
     fn new(lower: f64, upper: f64) -> Self {
         assert!(lower < upper);
-        Self{
-            range: Range{start: lower, end: upper},
+        Self {
+            range: Range {
+                start: lower,
+                end: upper,
+            },
         }
     }
-    
+
     fn sample(&self, rng: &mut impl Rng) -> f64 {
         rng.gen_range(self.range.clone())
     }
@@ -33,8 +35,11 @@ impl Uniform {
     fn density(&self, v: f64) -> f64 {
         let low = self.range.start;
         let high = self.range.end;
-        if v > high || v < low { 0.0 }
-        else { 1.0 }
+        if v > high || v < low {
+            0.0
+        } else {
+            1.0
+        }
     }
 }
 
@@ -44,8 +49,8 @@ struct Kernel {
 }
 impl Kernel {
     fn new(std_dev: f64) -> Self {
-        Self{ 
-            normal: Normal::new(0.0,std_dev).unwrap()
+        Self {
+            normal: Normal::new(0.0, std_dev).unwrap(),
         }
     }
 
@@ -69,8 +74,8 @@ struct MyModel {
 
 impl MyModel {
     pub fn new(observed_proportion_heads: f64, reps: u64) -> Self {
-        MyModel { 
-            prior: Uniform::new(0.0,1.0),
+        MyModel {
+            prior: Uniform::new(0.0, 1.0),
             kernel: Kernel::new(0.05),
             observed: observed_proportion_heads,
             reps,
@@ -83,28 +88,22 @@ impl Model for MyModel {
 
     fn prior_sample(&self, rng: &mut impl Rng) -> Self::Parameters {
         let heads: f64 = self.prior.sample(rng);
-        MyParameters {
-            heads
-        }
+        MyParameters { heads }
     }
 
     fn prior_density(&self, p: &Self::Parameters) -> f64 {
-        let density : f64 = {
-        self.prior.density(p.heads)};
+        let density: f64 = { self.prior.density(p.heads) };
         density
     }
 
     fn perturb(&self, _p: &Self::Parameters, rng: &mut impl Rng) -> Self::Parameters {
         let heads: f64 = _p.heads + self.kernel.sample(rng);
-        MyParameters {
-            heads
-        }
+        MyParameters { heads }
     }
 
     fn pert_density(&self, _from: &Self::Parameters, _to: &Self::Parameters) -> f64 {
-        let pert_density : f64 = {
-            self.kernel.density(_from.heads - _to.heads) };
-            pert_density
+        let pert_density: f64 = { self.kernel.density(_from.heads - _to.heads) };
+        pert_density
     }
 
     fn score<E: std::error::Error>(&self, p: &Self::Parameters) -> Result<f64, E> {
@@ -113,7 +112,7 @@ impl Model for MyModel {
 
         for _ in 0..self.reps {
             let coin_toss = random.gen_bool(p.heads);
-            if coin_toss  {
+            if coin_toss {
                 heads_count += 1;
             }
         }
@@ -133,7 +132,7 @@ fn main() -> eyre::Result<()> {
     let m = MyModel::new(observed_proportion_heads, reps);
     let mut random = rand::thread_rng();
 
-    let path = Path::new("./config.toml").absolutize().unwrap(); 
+    let path = Path::new("./config.toml").absolutize().unwrap();
     log::info!("Load config from {:?}", path);
     let config = Config::from_path(path)?;
 

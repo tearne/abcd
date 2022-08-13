@@ -84,11 +84,7 @@ mod test_helper {
             weight: 0.1,
         };
 
-        let pop = Population::new(
-            0.5678,
-            0.75,
-            vec![particle_1, particle_2],
-        );
+        let pop = Population::new(0.5678, 0.75, vec![particle_1, particle_2]);
 
         Generation {
             pop,

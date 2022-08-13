@@ -3,8 +3,7 @@ use std::path::PathBuf;
 use envmnt::{ExpandOptions, ExpansionType};
 use tokio::runtime::Handle;
 
-
-use crate::error::{ABCDResult, ABCDErr};
+use crate::error::{ABCDErr, ABCDResult};
 
 use super::s3::S3System;
 
@@ -21,11 +20,10 @@ impl StorageConfig {
                 panic!("Can't build FileSystem from S3 config")
             }
             StorageConfig::S3 { bucket, prefix } => {
-
                 if bucket.starts_with("s3://") {
                     return Err(ABCDErr::SystemError(
                         "Bucket in config shouldn't start with 's3://'.  Just provide the bucket name.".into()
-                    ))
+                    ));
                 }
 
                 // Expand bucket environment variables as appropriate
