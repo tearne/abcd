@@ -154,13 +154,17 @@ impl<M: Model, S: Storage> ABCD<M, S> {
         }?;
         log::info!("Proposed parameters:\n {:#?}", &parameters);
 
-        let scores: Vec<f64> = (0..self.config.job.num_replicates)
+        let scores: ABCDResult<Vec<f64>> = (0..self.config.job.num_replicates)
             .map(|_| {
                 self.check_still_working_on_correct_generation(prev_gen)?;
                 // (B5a) run the model to get a score
-                self.model.score(&parameters)
+                self.model.score(&parameters).map_err(|e|{
+                    ABCDErr::SystemError(format!("Error in client model code: {e}"))
+                })
             })
-            .collect::<ABCDResult<Vec<f64>>>()?;
+            .collect();
+            
+        let scores = scores?;
 
         log::info!("Scores = {:?}", &scores);
 

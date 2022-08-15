@@ -84,6 +84,7 @@ impl MyModel {
 
 impl Model for MyModel {
     type Parameters = MyParameters;
+    type E = eyre::Report;
 
     fn prior_sample(&self, rng: &mut impl Rng) -> Self::Parameters {
         let heads: f64 = self.prior.sample(rng);
@@ -105,7 +106,7 @@ impl Model for MyModel {
         pert_density
     }
 
-    fn score<E: std::error::Error>(&self, p: &Self::Parameters) -> Result<f64, E> {
+    fn score(&self, p: &Self::Parameters) -> Result<f64, Self::E> {
         let mut random = rand::thread_rng();
         let mut heads_count: u64 = 0;
 
