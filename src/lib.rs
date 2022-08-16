@@ -51,7 +51,11 @@ impl<M: Model, S: Storage> ABCD<M, S> {
                     &self.config,
                 )?;
                 self.make_particles_loop(&prev_gen, rng)?;
-                ABCDResult::Ok(prev_gen)
+                let latest_gen = GenWrapper::<M::Parameters>::load_previous_gen::<M, S>(
+                    &self.storage,
+                    &self.config,
+                )?;
+                ABCDResult::Ok(latest_gen)
             };
 
             let new_gen = match new_gen_result() {
