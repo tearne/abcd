@@ -80,13 +80,17 @@ impl<P> GenWrapper<P> {
             GenWrapper::Prior => Ok(f64::MAX),
         }
     }
-    pub fn weigh<M: Model<Parameters = P>>(
+    pub fn weigh<M> (
         &self,
         parameters: P,
         scores: Vec<f64>,
         tolerance: f64,
         model: &M,
-    ) -> Particle<P> {
+    ) -> ABCDResult<Particle<P>> 
+    where 
+        M: Model<Parameters = P>,
+        P: Debug,
+    {
         let fhat = {
             // (B5b) Calculate f^hat by calc'ing proportion less than tolerance
             let number_reps = cast::f64(scores.len());
@@ -95,14 +99,20 @@ impl<P> GenWrapper<P> {
             cast::f64(number_reps_less_than_tolerance) / number_reps
         };
 
-        match self {
+        if fhat == 0.0 {
+            return Err(ABCDErr::ParticleErr(format!("fhat calculated as 0 for {:?}", &parameters).into()));
+        }
+
+        let result = match self {
             GenWrapper::Empirical(g) => g.weigh(parameters, scores, fhat, model),
             GenWrapper::Prior => Particle {
                 parameters,
                 scores,
                 weight: fhat,
             },
-        }
+        };
+
+        Ok(result)
     }
 }
 
