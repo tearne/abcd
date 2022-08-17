@@ -10,7 +10,7 @@ use statrs::statistics::{Data, OrderStatistics, Statistics};
 use std::{borrow::Cow, fmt::Debug};
 
 pub enum GenWrapper<P> {
-    Empirical(Box<Emp<P>>),
+    Emp(Box<Empirical<P>>),
     Prior,
 }
 impl<P> GenWrapper<P> {
@@ -19,12 +19,12 @@ impl<P> GenWrapper<P> {
     }
 
     pub fn from_generation(gen: Generation<P>) -> Self {
-        Self::Empirical(Box::new(Emp::new(gen)))
+        Self::Emp(Box::new(Empirical::new(gen)))
     }
 
     pub fn generation_number(&self) -> u16 {
         match self {
-            GenWrapper::Empirical(g) => g.generation_number(),
+            GenWrapper::Emp(g) => g.generation_number(),
             GenWrapper::Prior => 0,
         }
     }
@@ -51,7 +51,7 @@ impl<P> GenWrapper<P> {
         P: Clone,
     {
         match self {
-            GenWrapper::Empirical(g) => g.sample::<M, R>(rng),
+            GenWrapper::Emp(g) => g.sample::<R>(rng),
             GenWrapper::Prior => Cow::Owned(model.prior_sample(rng)),
         }
     }
@@ -74,7 +74,7 @@ impl<P> GenWrapper<P> {
 
     pub fn calculate_tolerance(&self, config: &Config) -> ABCDResult<f64> {
         match self {
-            GenWrapper::Empirical(g) => g.calculate_tolerance(config),
+            GenWrapper::Emp(g) => g.calculate_tolerance(config),
             GenWrapper::Prior => Ok(f64::MAX),
         }
     }
@@ -102,7 +102,7 @@ impl<P> GenWrapper<P> {
         }
 
         let result = match self {
-            GenWrapper::Empirical(g) => g.weigh(parameters, scores, fhat, model),
+            GenWrapper::Emp(g) => g.weigh(parameters, scores, fhat, model),
             GenWrapper::Prior => Particle {
                 parameters,
                 scores,
@@ -114,11 +114,11 @@ impl<P> GenWrapper<P> {
     }
 }
 
-pub struct Emp<P> {
+pub struct Empirical<P> {
     gen: Generation<P>,
     dist: WeightedIndex<f64>
 }
-impl<P> Emp<P> {
+impl<P> Empirical<P> {
     pub fn new(gen: Generation<P>) -> Self {
         let particle_weights: Vec<f64> = gen
             .pop
@@ -136,9 +136,8 @@ impl<P> Emp<P> {
         self.gen.number
     }
 
-    pub fn sample<M, R: Rng>(&self, rng: &mut R) -> Cow<P>
+    pub fn sample<R: Rng>(&self, rng: &mut R) -> Cow<P>
     where
-        M: Model<Parameters = P>,
         P: Clone,
     {
         let sampled_particle_index: usize = self.dist.sample(rng);
