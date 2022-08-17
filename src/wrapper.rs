@@ -18,8 +18,8 @@ impl<P> GenWrapper<P> {
         Self::Prior
     }
 
-    pub fn from_generation(gen: Generation<P>, config: Config) -> Self {
-        Self::Empirical(Box::new(Emp::new(gen, config)))
+    pub fn from_generation(gen: Generation<P>) -> Self {
+        Self::Empirical(Box::new(Emp::new(gen)))
     }
 
     pub fn generation_number(&self) -> u16 {
@@ -30,8 +30,7 @@ impl<P> GenWrapper<P> {
     }
 
     pub fn load_previous_gen<M: Model, S: Storage>(
-        storage: &S,
-        config: &Config,
+        storage: &S
     ) -> ABCDResult<GenWrapper<M::Parameters>>
     where
         M: Model<Parameters = P>,
@@ -41,8 +40,7 @@ impl<P> GenWrapper<P> {
             Ok(GenWrapper::from_prior())
         } else {
             Ok(GenWrapper::from_generation(
-                storage.load_previous_gen()?,
-                config.clone(),
+                storage.load_previous_gen()?
             ))
         }
     }
@@ -74,9 +72,9 @@ impl<P> GenWrapper<P> {
         }
     }
 
-    pub fn calculate_tolerance(&self) -> ABCDResult<f64> {
+    pub fn calculate_tolerance(&self, config: &Config) -> ABCDResult<f64> {
         match self {
-            GenWrapper::Empirical(g) => g.calculate_tolerance(),
+            GenWrapper::Empirical(g) => g.calculate_tolerance(config),
             GenWrapper::Prior => Ok(f64::MAX),
         }
     }
@@ -118,11 +116,10 @@ impl<P> GenWrapper<P> {
 
 pub struct Emp<P> {
     gen: Generation<P>,
-    dist: WeightedIndex<f64>,
-    config: Config,
+    dist: WeightedIndex<f64>
 }
 impl<P> Emp<P> {
-    fn new(gen: Generation<P>, config: Config) -> Self {
+    pub fn new(gen: Generation<P>) -> Self {
         let particle_weights: Vec<f64> = gen
             .pop
             .normalised_particles()
@@ -132,14 +129,14 @@ impl<P> Emp<P> {
 
         let dist = WeightedIndex::new(&particle_weights).unwrap();
 
-        Self { gen, dist, config }
+        Self { gen, dist }
     }
 
-    fn generation_number(&self) -> u16 {
+    pub fn generation_number(&self) -> u16 {
         self.gen.number
     }
 
-    fn sample<M, R: Rng>(&self, rng: &mut R) -> Cow<P>
+    pub fn sample<M, R: Rng>(&self, rng: &mut R) -> Cow<P>
     where
         M: Model<Parameters = P>,
         P: Clone,
@@ -150,7 +147,7 @@ impl<P> Emp<P> {
         Cow::Borrowed(params)
     }
 
-    fn calculate_tolerance(&self) -> ABCDResult<f64> {
+    fn calculate_tolerance(&self, config: &Config) -> ABCDResult<f64> {
         // Get distribution of scores from last generation then reduce by tolerance descent rate (configured) - crate exists for percentile =>
         let score_distribution: ABCDResult<Vec<f64>> = self
             .gen
@@ -168,7 +165,7 @@ impl<P> Emp<P> {
 
         let mut score_distribution = Data::new(score_distribution?);
         let new_tolerance =
-            score_distribution.percentile(self.config.algorithm.tolerance_descent_percentile);
+            score_distribution.percentile(config.algorithm.tolerance_descent_percentile);
 
         match new_tolerance.is_nan() {
             false => {

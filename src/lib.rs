@@ -45,8 +45,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
             }
             
             let prev_gen = GenWrapper::<M::Parameters>::load_previous_gen::<M, S>(
-                &self.storage,
-                &self.config,
+                &self.storage
             )?;
 
             let new_gen = match self.make_particles_loop(&prev_gen, rng) {
@@ -78,7 +77,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
         let new_gen_number = prev_gen.generation_number() + 1;
         log::info!("Starting building generation #{}", new_gen_number);
 
-        let tolerance = prev_gen.calculate_tolerance()?;
+        let tolerance = prev_gen.calculate_tolerance(&self.config)?;
         let mut particle_failures = Vec::<String>::new();
 
         loop {
