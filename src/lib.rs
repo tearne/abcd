@@ -43,22 +43,13 @@ impl<M: Model, S: Storage> ABCD<M, S> {
                     gen_failures,
                 ));
             }
+            
+            let prev_gen = GenWrapper::<M::Parameters>::load_previous_gen::<M, S>(
+                &self.storage,
+                &self.config,
+            )?;
 
-            let mut new_gen_result = || {
-                //Several thing that could go wrong here, so wrap in closure for easy use of '?'
-                let prev_gen = GenWrapper::<M::Parameters>::load_previous_gen::<M, S>(
-                    &self.storage,
-                    &self.config,
-                )?;
-                self.make_particles_loop(&prev_gen, rng)?;
-                let latest_gen = GenWrapper::<M::Parameters>::load_previous_gen::<M, S>(
-                    &self.storage,
-                    &self.config,
-                )?;
-                ABCDResult::Ok(latest_gen)
-            };
-
-            let new_gen = match new_gen_result() {
+            let new_gen = match self.make_particles_loop(&prev_gen, rng) {
                 o @ Ok(_) => o,
                 Err(e) => {
                     let msg = format!("In generation loop, failed to make a new generation but will try again: {}", e);
@@ -68,7 +59,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
                 }
             }?;
 
-            if new_gen.generation_number() == self.config.job.num_generations
+            if new_gen.number == self.config.job.num_generations
                 && self.config.job.terminate_at_target_gen
             {
                 log::info!("Reached target number of generations.");
@@ -83,7 +74,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
         &self,
         prev_gen: &GenWrapper<M::Parameters>,
         rng: &mut impl Rng,
-    ) -> ABCDResult<()> {
+    ) -> ABCDResult<Generation<M::Parameters>> {
         let new_gen_number = prev_gen.generation_number() + 1;
         log::info!("Starting building generation #{}", new_gen_number);
 
@@ -103,7 +94,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
 
             match new_particle_result {
                 o @ Ok(_) => o,
-                e @ Err(ABCDErr::StaleGenerationErr(_)) => return e,
+                Err(ABCDErr::StaleGenerationErr(msg)) => return Err(ABCDErr::StaleGenerationErr(msg)),
                 Err(e) => {
                     let msg = format!("In particle loop, failed to make particle: {}", e);
                     log::warn!("{}", msg);
@@ -147,13 +138,16 @@ impl<M: Model, S: Storage> ABCD<M, S> {
         rng: &mut impl Rng,
     ) -> ABCDResult<()> {
         let parameters = {
+            // Step B3
             let sampled = prev_gen.sample(&self.model, rng);
-            if self.model.prior_density(&sampled) == 0.0 {
+            let perturbed = prev_gen.perturb(&sampled, &self.model, rng)?;
+            // Step B4
+            if self.model.prior_density(&perturbed) == 0.0 {
                 Err(ABCDErr::ParticleErr(
-                    "Sampled particle out of prior bounds.".into(),
+                    "Perturbed particle out of prior bounds.".into(),
                 ))
             } else {
-                prev_gen.perturb(&sampled, &self.model, rng)
+                Ok(perturbed)
             }
         }?;
         log::info!("Proposed parameters:\n {:#?}", &parameters);
@@ -176,7 +170,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
         // (B5b) Calculate f^hat by calc'ing proportion less than tolerance
         // (B6) Calculate not_normalised_weight for each particle from its f^hat (f^hat(p) * prior(p)) / denom)
         let particle: Particle<M::Parameters> =
-            prev_gen.weigh(parameters, scores, tolerance, &self.model);
+            prev_gen.weigh(parameters, scores, tolerance, &self.model)?;
 
         // Save the non_normalised particle to storage
         match self.storage.save_particle(&particle) {
@@ -189,7 +183,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
         }
     }
 
-    fn flush_generation(&self, tolerance: f64, new_gen_number: u16) -> ABCDResult<()> {
+    fn flush_generation(&self, tolerance: f64, new_gen_number: u16) -> ABCDResult<Generation<M::Parameters>> {
         // Load all the non_normalised particles
         let particles: Vec<Particle<M::Parameters>> = self.storage.load_accepted_particles()?;
         let rejections = self.storage.num_rejected_particles()?;
@@ -206,7 +200,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
 
         self.storage.save_new_gen(&new_generation)?;
 
-        Ok(())
+        Ok(new_generation)
     }
 }
 
