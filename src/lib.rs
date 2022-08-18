@@ -58,10 +58,10 @@ impl<M: Model, S: Storage> ABCD<M, S> {
                 }
             }?;
 
-            if new_gen.number == self.config.job.num_generations
+            if new_gen.number >= self.config.job.num_generations
                 && self.config.job.terminate_at_target_gen
             {
-                log::info!("Reached target number of generations.");
+                log::info!("Reached target number of generations: {}", new_gen.number);
                 break;
             }
         }
