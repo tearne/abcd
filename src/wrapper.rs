@@ -98,7 +98,7 @@ impl<P> GenWrapper<P> {
         };
 
         if fhat == 0.0 {
-            return Err(ABCDErr::ParticleErr(format!("fhat calculated as 0 for {:?}", &parameters).into()));
+            return Err(ABCDErr::ParticleErr(format!("fhat calculated as 0 for {:?}", &parameters)));
         }
 
         let result = match self {
