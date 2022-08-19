@@ -154,9 +154,9 @@ impl<P> Empirical<P> {
             .normalised_particles()
             .iter()
             .map(|particle| {
-                let mean_scores: f64 = particle.scores.clone().mean();
-                match mean_scores.is_nan() {
-                    false => Ok(mean_scores),
+                let mean_score: f64 = particle.scores.clone().mean();
+                match mean_score.is_nan() {
+                    false => Ok(mean_score),
                     true => Err(ABCDErr::SystemError("Mean score is not a number.".into())),
                 }
             })
