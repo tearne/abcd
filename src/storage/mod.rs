@@ -15,7 +15,7 @@ pub trait Storage {
     where
         P: DeserializeOwned + Debug;
 
-    fn save_particle<P>(&self, particle: &Particle<P>) -> ABCDResult<String>
+    fn save_particle<P>(&self, particle: &Particle<P>, gen_num: u16) -> ABCDResult<String>
     where
         P: Serialize + Debug;
 

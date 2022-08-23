@@ -97,13 +97,6 @@ impl<P> GenWrapper<P> {
             cast::f64(number_reps_less_than_tolerance) / number_reps
         };
 
-
-        // TODO delete me
-        // Not doing this, as it will prevent rejected particles from being saved to storage
-        // if fhat == 0.0 {
-        //     return Err(ABCDErr::ParticleErr(format!("fhat calculated as 0 for {:?}", &parameters)));
-        // }
-
         let result = match self {
             GenWrapper::Emp(g) => g.weigh(parameters, scores, fhat, model),
             GenWrapper::Prior => Particle {

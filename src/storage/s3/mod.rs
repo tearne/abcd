@@ -405,13 +405,10 @@ impl Storage for S3System {
         })
     }
 
-    fn save_particle<P: Serialize>(&self, w: &Particle<P>) -> ABCDResult<String> {
+    fn save_particle<P: Serialize>(&self, w: &Particle<P>, gen_num: u16) -> ABCDResult<String> {
         self.handle.block_on(async {
             let object_path = {
-                let gen_file_dir = {
-                    let gen_no = self.previous_gen_number_async().await? + 1;
-                    format!("gen_{:03}", gen_no)
-                };
+                let gen_file_dir = format!("gen_{:03}", gen_num);
 
                 let particle_file_name = {
                     let file_uuid = Uuid::new_v4();
@@ -431,6 +428,21 @@ impl Storage for S3System {
             };
 
             let pretty_json = serde_json::to_string_pretty(w)?;
+
+           
+            let building_generation = self.previous_gen_number_async().await? + 1;
+            if gen_num != building_generation {
+                // This check will only stop obvious errors, it doesn't  protect against the situation when a
+                // generation is flushed at the same time as the particle is saved.  However, this doesn't 
+                // really matter, as the worst that would happen is that the particle is saved to the previous 
+                // generation after the flush has taken place.
+                return Err(ABCDErr::SystemError(format!(
+                    "You tried to save a particle against generation {} but the building generation is {}",
+                    gen_num,
+                    building_generation
+                )))
+            };
+
             self.put_object_future(&object_path, &pretty_json).await?;
 
             Ok(object_path)

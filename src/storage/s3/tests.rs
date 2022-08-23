@@ -314,11 +314,42 @@ fn test_exception_if_save_without_init() {
         weight: 1.234,
     };
 
-    let result = instance.save_particle(&w1);
+    let result = instance.save_particle(&w1, 1);
 
     match result {
         Err(ABCDErr::InfrastructureError(_)) => (),
         _ => panic!("Expected exception"),
+    }
+}
+
+#[test]
+fn test_exception_if_save_particle_to_wrong_gen_num(){
+    //Note, this is only a thin veil of security - it's still possible to save to a stale 
+    // generation if the gen gets flushed between the time the check is performed and the
+    // time the save actually takes place.  But that wont really matter, since the flush
+    // has already happened
+
+    let helper = StorageTestHelper::new("test_exception_if_save_particle_to_wrong_gen_num", true);
+    let instance = build_instance(&helper);
+
+    helper.put_recursive("resources/test/storage/normal");
+
+    let particle = Particle {
+        parameters: DummyParams::new(1, 2.),
+        scores: vec![100.0, 200.0],
+        weight: 1.234,
+    };
+
+    match instance.save_particle(&particle, 2) {
+        Err(ABCDErr::SystemError(_)) => (),
+        Err(e) => panic!("Expected SystemErr, got: {}", e),
+        Ok(_) => panic!("Expected SystemErr, got Ok"),
+    }
+
+    match instance.save_particle(&particle, 4) {
+        Err(ABCDErr::SystemError(_)) => (),
+        Err(e) => panic!("Expected SystemErr, got: {}", e),
+        Ok(_) => panic!("Expected SystemErr, got Ok"),
     }
 }
 
@@ -335,7 +366,7 @@ fn test_save_particle() {
         weight: 1.234,
     };
 
-    let save_path = instance.save_particle(&particle).unwrap();
+    let save_path = instance.save_particle(&particle, 3).unwrap();
     assert!(!save_path.contains("rejected") && save_path.contains("accepted"));
 
     let loaded: Particle<DummyParams> =
@@ -361,7 +392,7 @@ fn test_save_particle_zero_weight() {
         weight: 0.0,
     };
 
-    let save_path = instance.save_particle(&zero_wt_particle).unwrap();
+    let save_path = instance.save_particle(&zero_wt_particle, 3).unwrap();
 
     assert!(save_path.contains("rejected") && !save_path.contains("accepted"));
 

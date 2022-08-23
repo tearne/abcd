@@ -172,7 +172,8 @@ impl<M: Model, S: Storage> ABCD<M, S> {
             prev_gen.weigh(parameters, scores, tolerance, &self.model)?;
 
         // Save the non_normalised particle to storage
-        match self.storage.save_particle(&particle) {
+        let save_as_gen = prev_gen.generation_number() + 1;
+        match self.storage.save_particle(&particle, save_as_gen) {
             Ok(_save_result) => ABCDResult::Ok(()),
             Err(e) => {
                 let message = format!("Failed to save particle: {}", e);
