@@ -122,8 +122,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
         let newest = self.storage.previous_gen_number()?;
         if newest != current {
             Err(ABCDErr::StaleGenerationErr(
-                "We were building on gen {current}, but storage reports {newest} is now available."
-                    .into(),
+                format!("We were building on gen {current}, but storage reports {newest} is now available."),
             ))
         } else {
             Ok(())
