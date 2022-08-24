@@ -50,10 +50,14 @@ mod tests {
     #[test]
     fn build_s3_storage_properties_from_config_expanding_env_var() -> ABCDResult<()> {
         if !envmnt::exists("TEST_BUCKET") {
-            panic!("You need to set the environment variable 'TEST_BUCKET' before running this test.");
+            panic!(
+                "You need to set the environment variable 'TEST_BUCKET' before running this test."
+            );
         }
         if !envmnt::exists("TEST_PREFIX") {
-            panic!("You need to set the environment variable 'TEST_PREFIX' before running this test.");
+            panic!(
+                "You need to set the environment variable 'TEST_PREFIX' before running this test."
+            );
         }
 
         let storage_config = StorageConfig::S3 {

@@ -30,7 +30,7 @@ impl<P> GenWrapper<P> {
     }
 
     pub fn load_previous_gen<M: Model, S: Storage>(
-        storage: &S
+        storage: &S,
     ) -> ABCDResult<GenWrapper<M::Parameters>>
     where
         M: Model<Parameters = P>,
@@ -39,9 +39,7 @@ impl<P> GenWrapper<P> {
         if storage.previous_gen_number()? == 0 {
             Ok(GenWrapper::from_prior())
         } else {
-            Ok(GenWrapper::from_generation(
-                storage.load_previous_gen()?
-            ))
+            Ok(GenWrapper::from_generation(storage.load_previous_gen()?))
         }
     }
 
@@ -78,14 +76,14 @@ impl<P> GenWrapper<P> {
             GenWrapper::Prior => Ok(f64::MAX),
         }
     }
-    pub fn weigh<M> (
+    pub fn weigh<M>(
         &self,
         parameters: P,
         scores: Vec<f64>,
         tolerance: f64,
         model: &M,
-    ) -> ABCDResult<Particle<P>> 
-    where 
+    ) -> ABCDResult<Particle<P>>
+    where
         M: Model<Parameters = P>,
         P: Debug,
     {
@@ -112,7 +110,7 @@ impl<P> GenWrapper<P> {
 
 pub struct Empirical<P> {
     gen: Generation<P>,
-    dist: WeightedIndex<f64>
+    dist: WeightedIndex<f64>,
 }
 impl<P> Empirical<P> {
     pub fn new(gen: Generation<P>) -> Self {

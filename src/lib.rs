@@ -43,10 +43,8 @@ impl<M: Model, S: Storage> ABCD<M, S> {
                     gen_failures,
                 ));
             }
-            
-            let prev_gen = GenWrapper::<M::Parameters>::load_previous_gen::<M, S>(
-                &self.storage
-            )?;
+
+            let prev_gen = GenWrapper::<M::Parameters>::load_previous_gen::<M, S>(&self.storage)?;
 
             let new_gen = match self.make_particles_loop(&prev_gen, rng) {
                 o @ Ok(_) => o,
@@ -93,7 +91,9 @@ impl<M: Model, S: Storage> ABCD<M, S> {
 
             match new_particle_result {
                 o @ Ok(_) => o,
-                Err(ABCDErr::StaleGenerationErr(msg)) => return Err(ABCDErr::StaleGenerationErr(msg)),
+                Err(ABCDErr::StaleGenerationErr(msg)) => {
+                    return Err(ABCDErr::StaleGenerationErr(msg))
+                }
                 Err(e) => {
                     let msg = format!("In particle loop, failed to make particle: {}", e);
                     log::warn!("{}", msg);
@@ -121,9 +121,9 @@ impl<M: Model, S: Storage> ABCD<M, S> {
         let current = prev_gen.generation_number();
         let newest = self.storage.previous_gen_number()?;
         if newest != current {
-            Err(ABCDErr::StaleGenerationErr(
-                format!("We were building on gen {current}, but storage reports {newest} is now available."),
-            ))
+            Err(ABCDErr::StaleGenerationErr(format!(
+                "We were building on gen {current}, but storage reports {newest} is now available."
+            )))
         } else {
             Ok(())
         }
@@ -154,12 +154,12 @@ impl<M: Model, S: Storage> ABCD<M, S> {
             .map(|_| {
                 self.check_still_working_on_correct_generation(prev_gen)?;
                 // (B5a) run the model to get a score
-                self.model.score(&parameters).map_err(|e|{
-                    ABCDErr::SystemError(format!("Error in client model code: {e}"))
-                })
+                self.model
+                    .score(&parameters)
+                    .map_err(|e| ABCDErr::SystemError(format!("Error in client model code: {e}")))
             })
             .collect();
-            
+
         let scores = scores?;
 
         log::info!("Scores = {:?}", &scores);
@@ -182,7 +182,11 @@ impl<M: Model, S: Storage> ABCD<M, S> {
         }
     }
 
-    fn flush_generation(&self, tolerance: f64, new_gen_number: u16) -> ABCDResult<Generation<M::Parameters>> {
+    fn flush_generation(
+        &self,
+        tolerance: f64,
+        new_gen_number: u16,
+    ) -> ABCDResult<Generation<M::Parameters>> {
         // Load all the non_normalised particles
         let particles: Vec<Particle<M::Parameters>> = self.storage.load_accepted_particles()?;
         let rejections = self.storage.num_rejected_particles()?;

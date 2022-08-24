@@ -28,7 +28,9 @@ struct StorageTestHelper {
 impl StorageTestHelper {
     pub fn new(prefix: &str, delete_prefix_on_drop: bool) -> Self {
         if !envmnt::exists("TEST_BUCKET") {
-            panic!("You need to set the environment variable 'TEST_BUCKET' before running this test.");
+            panic!(
+                "You need to set the environment variable 'TEST_BUCKET' before running this test."
+            );
         }
 
         // Expand bucket environment variables as appropriate
@@ -323,8 +325,8 @@ fn test_exception_if_save_without_init() {
 }
 
 #[test]
-fn test_exception_if_save_particle_to_wrong_gen_num(){
-    //Note, this is only a thin veil of security - it's still possible to save to a stale 
+fn test_exception_if_save_particle_to_wrong_gen_num() {
+    //Note, this is only a thin veil of security - it's still possible to save to a stale
     // generation if the gen gets flushed between the time the check is performed and the
     // time the save actually takes place.  But that wont really matter, since the flush
     // has already happened
