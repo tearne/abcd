@@ -17,14 +17,24 @@ pub struct ABCD<M: Model, S: Storage> {
 }
 
 impl<M: Model, S: Storage> ABCD<M, S> {
+    /// Run until the target generation as specified in config.job is met
     pub fn run(model: M, config: Config, storage: S, rng: &mut impl Rng) -> ABCDResult<()> {
+        Self::inner_run(model, config, storage, rng, false)
+    }
+
+    /// Run until the next generation is reached, then shut down
+    pub fn boost(model: M, config: Config, storage: S, rng: &mut impl Rng) -> ABCDResult<()> {
+        Self::inner_run(model, config, storage, rng, true)
+    }
+
+    fn inner_run(model: M, config: Config, storage: S, rng: &mut impl Rng, boost_mode: bool) -> ABCDResult<()> {
         let abcd = ABCD {
             model,
             config,
             storage,
         };
 
-        match abcd.generation_loop(rng) {
+        match abcd.generation_loop(rng, boost_mode) {
             Err(ABCDErr::StaleGenerationErr(msg)) | Err(ABCDErr::ParticleErr(msg)) => Err(
                 ABCDErr::SystemError(format!("Unexpected error cascaded to top of ABCD: {}", msg)),
             ),
@@ -32,8 +42,9 @@ impl<M: Model, S: Storage> ABCD<M, S> {
         }
     }
 
-    fn generation_loop(&self, rng: &mut impl Rng) -> ABCDResult<()> {
+    fn generation_loop(&self, rng: &mut impl Rng, boost_mode: bool) -> ABCDResult<()> {
         let mut gen_failures = Vec::<String>::new();
+        let start_gen_num = self.storage.previous_gen_number()?;
 
         loop {
             // Generation loop
@@ -45,6 +56,11 @@ impl<M: Model, S: Storage> ABCD<M, S> {
             }
 
             let prev_gen = GenWrapper::<M::Parameters>::load_previous_gen::<M, S>(&self.storage)?;
+
+            if boost_mode && prev_gen.generation_number() > start_gen_num {
+                log::info!("Boost mode complete, from generation {} to {}", start_gen_num, prev_gen.generation_number());
+                break;
+            }
 
             let new_gen = match self.make_particles_loop(&prev_gen, rng) {
                 o @ Ok(_) => o,
