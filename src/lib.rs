@@ -24,6 +24,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
 
     /// Run until the next generation is reached, then shut down
     pub fn boost(model: M, config: Config, storage: S, rng: &mut impl Rng) -> ABCDResult<()> {
+        log::info!("Running in boost mode - will only run until the next generation.");
         Self::inner_run(model, config, storage, rng, true)
     }
 
