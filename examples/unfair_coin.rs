@@ -127,7 +127,7 @@ fn main() -> eyre::Result<()> {
     env_logger::init();
 
     let observed_proportion_heads = 0.8;
-    let num_trials = 20;
+    let num_trials = 50;
 
     let m = MyModel::new(observed_proportion_heads, num_trials);
     let mut random = rand::thread_rng();

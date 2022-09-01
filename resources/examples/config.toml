@@ -4,10 +4,10 @@ bucket = "${TEST_BUCKET}"
 prefix = "${TEST_PREFIX}"
 
 [job]
-num_generations = 16
+num_generations = 10
 terminate_at_target_gen = true
-num_replicates = 1
-num_particles = 10
+num_replicates = 4
+num_particles = 100
 
 [algorithm]
 tolerance_descent_percentile = 75
