@@ -95,6 +95,8 @@ impl<P> GenWrapper<P> {
             cast::f64(number_reps_less_than_tolerance) / number_reps
         };
 
+        log::debug!("fhat {} from scores {:?}", fhat, &scores);
+
         let result = match self {
             GenWrapper::Emp(g) => g.weigh(parameters, scores, fhat, model),
             GenWrapper::Prior => Particle {

@@ -7,6 +7,7 @@ use aws_sdk_s3::{
 use envmnt::{ExpandOptions, ExpansionType};
 use futures::TryStreamExt;
 use tokio::runtime::Runtime;
+use color_eyre::eyre::Result;
 
 use crate::{
     storage::{
@@ -151,84 +152,102 @@ impl StorageTestHelper {
 
     fn delete_prefix_recursively(&self) {
         if self.delete_prefix_on_drop {
-            if self
-                .list_objects_under(None)
-                .into_iter()
-                .map(|o| ObjectIdentifier::builder().set_key(o.key).build())
-                .next()
-                .is_none()
-            {
-                return;
-            }
+            // if self
+            //     .list_objects_under(None)
+            //     .into_iter()
+            //     .map(|o| ObjectIdentifier::builder().set_key(o.key).build())
+            //     .next()
+            //     .is_none()
+            // {
+            //     return;
+            // }
 
             self.runtime.block_on(async {
-                let list_obj_ver = self
-                    .client
-                    .list_object_versions()
-                    .bucket(&self.bucket)
-                    .prefix(&self.prefix)
-                    .send()
+                async fn next_page(
+                    client: &Client,
+                    bucket: &str,
+                    prefix: &str,
+                    next_key: Option<String>,
+                    next_version: Option<String>,
+                ) -> ABCDResult<ListObjectVersionsOutput> {
+                    client
+                        .list_object_versions()
+                        .bucket(bucket)
+                        .prefix(prefix)
+                        .set_key_marker(next_key)
+                        .set_version_id_marker(next_version)
+                        .send()
+                        .await
+                        .map_err(|e| e.into())
+                }
+        
+                let mut next_key = None;
+                let mut next_version = None;
+        
+                let mut acc_version_pages: Vec<ListObjectVersionsOutput> = Vec::new();
+        
+                loop {
+                    let out = next_page(&self.client, &self.bucket, &self.prefix, next_key, next_version)
                     .await
                     .unwrap();
+        
+                    next_key = out.next_key_marker.clone().map(String::from);
+                    next_version = out.next_version_id_marker.clone().map(String::from);
+        
+                    acc_version_pages.push(out);
+        
+                    if next_key.is_none() && next_version.is_none() {
+                        break;
+                    }
+                }
 
-                let ver_markers = list_obj_ver
-                    .versions
-                    .unwrap_or_default()
-                    .into_iter()
-                    .filter_map(|v| {
-                        if v.key.is_some() && v.version_id.is_some() {
-                            Some((v.key.unwrap(), v.version_id.unwrap()))
-                        } else {
-                            None
-                        }
-                    });
-                let del_markers = list_obj_ver
-                    .delete_markers
-                    .unwrap_or_default()
-                    .into_iter()
-                    .filter_map(|v| {
-                        if v.key.is_some() && v.version_id.is_some() {
-                            Some((v.key.unwrap(), v.version_id.unwrap()))
-                        } else {
-                            None
-                        }
-                    });
+                for page in acc_version_pages {
+                    let mut object_identifiers = Vec::new();
 
-                let object_identifiers: Vec<ObjectIdentifier> = ver_markers
-                    .chain(del_markers)
-                    .map(|(key, id)| {
+                    let object_versions = page.versions.unwrap_or_default();
+                    let delete_markers = page.delete_markers.unwrap_or_default();
+
+                    let it = delete_markers.into_iter().map(|item| {
                         ObjectIdentifier::builder()
-                            .set_version_id(Some(id))
-                            .set_key(Some(key))
+                            .set_version_id(item.version_id)
+                            .set_key(item.key)
                             .build()
-                    })
-                    .collect();
+                    });
+                    object_identifiers.extend(it);
 
-                self.client
-                    .delete_objects()
-                    .bucket(&self.bucket)
-                    .delete(
-                        Delete::builder()
-                            .set_objects(Some(object_identifiers))
-                            .build(),
-                    )
-                    .send()
-                    .await
-                    .expect("delete objects failed");
+                    let it = object_versions.into_iter().map(|item| {
+                        ObjectIdentifier::builder()
+                            .set_version_id(item.version_id)
+                            .set_key(item.key)
+                            .build()
+                    });
+                    object_identifiers.extend(it);
 
-                let _remaining = self
-                    .client
-                    .list_objects_v2()
-                    .bucket(&self.bucket)
-                    .prefix(&self.prefix)
-                    .send()
-                    .await
-                    .unwrap();
+                    if !object_identifiers.is_empty() {
+                        self.client
+                            .delete_objects()
+                            .bucket(&self.bucket)
+                            .delete(
+                                Delete::builder()
+                                    .set_objects(Some(object_identifiers))
+                                    .build(),
+                            )
+                            .send()
+                            .await
+                            .expect("delete objects failed");
+                    } else {
+                        log::info!("Nothing to delete")
+                    }
+                }
 
-                // match remaining.key_count {
-                //     0 => (),
-                //     _ => panic!("Failed to delete all objects: {:?}", &remaining),
-                // };
+                // let _remaining = self
+                //     .client
+                //     .list_objects_v2()
+                //     .bucket(&self.bucket)
+                //     .prefix(&self.prefix)
+                //     .send()
+                //     .await
+                //     .unwrap();
             })
         }
     }
@@ -274,15 +293,18 @@ fn test_previous_gen_num_zero() {
 
 #[test]
 fn test_restore_overwritten_gen() {
-    let helper = StorageTestHelper::new("test_multiple_gen", true);
+    let helper = StorageTestHelper::new("test_restore_overwritten_gen", true);
     let instance = build_instance(&helper);
 
     helper.put_recursive("resources/test/storage/normal");
 
-    // Manually upload another gen_002 file, as though
-    // it was uploaded concurrently by another node.
+    //Check this key already exists
+    let key = &format!("{}/{}", &helper.prefix, "completed/gen_002.json");
+    assert!(!helper.get_object(key).is_empty(), "expected key to exist so it could be overwritten");
+
+    //Overwrite it, as though it was uploaded concurrently by another node.
     helper.put_object(
-        &format!("{}/{}", &helper.prefix, "gen_002/gen_002.json"),
+        key,
         "Contents of an overwritten gen file",
     );
 
@@ -475,23 +497,39 @@ fn test_exception_if_save_gen_which_already_exists() {
 }
 
 #[test]
+fn test_no_accepted_particles() {
+    let helper = StorageTestHelper::new("test_no_accepted_particles", true);
+    let instance = build_instance(&helper);
+
+    helper.put_recursive("resources/test/storage/rejected_imposter_none_accepted");
+
+    assert_eq!(0, instance.num_accepted_particles().unwrap());
+}
+
+#[test]
 fn test_num_accepted_particles() {
     let helper = StorageTestHelper::new("test_num_accepted_particles", true);
     let instance = build_instance(&helper);
 
     helper.put_recursive("resources/test/storage/normal");
 
-    assert_eq!(2, instance.num_accepted_particles().unwrap())
-}
+    assert_eq!(2, instance.num_accepted_particles().unwrap());
 
-#[test]
-fn test_num_accepted_particles_zero() {
-    let helper = StorageTestHelper::new("test_num_working_particles_zero", true);
-    let instance = build_instance(&helper);
+    //Now upload more than a 'pages worth', to check pagination
+    (0..1009).for_each(|i|{
+        let key = &format!("{}/particles/gen_003/accepted/{}.json", &helper.prefix, i);
+        helper.put_object(
+            key, 
+            ""
+        );
+    });
 
-    helper.put_recursive("resources/test/storage/rejected_imposter_none_accepted");
+    let result = instance.num_accepted_particles().unwrap();
 
-    assert_eq!(0, instance.num_accepted_particles().unwrap())
+    assert_eq!(
+        1011, // 1009 + 2 already in the orignal folder
+        result
+    );
 }
 
 #[test]
@@ -528,23 +566,35 @@ fn test_load_accepted_particles() {
 }
 
 #[test]
-fn test_num_rejected_particles() {
-    let helper = StorageTestHelper::new("test_num_rejected_particles", true);
-    let instance = build_instance(&helper);
-
-    helper.put_recursive("resources/test/storage/normal");
-
-    assert_eq!(2, instance.num_rejected_particles().unwrap());
-}
-
-#[test]
-fn test_num_rejected_particles_none() {
-    let helper = StorageTestHelper::new("test_num_rejected_particles_none", true);
+fn test_no_rejected_particles() {
+    let helper = StorageTestHelper::new("test_no_rejected_particles", true);
     let instance = build_instance(&helper);
 
     helper.put_recursive("resources/test/storage/accepted_imposter_none_rejected");
 
     assert_eq!(0, instance.num_rejected_particles().unwrap());
+}
+
+#[test]
+fn test_num_rejected_particles() {
+    let helper = StorageTestHelper::new("test_num_rejected_particles", true);
+    let instance = build_instance(&helper);
+
+    helper.put_recursive("resources/test/storage/normal");
+    assert_eq!(2, instance.num_rejected_particles().unwrap());
+
+    //Now upload more than a 'pages worth', to check pagination
+    (0..1009).for_each(|i|{
+        helper.put_object(
+            &format!("{}/particles/gen_003/rejected/{}.json", &helper.prefix, i), 
+            ""
+        );
+    });
+
+    assert_eq!(
+        1011, // 1009 + 2 already in the orignal folder
+        instance.num_rejected_particles().unwrap()
+    );
 }
 
 #[test]

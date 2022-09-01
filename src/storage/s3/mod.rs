@@ -108,8 +108,7 @@ impl S3System {
                                 .build(),
                         )
                         .send()
-                        .await
-                        .expect("delete objects failed");
+                        .await?;
                 } else {
                     log::info!("Nothing to delete")
                 }
@@ -123,8 +122,7 @@ impl S3System {
         let enabled = self
             .client
             .get_bucket_versioning()
-            .bucket(&self.bucket) //NOTE: self.bucket gives s3://s3-ranch-007 when all it wants is the name s3-ranch-007
-            //.bucket("s3-ranch-007") //NOTE: self.bucket gives s3://s3-ranch-007 when all it wants is the name s3-ranch-007
+            .bucket(&self.bucket) 
             .send()
             .await?
             .status
@@ -161,15 +159,19 @@ impl S3System {
         let mut c_token = None;
         loop {
             let list_output = next_page(&self.client, &self.bucket, prefix, c_token).await?;
+
+            c_token = list_output.next_continuation_token().map(str::to_string);
+
             if let Some(mut items) = list_output.contents {
                 acc.append(&mut items);
             }
 
-            c_token = list_output.continuation_token;
             if c_token.is_none() {
                 break;
             }
         }
+
+        println!("Items {}", acc.len());
 
         Ok(acc)
     }
@@ -214,7 +216,8 @@ impl S3System {
             .map_err(|e| ABCDErr::InfrastructureError(format!("Empty S3 byte stream: {}", e)))?
             .into_bytes();
 
-        let string = std::str::from_utf8(&bytes).unwrap();
+        let string = std::str::from_utf8(&bytes)
+            .map_err(|e|ABCDErr::InfrastructureError(e.to_string()))?;
         Ok(string.into())
     }
 
@@ -347,7 +350,7 @@ impl S3System {
             .any(|k| k.ends_with("abcd.init"))
         {
             return Err(ABCDErr::InfrastructureError(
-                "abcd.init marker not found in S3.".into(),
+                format!("abcd.init marker not found in S3 at bucket {}, prefix {}", self.bucket, self.completed_prefix),
             ));
         }
         let key_strings = objects.into_iter().filter_map(|obj| obj.key);
