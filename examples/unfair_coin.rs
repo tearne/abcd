@@ -68,16 +68,16 @@ struct MyModel {
     prior: Uniform,
     kernel: Kernel,
     observed: f64,
-    reps: u64,
+    num_trials: u64,
 }
 
 impl MyModel {
-    pub fn new(observed_proportion_heads: f64, reps: u64) -> Self {
+    pub fn new(observed_proportion_heads: f64, num_trials: u64) -> Self {
         MyModel {
             prior: Uniform::new(0.0, 1.0),
-            kernel: Kernel::new(0.01),
+            kernel: Kernel::new(0.3),
             observed: observed_proportion_heads,
-            reps,
+            num_trials,
         }
     }
 }
@@ -110,14 +110,14 @@ impl Model for MyModel {
         let mut random = rand::thread_rng();
         let mut heads_count: u64 = 0;
 
-        for _ in 0..self.reps {
+        for _ in 0..self.num_trials {
             let coin_toss = random.gen_bool(p.heads);
             if coin_toss {
                 heads_count += 1;
             }
         }
 
-        let simulated = heads_count as f64 / self.reps as f64;
+        let simulated = heads_count as f64 / self.num_trials as f64;
         let diff = (self.observed - simulated).abs();
         eyre::Result::Ok(diff)
     }
@@ -126,10 +126,10 @@ impl Model for MyModel {
 fn main() -> eyre::Result<()> {
     env_logger::init();
 
-    let observed_proportion_heads = 0.7;
-    let reps = 100;
+    let observed_proportion_heads = 0.8;
+    let num_trials = 20;
 
-    let m = MyModel::new(observed_proportion_heads, reps);
+    let m = MyModel::new(observed_proportion_heads, num_trials);
     let mut random = rand::thread_rng();
 
     let path = Path::new("./config.toml").absolutize().unwrap();

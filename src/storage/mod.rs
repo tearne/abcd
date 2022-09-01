@@ -52,8 +52,6 @@ mod test_helper {
     pub fn gen_002() -> Generation<DummyParams> {
         Generation {
             pop: Population::new(
-                0.1234,
-                0.7,
                 vec![
                     Particle {
                         parameters: DummyParams::new(10, 20.0),
@@ -66,7 +64,9 @@ mod test_helper {
                         weight: 0.8,
                     },
                 ],
+                0.7,
             ),
+            next_gen_tolerance: 0.1234,
             number: 2,
         }
     }
@@ -84,11 +84,12 @@ mod test_helper {
             weight: 0.1,
         };
 
-        let pop = Population::new(0.5678, 0.75, vec![particle_1, particle_2]);
+        let pop = Population::new(vec![particle_1, particle_2], 0.75);
 
         Generation {
             pop,
             number: gen_number,
+            next_gen_tolerance: 0.1234
         }
     }
 }

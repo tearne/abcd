@@ -15,8 +15,8 @@ cd $DIR
 export RUST_LOG=error,abcd=info,unfair_coin=info 
 
 printf "About to purge old data and versions in s3://${TEST_BUCKET}/${TEST_PREFIX}\n"
-printf "... 5 second pause\n"
-sleep 5
+printf "... 2 second pause\n"
+sleep 2
 cargo run --release --bin purge -- --bucket $TEST_BUCKET --prefix $TEST_PREFIX
 
 printf "Initialising storage prefix...\n"

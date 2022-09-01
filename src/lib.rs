@@ -92,7 +92,6 @@ impl<M: Model, S: Storage> ABCD<M, S> {
         let new_gen_number = prev_gen.generation_number() + 1;
         log::info!("Starting building generation #{}", new_gen_number);
 
-        let tolerance = prev_gen.calculate_tolerance(&self.config)?;
         let mut particle_failures = Vec::<String>::new();
 
         loop {
@@ -104,7 +103,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
                 ));
             }
 
-            let new_particle_result = self.make_one_particle(tolerance, prev_gen, rng);
+            let new_particle_result = self.make_one_particle(prev_gen, rng);
 
             match new_particle_result {
                 o @ Ok(_) => o,
@@ -128,7 +127,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
             }
         }
 
-        self.flush_generation(tolerance, new_gen_number)
+        self.flush_generation(new_gen_number)
     }
 
     fn check_still_working_on_correct_generation(
@@ -148,7 +147,6 @@ impl<M: Model, S: Storage> ABCD<M, S> {
 
     fn make_one_particle(
         &self,
-        tolerance: f64,
         prev_gen: &GenWrapper<M::Parameters>,
         rng: &mut impl Rng,
     ) -> ABCDResult<()> {
@@ -185,7 +183,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
         // (B5b) Calculate f^hat by calc'ing proportion less than tolerance
         // (B6) Calculate not_normalised_weight for each particle from its f^hat (f^hat(p) * prior(p)) / denom)
         let particle: Particle<M::Parameters> =
-            prev_gen.weigh(parameters, scores, tolerance, &self.model)?;
+            prev_gen.weigh(parameters, scores, prev_gen.next_gen_tolerance()?, &self.model)?;
 
         // Save the non_normalised particle to storage
         let save_as_gen = prev_gen.generation_number() + 1;
@@ -201,7 +199,6 @@ impl<M: Model, S: Storage> ABCD<M, S> {
 
     fn flush_generation(
         &self,
-        tolerance: f64,
         new_gen_number: u16,
     ) -> ABCDResult<Generation<M::Parameters>> {
         // Load all the non_normalised particles
@@ -213,10 +210,10 @@ impl<M: Model, S: Storage> ABCD<M, S> {
             (num / (num + rejected)) as f32
         };
 
-        log::info!("Acceptance rate: {acceptance:.3}");
-        log::info!("Tolerance: {tolerance:.3}");
+        let new_generation = Generation::new(particles, new_gen_number, acceptance, &self.config)?;
 
-        let new_generation = Generation::new(particles, new_gen_number, tolerance, acceptance);
+        log::info!("Acceptance rate: {acceptance:.3}");
+        log::info!("Next gen tolerance: {:.3}", new_generation.next_gen_tolerance);
 
         self.storage.save_new_gen(&new_generation)?;
 

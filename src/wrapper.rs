@@ -70,12 +70,13 @@ impl<P> GenWrapper<P> {
         }
     }
 
-    pub fn calculate_tolerance(&self, config: &Config) -> ABCDResult<f64> {
+    pub fn next_gen_tolerance(&self) -> ABCDResult<f64> {
         match self {
-            GenWrapper::Emp(g) => g.calculate_tolerance(config),
+            GenWrapper::Emp(g) => Ok(g.gen.next_gen_tolerance),
             GenWrapper::Prior => Ok(f64::MAX),
         }
     }
+
     pub fn weigh<M>(
         &self,
         parameters: P,
@@ -140,37 +141,6 @@ impl<P> Empirical<P> {
         let particles = &self.gen.pop.normalised_particles()[sampled_particle_index];
         let params = &particles.parameters;
         Cow::Borrowed(params)
-    }
-
-    fn calculate_tolerance(&self, config: &Config) -> ABCDResult<f64> {
-        // Get distribution of scores from last generation then reduce by tolerance descent rate (configured) - crate exists for percentile =>
-        let score_distribution: ABCDResult<Vec<f64>> = self
-            .gen
-            .pop
-            .normalised_particles()
-            .iter()
-            .map(|particle| {
-                let mean_score: f64 = particle.scores.clone().mean();
-                match mean_score.is_nan() {
-                    false => Ok(mean_score),
-                    true => Err(ABCDErr::SystemError("Mean score is not a number.".into())),
-                }
-            })
-            .collect();
-
-        let mut score_distribution = Data::new(score_distribution?);
-        let new_tolerance =
-            score_distribution.percentile(config.algorithm.tolerance_descent_percentile);
-
-        match new_tolerance.is_nan() {
-            false => {
-                log::info!("Tolerance calculated as {new_tolerance}");
-                Ok(new_tolerance)
-            }
-            true => Err(ABCDErr::SystemError(
-                "Tolerance (from percentile) was not a number.".into(),
-            )),
-        }
     }
 
     fn weigh<M: Model<Parameters = P>>(

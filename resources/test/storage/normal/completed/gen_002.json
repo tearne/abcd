@@ -1,21 +1,22 @@
 {
     "pop": {
-    "tolerance": 0.1234,
-    "acceptance": 0.7,
-    "normalised_particles": [
-        {
-            "parameters" : {
-                "a": 10, "b": 20
-            },
-            "scores": [1000, 2000],
-            "weight": 0.2
-        },{
-            "parameters" : {
-                "a": 30, "b": 40
-            },
-            "scores": [3000, 4000],
-            "weight": 0.8
-        }
-    ]},
+        "acceptance": 0.7,
+        "normalised_particles": [
+            {
+                "parameters" : {
+                    "a": 10, "b": 20
+                },
+                "scores": [1000, 2000],
+                "weight": 0.2
+            },{
+                "parameters" : {
+                    "a": 30, "b": 40
+                },
+                "scores": [3000, 4000],
+                "weight": 0.8
+            }
+        ]
+    },
+    "next_gen_tolerance": 0.1234,
     "number": 2
 }
