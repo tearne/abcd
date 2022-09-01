@@ -171,8 +171,6 @@ impl S3System {
             }
         }
 
-        println!("Items {}", acc.len());
-
         Ok(acc)
     }
 
