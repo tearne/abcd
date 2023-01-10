@@ -4,7 +4,7 @@ use crate::{
     storage::Storage,
     Generation, Model, Particle,
 };
-use rand::{distributions::WeightedIndex, prelude::Distribution, Rng};
+use rand::{distributions::{WeightedIndex, Uniform}, prelude::Distribution, Rng};
 use serde::de::DeserializeOwned;
 use statrs::statistics::{Data, OrderStatistics, Statistics};
 use std::{borrow::Cow, fmt::Debug};
@@ -49,7 +49,7 @@ impl<P> GenWrapper<P> {
         P: Clone,
     {
         match self {
-            GenWrapper::Emp(g) => g.sample::<R>(rng),
+            GenWrapper::Emp(g) => g.sample_by_weight::<R>(rng),
             GenWrapper::Prior => Cow::Owned(model.prior_sample(rng)),
         }
     }
@@ -113,7 +113,8 @@ impl<P> GenWrapper<P> {
 
 pub struct Empirical<P> {
     gen: Generation<P>,
-    dist: WeightedIndex<f64>,
+    weight_dist: WeightedIndex<f64>,
+    uniform_dist: Uniform<usize>,
 }
 impl<P> Empirical<P> {
     pub fn new(gen: Generation<P>) -> Self {
@@ -124,22 +125,37 @@ impl<P> Empirical<P> {
             .map(|p| p.weight)
             .collect();
 
-        let dist = WeightedIndex::new(&particle_weights).unwrap();
+        let weight_dist = WeightedIndex::new(&particle_weights).unwrap();
+        let uniform_dist = Uniform::from(0..gen.pop.normalised_particles().len());
 
-        Self { gen, dist }
+        Self { 
+            gen, 
+            weight_dist,
+            uniform_dist, 
+        }
     }
 
     pub fn generation_number(&self) -> u16 {
         self.gen.number
     }
 
-    pub fn sample<R: Rng>(&self, rng: &mut R) -> Cow<P>
+    pub fn sample_by_weight<R: Rng>(&self, rng: &mut R) -> Cow<P>
     where
         P: Clone,
     {
-        let sampled_particle_index: usize = self.dist.sample(rng);
-        let particles = &self.gen.pop.normalised_particles()[sampled_particle_index];
-        let params = &particles.parameters;
+        let sampled_particle_index: usize = self.weight_dist.sample(rng);
+        let particle= &self.gen.pop.normalised_particles()[sampled_particle_index];
+        let params = &particle.parameters;
+        Cow::Borrowed(params)
+    }
+
+    pub fn sample_uniformly<R: Rng>(&self, rng: &mut R) -> Cow<P>
+    where
+        P: Clone,
+    {
+        let sampled_particle_index: usize = self.uniform_dist.sample(rng);
+        let particle = &self.gen.pop.normalised_particles()[sampled_particle_index];
+        let params = &particle.parameters;
         Cow::Borrowed(params)
     }
 
