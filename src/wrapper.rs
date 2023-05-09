@@ -149,14 +149,14 @@ impl<P> Empirical<P> {
         Cow::Borrowed(params)
     }
 
-    pub fn sample_uniformly<R: Rng>(&self, rng: &mut R) -> Cow<P>
+    pub fn sample_uniformly<R: Rng>(&self, rng: &mut R) -> Cow<Particle<P>>
     where
         P: Clone,
     {
         let sampled_particle_index: usize = self.uniform_dist.sample(rng);
         let particle = &self.gen.pop.normalised_particles()[sampled_particle_index];
-        let params = &particle.parameters;
-        Cow::Borrowed(params)
+        //let params = &particle.parameters;
+        Cow::Borrowed(particle)
     }
 
     fn weigh<M: Model<Parameters = P>>(
