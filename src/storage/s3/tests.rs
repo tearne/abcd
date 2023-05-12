@@ -7,7 +7,6 @@ use aws_sdk_s3::{
 use envmnt::{ExpandOptions, ExpansionType};
 use futures::TryStreamExt;
 use tokio::runtime::Runtime;
-use color_eyre::eyre::Result;
 
 use crate::{
     storage::{

@@ -20,13 +20,13 @@ struct CheckNumParticles {
 fn main() {
     env_logger::init();
 
-    let checkNumParticles = CheckNumParticles::from_args();
+    let check_num_particles = CheckNumParticles::from_args();
     //println!("{:#?}", checkNumParticles);
 
     let runtime = Runtime::new().unwrap();
     let handle = runtime.handle();
 
-    let s3 = S3System::new(checkNumParticles.bucket, checkNumParticles.prefix, handle.clone()).unwrap();
+    let s3 = S3System::new(check_num_particles.bucket, check_num_particles.prefix, handle.clone()).unwrap();
 
     println!("Number of accepted particles in current gen: {:#?}", s3.num_accepted_particles().unwrap());
 }

@@ -1,12 +1,10 @@
 use crate::{
-    config::Config,
     error::{ABCDErr, ABCDResult},
     storage::Storage,
     Generation, Model, Particle,
 };
 use rand::{distributions::{WeightedIndex, Uniform}, prelude::Distribution, Rng};
 use serde::de::DeserializeOwned;
-use statrs::statistics::{Data, OrderStatistics, Statistics};
 use std::{borrow::Cow, fmt::Debug};
 
 pub enum GenWrapper<P> {
@@ -49,8 +47,10 @@ impl<P> GenWrapper<P> {
         P: Clone,
     {
         match self {
-            GenWrapper::Emp(g) => g.sample_by_weight::<R>(rng),
-            GenWrapper::Prior => Cow::Owned(model.prior_sample(rng)),
+            GenWrapper::Emp(g) => 
+                Cow::Borrowed(&g.sample_by_weight(rng).parameters),
+            GenWrapper::Prior => 
+                Cow::Owned(model.prior_sample(rng)),
         }
     }
 
@@ -139,24 +139,20 @@ impl<P> Empirical<P> {
         self.gen.number
     }
 
-    pub fn sample_by_weight<R: Rng>(&self, rng: &mut R) -> Cow<P>
+    pub fn sample_by_weight<R: Rng>(&self, rng: &mut R) -> &Particle<P>
     where
         P: Clone,
     {
         let sampled_particle_index: usize = self.weight_dist.sample(rng);
-        let particle= &self.gen.pop.normalised_particles()[sampled_particle_index];
-        let params = &particle.parameters;
-        Cow::Borrowed(params)
+        &self.gen.pop.normalised_particles()[sampled_particle_index]
     }
 
-    pub fn sample_uniformly<R: Rng>(&self, rng: &mut R) -> Cow<Particle<P>>
+    pub fn sample_uniformly<R: Rng>(&self, rng: &mut R) -> &Particle<P>
     where
         P: Clone,
     {
         let sampled_particle_index: usize = self.uniform_dist.sample(rng);
-        let particle = &self.gen.pop.normalised_particles()[sampled_particle_index];
-        //let params = &particle.parameters;
-        Cow::Borrowed(particle)
+        &self.gen.pop.normalised_particles()[sampled_particle_index]
     }
 
     fn weigh<M: Model<Parameters = P>>(
