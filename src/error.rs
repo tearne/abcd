@@ -58,51 +58,59 @@ impl From<regex::Error> for ABCDErr {
     }
 }
 
-impl From<aws_sdk_s3::types::SdkError<aws_sdk_s3::error::GetObjectError>> for ABCDErr {
-    fn from(value: aws_sdk_s3::types::SdkError<aws_sdk_s3::error::GetObjectError>) -> Self {
+use aws_sdk_s3::error::SdkError;
+use aws_sdk_s3::operation::get_object::GetObjectError;
+use aws_sdk_s3::operation::list_objects_v2::ListObjectsV2Error;
+use aws_sdk_s3::operation::put_object::PutObjectError;
+use aws_sdk_s3::operation::get_bucket_versioning::GetBucketVersioningError;
+use aws_sdk_s3::operation::list_object_versions::ListObjectVersionsError;
+use aws_sdk_s3::operation::delete_objects::DeleteObjectsError;
+
+impl From<SdkError<GetObjectError>> for ABCDErr {
+    fn from(value: SdkError<GetObjectError>) -> Self {
         ABCDErr::InfrastructureError(format!("S3 get object error: {}", value))
     }
 }
 
-impl From<aws_sdk_s3::types::SdkError<aws_sdk_s3::error::ListObjectsV2Error>> for ABCDErr {
-    fn from(value: aws_sdk_s3::types::SdkError<aws_sdk_s3::error::ListObjectsV2Error>) -> Self {
+impl From<SdkError<ListObjectsV2Error>> for ABCDErr {
+    fn from(value: SdkError<ListObjectsV2Error>) -> Self {
         ABCDErr::InfrastructureError(format!("S3 list object error: {}", value))
     }
 }
 
-impl From<aws_sdk_s3::types::SdkError<aws_sdk_s3::error::PutObjectError>> for ABCDErr {
-    fn from(value: aws_sdk_s3::types::SdkError<aws_sdk_s3::error::PutObjectError>) -> Self {
+impl From<SdkError<PutObjectError>> for ABCDErr {
+    fn from(value: SdkError<PutObjectError>) -> Self {
         ABCDErr::InfrastructureError(format!("S3 put object error: {}", value))
     }
 }
 
-impl From<aws_sdk_s3::types::SdkError<aws_sdk_s3::error::GetBucketVersioningError>> for ABCDErr {
+impl From<SdkError<GetBucketVersioningError>> for ABCDErr {
     fn from(
-        value: aws_sdk_s3::types::SdkError<aws_sdk_s3::error::GetBucketVersioningError>,
+        value: SdkError<GetBucketVersioningError>,
     ) -> Self {
         ABCDErr::InfrastructureError(format!("Failed to get bucket version data: {}", value))
     }
 }
 
-impl From<aws_sdk_s3::types::SdkError<aws_sdk_s3::error::ListObjectVersionsError>> for ABCDErr {
+impl From<SdkError<ListObjectVersionsError>> for ABCDErr {
     fn from(
-        value: aws_sdk_s3::types::SdkError<aws_sdk_s3::error::ListObjectVersionsError>,
+        value: SdkError<ListObjectVersionsError>,
     ) -> Self {
         ABCDErr::InfrastructureError(format!("Failed to list object version data: {}", value))
     }
 }
 
-impl From<aws_sdk_s3::types::SdkError<aws_sdk_s3::error::DeleteObjectsError>> for ABCDErr {
-    fn from(value: aws_sdk_s3::types::SdkError<aws_sdk_s3::error::DeleteObjectsError>) -> Self {
+impl From<SdkError<DeleteObjectsError>> for ABCDErr {
+    fn from(value: SdkError<DeleteObjectsError>) -> Self {
         ABCDErr::InfrastructureError(format!("Failed to delete objects: {}", value))
     }
 }
 
-impl From<aws_smithy_http::byte_stream::Error> for ABCDErr {
-    fn from(value: aws_smithy_http::byte_stream::Error) -> Self {
-        ABCDErr::InfrastructureError(format!("Byte stream error: {}", value))
-    }
-}
+// impl From<aws_smithy_http::byte_stream::Error> for ABCDErr {
+//     fn from(value: aws_smithy_http::byte_stream::Error) -> Self {
+//         ABCDErr::InfrastructureError(format!("Byte stream error: {}", value))
+//     }
+// }
 
 impl From<TryFromIntError> for ABCDErr {
     fn from(value: TryFromIntError) -> Self {

@@ -1,9 +1,5 @@
 use std::{fs::DirEntry, path::Path};
 
-use aws_sdk_s3::{
-    model::{Delete, ObjectIdentifier},
-    Region,
-};
 use envmnt::{ExpandOptions, ExpansionType};
 use futures::TryStreamExt;
 use tokio::runtime::Runtime;

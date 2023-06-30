@@ -1,15 +1,15 @@
 #[cfg(test)]
 mod tests;
 
-use aws_sdk_s3::error::GetObjectAclError;
-use aws_sdk_s3::model::{
-    BucketVersioningStatus, Delete, Object, ObjectCannedAcl, ObjectIdentifier,
-};
-use aws_sdk_s3::output::{
-    GetObjectOutput, ListObjectVersionsOutput, ListObjectsV2Output, PutObjectOutput,
-};
-use aws_sdk_s3::types::{ByteStream, SdkError};
-use aws_sdk_s3::{Client, Region};
+use aws_sdk_s3::Client;
+use aws_sdk_s3::config::Region;
+use aws_sdk_s3::operation::get_object::GetObjectOutput;
+use aws_sdk_s3::operation::list_object_versions::ListObjectVersionsOutput;
+use aws_sdk_s3::operation::list_objects_v2::ListObjectsV2Output;
+use aws_sdk_s3::operation::put_object::PutObjectOutput;
+use aws_sdk_s3::types::{ObjectIdentifier, Delete, BucketVersioningStatus, Object, ObjectCannedAcl};
+use aws_smithy_http::byte_stream::ByteStream;
+use aws_smithy_http::result::SdkError;
 use bytes::Bytes;
 use futures::{Future, FutureExt, TryFutureExt};
 use regex::Regex;
@@ -531,15 +531,13 @@ impl Storage for S3System {
                 .await;
 
             match get_acl_output {
-                Err(SdkError::ServiceError {
-                    err: GetObjectAclError { .. },
-                    raw: _,
-                }) => {
+                //TODO more explicit check that file doesn't exist than asking for ACL and failing
+                Err(SdkError::ServiceError(_)) => {
                     //This is good, means we're not writing over existing gen
                     self.put_object_future(&object_path, &serde_json::to_string_pretty(gen)?)
                         .await?;
                     Ok(())
-                }
+                },
                 _ => {
                     //This is bad, the file shouldn't exist before we've saved it!
                     Err(ABCDErr::SystemError(format!(
