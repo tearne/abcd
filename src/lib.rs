@@ -122,9 +122,18 @@ impl<M: Model, S: Storage> ABCD<M, S> {
             let num_accepted = self.storage.num_accepted_particles()?;
             if num_accepted < self.config.job.num_particles {
                 log::info!("Accumulated {num_accepted} accepted particles in storage.");
+                // Before we try to make more particles - make sure gen hasn't finished on another node
+                if new_gen_number >= self.config.job.num_generations
+                   && self.config.job.terminate_at_target_gen
+                {
+                   log::info!("Reached target number of generations in particle loop: {}", new_gen_number);
+                   break;
+                }
             } else {
                 break;
             }
+
+
         }
 
         self.flush_generation(new_gen_number)
