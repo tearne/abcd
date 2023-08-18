@@ -65,6 +65,11 @@ impl<M: Model, S: Storage> ABCD<M, S> {
 
             let new_gen = match self.make_particles_loop(&prev_gen, rng) {
                 o @ Ok(_) => o,
+                Err(ABCDErr::StaleGenerationErr(msg)) => {
+                    log::warn!("{}", msg);
+                    gen_failures.push(msg);
+                    continue;
+                },
                 Err(e) => {
                     let msg = format!("In generation loop, failed to make a new generation but will try again: {}", e);
                     log::error!("{}", msg);
@@ -118,17 +123,19 @@ impl<M: Model, S: Storage> ABCD<M, S> {
                 }
             }?;
 
+            // Before we try to make more particles - make sure gen hasn't finished on another node
+            let prev_gen_num_in_storage = self.storage.previous_gen_number()?;
+            if prev_gen_num_in_storage >= self.config.job.num_generations
+                && self.config.job.terminate_at_target_gen
+            {
+                log::info!("Particle generated, but target number of generations ({}) was already flushed.", prev_gen_num_in_storage);
+                break;
+            }
+
             // Check if we now have the req'd num particles/reps, if so, break
             let num_accepted = self.storage.num_accepted_particles()?;
             if num_accepted < self.config.job.num_particles {
                 log::info!("Accumulated {num_accepted} accepted particles in storage.");
-                // Before we try to make more particles - make sure gen hasn't finished on another node
-                if new_gen_number >= self.config.job.num_generations
-                   && self.config.job.terminate_at_target_gen
-                {
-                   log::info!("Reached target number of generations in particle loop: {}", new_gen_number);
-                   break;
-                }
             } else {
                 break;
             }
