@@ -56,6 +56,14 @@ impl<M: Model, S: Storage> ABCD<M, S> {
                 ));
             }
 
+            let prev_gen_num_in_storage = self.storage.previous_gen_number()?;
+            if prev_gen_num_in_storage >= self.config.job.num_generations
+            && self.config.job.terminate_at_target_gen
+           {
+            log::info!("Reached target number of generations on another node: {}", prev_gen_num_in_storage);
+            break;
+            }
+
             let prev_gen = GenWrapper::<M::Parameters>::load_previous_gen::<M, S>(&self.storage)?;
 
             if boost_mode && prev_gen.generation_number() > start_gen_num {
@@ -84,15 +92,6 @@ impl<M: Model, S: Storage> ABCD<M, S> {
                 log::info!("Reached target number of generations: {}", new_gen.number);
                 break;
             }
-
-            let prev_gen_num_in_storage = self.storage.previous_gen_number()?;
-            if prev_gen_num_in_storage >= self.config.job.num_generations
-            && self.config.job.terminate_at_target_gen
-           {
-            log::info!("Reached target number of generations on another node: {}", prev_gen_num_in_storage);
-            break;
-            }
-
             
         }
 
@@ -138,8 +137,6 @@ impl<M: Model, S: Storage> ABCD<M, S> {
             if prev_gen_num_in_storage >= self.config.job.num_generations
                 && self.config.job.terminate_at_target_gen
             {
-                log::info!("Configured number of generations is ({}).", self.config.job.num_generations);
-                log::info!("Terminate at target gen is ({}).", self.config.job.terminate_at_target_gen);
                 log::info!("Particle generated, but target number of generations ({}) was already flushed.", prev_gen_num_in_storage);
                 break;
             }
