@@ -56,12 +56,16 @@ impl<M: Model, S: Storage> ABCD<M, S> {
                 ));
             }
 
+            //TODO this new check kind of renders the one below (line 97) unnecessary.
+            // Although, it's nice that this one has the additional words "on another node".
+            // Potentially the differentiation of whether the gen was completed here or on another node
+            // could take place within the match below?
             let prev_gen_num_in_storage = self.storage.previous_gen_number()?;
             if prev_gen_num_in_storage >= self.config.job.num_generations
-            && self.config.job.terminate_at_target_gen
-           {
-            log::info!("Reached target number of generations on another node: {}", prev_gen_num_in_storage);
-            break;
+                && self.config.job.terminate_at_target_gen
+            {
+                log::info!("Reached target number of generations on another node: {}", prev_gen_num_in_storage);
+                break;
             }
 
             let prev_gen = GenWrapper::<M::Parameters>::load_previous_gen::<M, S>(&self.storage)?;
@@ -71,6 +75,8 @@ impl<M: Model, S: Storage> ABCD<M, S> {
                 break;
             }
 
+            //TODO if the TODO below is followed and that check isn't needed any more then 
+            // self.make_particles_loop doesn't need to return a generation, just Restult<()>
             let new_gen = match self.make_particles_loop(&prev_gen, rng) {
                 o @ Ok(_) => o,
                 Err(ABCDErr::StaleGenerationErr(msg)) => {
@@ -86,6 +92,8 @@ impl<M: Model, S: Storage> ABCD<M, S> {
                 }
             }?;
 
+
+            //TODO in theory this could be deleted if the check is now at the top of the loop.
             if new_gen.number >= self.config.job.num_generations
                 && self.config.job.terminate_at_target_gen
             {
@@ -132,6 +140,9 @@ impl<M: Model, S: Storage> ABCD<M, S> {
                 }
             }?;
 
+            //TODO we believe this isn't needed because a StaleGenerationErr would have been triggered
+            // in self.make_one_particle, and will then be thrown out to the caller.
+            //
             // Before we try to make more particles - make sure gen hasn't finished on another node
             let prev_gen_num_in_storage = self.storage.previous_gen_number()?;
             if prev_gen_num_in_storage >= self.config.job.num_generations
