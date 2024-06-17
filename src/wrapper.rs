@@ -3,7 +3,11 @@ use crate::{
     storage::Storage,
     Generation, Model, Particle,
 };
-use rand::{distributions::{WeightedIndex, Uniform}, prelude::Distribution, Rng};
+use rand::{
+    distributions::{Uniform, WeightedIndex},
+    prelude::Distribution,
+    Rng,
+};
 use serde::de::DeserializeOwned;
 use std::{borrow::Cow, fmt::Debug};
 
@@ -47,10 +51,8 @@ impl<P> GenWrapper<P> {
         P: Clone,
     {
         match self {
-            GenWrapper::Emp(g) => 
-                Cow::Borrowed(&g.sample_by_weight(rng).parameters),
-            GenWrapper::Prior => 
-                Cow::Owned(model.prior_sample(rng)),
+            GenWrapper::Emp(g) => Cow::Borrowed(&g.sample_by_weight(rng).parameters),
+            GenWrapper::Prior => Cow::Owned(model.prior_sample(rng)),
         }
     }
 
@@ -125,13 +127,13 @@ impl<P> Empirical<P> {
             .map(|p| p.weight)
             .collect();
 
-        let weight_dist = WeightedIndex::new(&particle_weights).unwrap();
+        let weight_dist = WeightedIndex::new(particle_weights).unwrap();
         let uniform_dist = Uniform::from(0..gen.pop.normalised_particles().len());
 
-        Self { 
-            gen, 
+        Self {
+            gen,
             weight_dist,
-            uniform_dist, 
+            uniform_dist,
         }
     }
 

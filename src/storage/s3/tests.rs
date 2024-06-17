@@ -84,7 +84,7 @@ impl StorageTestHelper {
         let uploader = |de: &DirEntry| {
             let absolute_path = de.path();
             let stripped_path = absolute_path.strip_prefix(abs_project_path).unwrap();
-            let object_name = prefix.join(&stripped_path).to_string_lossy().into_owned();
+            let object_name = prefix.join(stripped_path).to_string_lossy().into_owned();
             let file_contents = std::fs::read_to_string(&absolute_path).unwrap();
             self.put_object(&object_name, &file_contents);
         };
@@ -127,6 +127,7 @@ impl StorageTestHelper {
         })
     }
 
+    #[allow(dead_code)]
     fn list_objects_under(&self, sub_prefix: Option<&str>) -> Vec<Object> {
         let prefix = sub_prefix
             .map(|p| format!("{}/{}", self.prefix, p))
@@ -136,7 +137,7 @@ impl StorageTestHelper {
             self.client
                 .list_objects_v2()
                 .bucket(&self.bucket)
-                .prefix(&prefix)
+                .prefix(prefix)
                 .send()
         });
 
@@ -175,22 +176,28 @@ impl StorageTestHelper {
                         .await
                         .map_err(|e| e.into())
                 }
-        
+
                 let mut next_key = None;
                 let mut next_version = None;
-        
+
                 let mut acc_version_pages: Vec<ListObjectVersionsOutput> = Vec::new();
-        
+
                 loop {
-                    let out = next_page(&self.client, &self.bucket, &self.prefix, next_key, next_version)
+                    let out = next_page(
+                        &self.client,
+                        &self.bucket,
+                        &self.prefix,
+                        next_key,
+                        next_version,
+                    )
                     .await
                     .unwrap();
-        
+
                     next_key = out.next_key_marker.clone().map(String::from);
                     next_version = out.next_version_id_marker.clone().map(String::from);
-        
+
                     acc_version_pages.push(out);
-        
+
                     if next_key.is_none() && next_version.is_none() {
                         break;
                     }
@@ -295,13 +302,13 @@ fn test_restore_overwritten_gen() {
 
     //Check this key already exists
     let key = &format!("{}/{}", &helper.prefix, "completed/gen_002.json");
-    assert!(!helper.get_object(key).is_empty(), "expected key to exist so it could be overwritten");
+    assert!(
+        !helper.get_object(key).is_empty(),
+        "expected key to exist so it could be overwritten"
+    );
 
     //Overwrite it, as though it was uploaded concurrently by another node.
-    helper.put_object(
-        key,
-        "Contents of an overwritten gen file",
-    );
+    helper.put_object(key, "Contents of an overwritten gen file");
 
     let loaded: Generation<DummyParams> = instance.load_previous_gen().unwrap();
 
@@ -511,12 +518,9 @@ fn test_num_accepted_particles() {
     assert_eq!(2, instance.num_accepted_particles().unwrap());
 
     //Now upload more than a 'pages worth', to check pagination
-    (0..1009).for_each(|i|{
+    (0..1009).for_each(|i| {
         let key = &format!("{}/particles/gen_003/accepted/{}.json", &helper.prefix, i);
-        helper.put_object(
-            key, 
-            ""
-        );
+        helper.put_object(key, "");
     });
 
     let result = instance.num_accepted_particles().unwrap();
@@ -579,10 +583,10 @@ fn test_num_rejected_particles() {
     assert_eq!(2, instance.num_rejected_particles().unwrap());
 
     //Now upload more than a 'pages worth', to check pagination
-    (0..1009).for_each(|i|{
+    (0..1009).for_each(|i| {
         helper.put_object(
-            &format!("{}/particles/gen_003/rejected/{}.json", &helper.prefix, i), 
-            ""
+            &format!("{}/particles/gen_003/rejected/{}.json", &helper.prefix, i),
+            "",
         );
     });
 
