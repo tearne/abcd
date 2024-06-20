@@ -6,13 +6,13 @@
                 "parameters" : {
                     "a": 10, "b": 20
                 },
-                "scores": [1000, 2000],
+                "score": 1000,
                 "weight": 0.2
             },{
                 "parameters" : {
                     "a": 30, "b": 40
                 },
-                "scores": [3000, 4000],
+                "score": 2000,
                 "weight": 0.8
             }
         ]

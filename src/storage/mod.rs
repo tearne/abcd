@@ -55,12 +55,12 @@ mod test_helper {
                 vec![
                     Particle {
                         parameters: DummyParams::new(10, 20.0),
-                        scores: vec![1000.0, 2000.0],
+                        score: 1000.0,
                         weight: 0.2,
                     },
                     Particle {
                         parameters: DummyParams::new(30, 40.0),
-                        scores: vec![3000.0, 4000.0],
+                        score: 2000.0,
                         weight: 0.8,
                     },
                 ],
@@ -74,13 +74,13 @@ mod test_helper {
     pub fn make_dummy_generation(gen_number: u16) -> Generation<DummyParams> {
         let particle_1 = Particle {
             parameters: DummyParams::new(11, 22.),
-            scores: vec![1111.0, 2222.0],
+            score: 1111.0,
             weight: 0.9,
         };
 
         let particle_2 = Particle {
             parameters: DummyParams::new(33, 44.),
-            scores: vec![3333.0, 4444.0],
+            score: 2222.0,
             weight: 0.1,
         };
 
@@ -89,7 +89,7 @@ mod test_helper {
         Generation {
             pop,
             number: gen_number,
-            next_gen_tolerance: 0.1234
+            next_gen_tolerance: 0.1234,
         }
     }
 }

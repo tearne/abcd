@@ -2,6 +2,6 @@
     "parameters" : {
         "a": 70, "b": 80
     },
-    "scores": [8000, 9000],
+    "score": 8000,
     "weight_not_normalised": 0.0
 }

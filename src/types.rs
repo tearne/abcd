@@ -1,9 +1,12 @@
 use rand::prelude::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use statrs::statistics::{Data, Statistics, OrderStatistics};
+use statrs::statistics::{Data, OrderStatistics};
 use std::fmt::{Debug, Display};
 
-use crate::{config::Config, error::{ABCDResult, ABCDErr}};
+use crate::{
+    config::Config,
+    error::{ABCDErr, ABCDResult},
+};
 
 pub trait Model {
     type Parameters: Serialize + DeserializeOwned + Debug + Clone;
@@ -21,7 +24,7 @@ pub trait Model {
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct Particle<P> {
     pub parameters: P,
-    pub scores: Vec<f64>,
+    pub score: f64,
     pub weight: f64,
 }
 
@@ -54,7 +57,7 @@ impl<P> Generation<P> {
         mut particles: Vec<Particle<P>>,
         generation_number: u16,
         acceptance: f32,
-        config: &Config
+        config: &Config,
     ) -> ABCDResult<Self> {
         let total_weight: f64 = particles.iter().map(|p| p.weight).sum();
 
@@ -69,7 +72,7 @@ impl<P> Generation<P> {
         Ok(Self {
             pop: Population::<P>::new(particles, acceptance),
             number: generation_number,
-            next_gen_tolerance
+            next_gen_tolerance,
         })
     }
 
@@ -78,10 +81,13 @@ impl<P> Generation<P> {
         let score_distribution: ABCDResult<Vec<f64>> = particles
             .iter()
             .map(|particle| {
-                let mean_score: f64 = particle.scores.clone().mean();
-                match mean_score.is_nan() {
-                    false => Ok(mean_score),
-                    true => Err(ABCDErr::SystemError("Mean score is not a number.".into())),
+                let score: f64 = particle.score;
+                match score >= 0.0 {
+                    true => Ok(score),
+                    false => Err(ABCDErr::SystemError(format!(
+                        "Encountered negative score ({}) when calculating new tolerance.",
+                        score
+                    ))),
                 }
             })
             .collect();
@@ -92,11 +98,11 @@ impl<P> Generation<P> {
 
         match new_tolerance.is_nan() {
             false => {
-                log::info!("Tolerance calculated as {new_tolerance}");
+                log::info!("New tolerance: {new_tolerance}");
                 Ok(new_tolerance)
             }
             true => Err(ABCDErr::SystemError(
-                "Tolerance (from percentile) was not a number.".into(),
+                "Tolerance (from percentile) was not a number (NaN).".into(),
             )),
         }
     }

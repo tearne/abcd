@@ -270,7 +270,7 @@ fn build_instance(helper: &StorageTestHelper) -> S3System {
 
     storage_config
         .build_s3(helper.runtime.handle().clone())
-        .expect("Failed to bulid storage instance")
+        .expect("Failed to build storage instance")
 }
 
 #[test]
@@ -336,7 +336,7 @@ fn test_exception_if_save_without_init() {
 
     let w1 = Particle {
         parameters: DummyParams::new(1, 2.),
-        scores: vec![100.0, 200.0],
+        score: 100.0,
         weight: 1.234,
     };
 
@@ -362,7 +362,7 @@ fn test_exception_if_save_particle_to_wrong_gen_num() {
 
     let particle = Particle {
         parameters: DummyParams::new(1, 2.),
-        scores: vec![100.0, 200.0],
+        score: 100.0,
         weight: 1.234,
     };
 
@@ -388,7 +388,7 @@ fn test_save_particle() {
 
     let particle = Particle {
         parameters: DummyParams::new(1, 2.),
-        scores: vec![100.0, 200.0],
+        score: 100.0,
         weight: 1.234,
     };
 
@@ -414,7 +414,7 @@ fn test_save_particle_zero_weight() {
 
     let zero_wt_particle = Particle {
         parameters: DummyParams::new(1, 2.),
-        scores: vec![100.0, 200.0],
+        score: 100.0,
         weight: 0.0,
     };
 
@@ -541,13 +541,13 @@ fn test_load_accepted_particles() {
     let mut expected = {
         let w1 = Particle {
             parameters: DummyParams::new(1, 2.),
-            scores: vec![100.0, 200.0],
+            score: 100.0,
             weight: 1.234,
         };
 
         let w2 = Particle {
             parameters: DummyParams::new(3, 4.),
-            scores: vec![300.0, 400.0],
+            score: 300.0,
             weight: 1.567,
         };
 

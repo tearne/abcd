@@ -1,7 +1,2 @@
-.idea/
-out/
-
-#Added by cargo
-
 /target
-Cargo.lock
+/out

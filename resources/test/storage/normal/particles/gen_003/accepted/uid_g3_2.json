@@ -2,6 +2,6 @@
     "parameters" : {
         "a": 3, "b": 4
     },
-    "scores": [300, 400],
+    "score": 200,
     "weight": 1.567
 }

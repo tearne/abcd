@@ -82,7 +82,7 @@ impl<P> GenWrapper<P> {
     pub fn weigh<M>(
         &self,
         parameters: P,
-        scores: Vec<f64>,
+        score: f64,
         tolerance: f64,
         model: &M,
     ) -> ABCDResult<Particle<P>>
@@ -90,22 +90,12 @@ impl<P> GenWrapper<P> {
         M: Model<Parameters = P>,
         P: Debug,
     {
-        let fhat = {
-            // (B5b) Calculate f^hat by calc'ing proportion less than tolerance
-            let number_reps = cast::f64(scores.len());
-            let number_reps_less_than_tolerance =
-                scores.iter().filter(|score| **score < tolerance).count();
-            cast::f64(number_reps_less_than_tolerance) / number_reps
-        };
-
-        log::debug!("fhat {} from scores {:?}", fhat, &scores);
-
         let result = match self {
-            GenWrapper::Emp(g) => g.weigh(parameters, scores, fhat, model),
+            GenWrapper::Emp(g) => g.weigh(parameters, score, tolerance, model),
             GenWrapper::Prior => Particle {
                 parameters,
-                scores,
-                weight: fhat,
+                score,
+                weight: 1.0,
             },
         };
 
@@ -160,27 +150,38 @@ impl<P> Empirical<P> {
     fn weigh<M: Model<Parameters = P>>(
         &self,
         parameters: P,
-        scores: Vec<f64>,
-        fhat: f64,
+        score: f64,
+        tolerance: f64,
         model: &M,
     ) -> Particle<P> {
-        // (B6) Calculate not_normalised_weight for each particle from its f^hat (f^hat(p) * prior(p)) / denom)
-        let prior_prob = model.prior_density(&parameters);
-        let denominator: f64 = self
-            .gen
-            .pop
-            .normalised_particles()
-            .iter()
-            .map(|prev_gen_particle| {
-                let weight = prev_gen_particle.weight;
-                let pert_density = model.pert_density(&prev_gen_particle.parameters, &parameters);
-                weight * pert_density
-            })
-            .sum();
-        let weight = fhat * prior_prob / denominator;
+        // Calculate a **not**-normalised_weight for each particle
+        let weight = if score <= tolerance {
+            let prior_prob = model.prior_density(&parameters);
+            let denominator: f64 = self
+                .gen
+                .pop
+                .normalised_particles()
+                .iter()
+                .map(|prev_gen_particle| {
+                    let weight = prev_gen_particle.weight;
+                    let pert_density =
+                        model.pert_density(&prev_gen_particle.parameters, &parameters);
+                    weight * pert_density
+                })
+                .sum();
+            prior_prob / denominator
+        } else {
+            // Notice that the weight may be zero, and no error or warning will occur here.
+            // This is because we want a report of acceptance rates across the entire cluster,
+            // and the simplest way is to save the rejected particles to storage too.  When
+            // subsequently accessing accepted particles, the system won't include the
+            // rejected (weight == 0) ones.
+            0.0
+        };
+
         Particle {
             parameters,
-            scores,
+            score,
             weight,
         }
     }

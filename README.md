@@ -14,7 +14,8 @@ Future work includes developing a simple packaging system to make it easier for 
 
 ## Developer notes
 ### Tests
-`TEST_BUCKET=some_bucket cargo test storage::s3::tests::test_purge_all_versions_of_everything -- --nocapture`
+
+`TEST_BUCKET=some_bucket TEST_PREFIX=abcd_tests cargo test --package abcd --lib --all-features -- storage::s3::tests::test_previous_gen_num_two --exact --show-output --nocapture`
 
 ### Run UnfairCoun
 `TEST_BUCKET=some_bucket TEST_PREFIX=my_prefix resources/examples/run_unfair_coin.sh`

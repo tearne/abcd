@@ -261,7 +261,7 @@ impl S3System {
         Ok(acc)
     }
 
-    async fn ensure_only_original_verions(&self, key: &str) -> ABCDResult<String> {
+    async fn ensure_only_original_versions(&self, key: &str) -> ABCDResult<String> {
         let mut version_pages = self.get_versions(key).await?;
         let first_page = version_pages.swap_remove(0);
 
@@ -279,7 +279,7 @@ impl S3System {
                 return Ok(version);
             } else {
                 return Err(ABCDErr::InfrastructureError(format!(
-                    "In S3, the only verion of {} has ID None",
+                    "In S3, the only version of {} has ID None",
                     key
                 )));
             }
@@ -289,7 +289,7 @@ impl S3System {
             version
         } else {
             return Err(ABCDErr::InfrastructureError(format!(
-                "In S3, the oldest verion of {} has ID None",
+                "In S3, the oldest version of {} has ID None",
                 key
             )));
         };
@@ -381,7 +381,7 @@ impl Storage for S3System {
                 format!("{}/{}", &self.completed_prefix, prev_gen_file_name)
             };
 
-            let version_id = self.ensure_only_original_verions(&object_key).await?;
+            let version_id = self.ensure_only_original_versions(&object_key).await?;
             let obj_string = self
                 .client
                 .get_object()
