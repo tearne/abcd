@@ -17,12 +17,12 @@ pub struct ABCD<M: Model, S: Storage> {
 }
 
 impl<M: Model, S: Storage> ABCD<M, S> {
-    /// Run until the target generation as specified in config.job is met
+    // Run until the target generation as specified in config.job is met
     pub fn run(model: M, config: Config, storage: S, rng: &mut impl Rng) -> ABCDResult<()> {
         Self::inner_run(model, config, storage, rng, false)
     }
 
-    /// Run until the next generation is reached, then shut down
+    // Run until the next generation is reached, then shut down
     pub fn boost(model: M, config: Config, storage: S, rng: &mut impl Rng) -> ABCDResult<()> {
         log::info!("Running in boost mode - will only run until the next generation.");
         Self::inner_run(model, config, storage, rng, true)
@@ -54,7 +54,6 @@ impl<M: Model, S: Storage> ABCD<M, S> {
         let start_gen_num = self.storage.previous_gen_number()?;
 
         loop {
-            // Generation loop
             if gen_failures.len() > self.config.algorithm.max_num_failures {
                 return Err(ABCDErr::TooManyRetriesError(
                     "Too many retries in generation loop".into(),
@@ -62,16 +61,12 @@ impl<M: Model, S: Storage> ABCD<M, S> {
                 ));
             }
 
-            //TODO this new check kind of renders the one below (line 97) unnecessary.
-            // Although, it's nice that this one has the additional words "on another node".
-            // Potentially the differentiation of whether the gen was completed here or on another node
-            // could take place within the match below?
             let prev_gen_num_in_storage = self.storage.previous_gen_number()?;
             if prev_gen_num_in_storage >= self.config.job.num_generations
                 && self.config.job.terminate_at_target_gen
             {
                 log::info!(
-                    "Reached target number of generations on another node: {}",
+                    "Reached target number of generations: {}",
                     prev_gen_num_in_storage
                 );
                 break;
@@ -88,10 +83,8 @@ impl<M: Model, S: Storage> ABCD<M, S> {
                 break;
             }
 
-            //TODO if the TODO below is followed and that check isn't needed any more then
-            // self.make_particles_loop doesn't need to return a generation, just Restult<()>
-            let new_gen = match self.make_particles_loop(&prev_gen, rng) {
-                o @ Ok(_) => o,
+            match self.make_particles_loop(&prev_gen, rng) {
+                Ok(()) => (),
                 Err(ABCDErr::StaleGenerationErr(msg)) => {
                     log::warn!("{}", msg);
                     gen_failures.push(msg);
@@ -103,15 +96,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
                     gen_failures.push(msg);
                     continue;
                 }
-            }?;
-
-            //TODO in theory this could be deleted if the check is now at the top of the loop.
-            if new_gen.number >= self.config.job.num_generations
-                && self.config.job.terminate_at_target_gen
-            {
-                log::info!("Reached target number of generations: {}", new_gen.number);
-                break;
-            }
+            };
         }
 
         Ok(())
@@ -121,7 +106,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
         &self,
         prev_gen: &GenWrapper<M::Parameters>,
         rng: &mut impl Rng,
-    ) -> ABCDResult<Generation<M::Parameters>> {
+    ) -> ABCDResult<()> {
         let new_gen_number = prev_gen.generation_number() + 1;
         log::info!("Starting building generation #{}", new_gen_number);
 
@@ -150,10 +135,10 @@ impl<M: Model, S: Storage> ABCD<M, S> {
 
             self.check_still_working_on_correct_generation(prev_gen)?;
 
-            // Check if we now have the req'd num particles/reps, if so, break
+            // Check if we now have the required num particles/reps, if so, break
             let num_accepted = self.storage.num_accepted_particles()?;
             if num_accepted < self.config.job.num_particles {
-                log::info!("Accumulated {num_accepted} accepted particles in storage.");
+                log::info!("{num_accepted} accepted particles in storage.");
             } else {
                 break;
             }
@@ -182,12 +167,6 @@ impl<M: Model, S: Storage> ABCD<M, S> {
         prev_gen: &GenWrapper<M::Parameters>,
         rng: &mut impl Rng,
     ) -> ABCDResult<()> {
-        // Updated to only use one rep per particle as per
-        // Filippi, Sarah, et al. "On optimality of kernels for approximate Bayesian computation using sequential Monte Carlo." Statistical applications in genetics and molecular biology 12.1 (2013): 87-107.
-        //
-        // Some justification can also be found in section 2.4 of
-        // McKinley, Trevelyan J., et al. "Approximate Bayesian computation and simulation-based inference for complex stochastic epidemic models." (2018): 4-18.
-
         let parameters = {
             // Sample from previous generation
             let sampled = prev_gen.sample(&self.model, rng);
@@ -202,7 +181,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
                 Ok(perturbed)
             }
         }?;
-        log::info!("Proposed parameters:\n {:#?}", &parameters);
+        log::debug!("Proposed parameters:\n {:#?}", &parameters);
 
         // Run model to calculate a score (now only one rep)
         let score: f64 = self
@@ -232,7 +211,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
         }
     }
 
-    fn flush_generation(&self, new_gen_number: u16) -> ABCDResult<Generation<M::Parameters>> {
+    fn flush_generation(&self, new_gen_number: u16) -> ABCDResult<()> {
         // Load all the non_normalised particles
         let particles: Vec<Particle<M::Parameters>> = self.storage.load_accepted_particles()?;
         let rejections = self.storage.num_rejected_particles()?;
@@ -252,7 +231,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
 
         self.storage.save_new_gen(&new_generation)?;
 
-        Ok(new_generation)
+        Ok(())
     }
 }
 
