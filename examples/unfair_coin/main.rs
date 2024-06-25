@@ -75,7 +75,7 @@ impl MyModel {
     pub fn new(observed_proportion_heads: f64, num_trials: u64) -> Self {
         MyModel {
             prior: Uniform::new(0.0, 1.0),
-            kernel: Kernel::new(0.3),
+            kernel: Kernel::new(0.1),
             observed: observed_proportion_heads,
             num_trials,
         }

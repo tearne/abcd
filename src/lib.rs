@@ -108,7 +108,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
         rng: &mut impl Rng,
     ) -> ABCDResult<()> {
         let new_gen_number = prev_gen.generation_number() + 1;
-        log::info!("Starting building generation #{}", new_gen_number);
+        log::info!("Start building generation #{}", new_gen_number);
 
         let mut particle_failures = Vec::<String>::new();
 
@@ -138,7 +138,9 @@ impl<M: Model, S: Storage> ABCD<M, S> {
             // Check if we now have the required num particles/reps, if so, break
             let num_accepted = self.storage.num_accepted_particles()?;
             if num_accepted < self.config.job.num_particles {
-                log::info!("{num_accepted} accepted particles in storage.");
+                if num_accepted % 10 == 0 {
+                    log::info!("{num_accepted} accepted particles in storage.");
+                }
             } else {
                 break;
             }
