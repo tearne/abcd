@@ -1,4 +1,4 @@
-# [0.2.3] 2024-06-25
+# [0.3.0] 2024-06-25
 - Always perform only one rep per particle, no longer configurable.
 - Plotting for example moved from Jupyter notebook to Python script
 

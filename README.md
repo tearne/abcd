@@ -19,7 +19,7 @@ Future work includes developing a simple packaging system to make it easier for 
 `TEST_BUCKET=some_bucket TEST_PREFIX=abcd_tests cargo test --package abcd --lib --all-features -- storage::s3::tests::test_previous_gen_num_two --exact --show-output --nocapture`
 
 ### Run UnfairCoin
-See [here](./examples/unfair_coin/readme.md)
+See [here](./examples/unfair_coin/README.md)
 
 ### Purge a bucket/prefix
 *WARNING*: Data will be deleted
