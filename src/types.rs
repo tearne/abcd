@@ -1,3 +1,4 @@
+use nalgebra::SMatrix;
 use rand::prelude::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use statrs::statistics::{Data, OrderStatistics};
@@ -28,6 +29,10 @@ pub struct Particle<P> {
     pub weight: f64,
 }
 
+pub trait Vectorable<const D: usize>{
+    fn to_column_vector(&self) -> SMatrix<f64, D, 1>;
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct Population<P> {
     acceptance: f32,
@@ -43,6 +48,33 @@ impl<P> Population<P> {
 
     pub fn normalised_particles(&self) -> &Vec<Particle<P>> {
         &self.normalised_particles
+    }
+
+    pub fn local_covariance<const D: usize>(&self, locality: &Particle<P>) -> SMatrix<f64, D, D> 
+    where
+        P: Vectorable<D>,
+    {
+        let mean: SMatrix<f64, D, 1> = self.normalised_particles().iter().fold(SMatrix::<f64, D, 1>::zeros(), |acc, particle|{
+            let parameters_vec = particle.parameters.to_column_vector();
+            let weight = particle.weight;
+            acc + weight * parameters_vec
+        });
+
+        let candidate = locality.parameters.to_column_vector();
+
+        let cov: SMatrix<f64, D, D> = self.normalised_particles.iter().fold(SMatrix::<f64, D, D>::zeros(), |acc, par|{
+            let params = par.parameters.to_column_vector();
+            let weight = par.weight;
+
+            acc + weight * (params - mean) * (params - mean).transpose()
+        });
+        
+        let bias = (mean - candidate) * (mean - candidate).transpose();
+        
+        //todo remove
+        assert!(cov.transpose() == cov);
+
+        cov + bias
     }
 }
 
