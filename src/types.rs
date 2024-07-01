@@ -42,7 +42,7 @@ impl<const D: usize> OLCM<D> {
         //TODO better way?
         let dynamic_d = self.mean.len();
         let mean = DVector::from_vec(self.mean.iter().cloned().collect::<Vec<f64>>());
-        let cov = DMatrix::from_vec(dynamic_d, dynamic_d, self.mean.iter().cloned().collect::<Vec<f64>>());
+        let cov = DMatrix::from_vec(dynamic_d, dynamic_d, self.local_covariance.iter().cloned().collect::<Vec<f64>>());
 
         // cargo tree -i nalgebra@0.32.6
         //TODO decouple by passing in vec
