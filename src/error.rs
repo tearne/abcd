@@ -10,6 +10,7 @@ pub enum ABCDErr {
     TooManyRetriesError(String, Vec<String>),
     InfrastructureError(String),
     SystemError(String),
+    OCLMError(String)
 }
 
 impl Display for ABCDErr {
@@ -21,7 +22,8 @@ impl Display for ABCDErr {
             Self::SystemError(ref msg) => write!(f, "SystemErr: {}", msg),
             Self::TooManyRetriesError(ref msg, ref history) => {
                 write!(f, "{}\n  {:#?}", msg, history)
-            }
+            },
+            ABCDErr::OCLMError(ref msg) => write!(f, "OLCMError: {}", msg),
         }
     }
 }
@@ -65,6 +67,7 @@ use aws_sdk_s3::operation::put_object::PutObjectError;
 use aws_sdk_s3::operation::get_bucket_versioning::GetBucketVersioningError;
 use aws_sdk_s3::operation::list_object_versions::ListObjectVersionsError;
 use aws_sdk_s3::operation::delete_objects::DeleteObjectsError;
+use statrs::StatsError;
 
 impl From<SdkError<GetObjectError>> for ABCDErr {
     fn from(value: SdkError<GetObjectError>) -> Self {
@@ -115,5 +118,11 @@ impl From<SdkError<DeleteObjectsError>> for ABCDErr {
 impl From<TryFromIntError> for ABCDErr {
     fn from(value: TryFromIntError) -> Self {
         ABCDErr::InfrastructureError(format!("Cast error: {}", value))
+    }
+}
+
+impl From<StatsError> for ABCDErr {
+    fn from(value: StatsError) -> Self {
+        ABCDErr::InfrastructureError(format!("Statistics error: {}", value))
     }
 }

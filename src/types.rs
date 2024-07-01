@@ -1,7 +1,7 @@
-use nalgebra::SMatrix;
+use nalgebra::{DMatrix, DVector, SMatrix};
 use rand::prelude::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use statrs::statistics::{Data, OrderStatistics};
+use statrs::{distribution::MultivariateNormal, statistics::{Data, OrderStatistics}};
 use std::fmt::{Debug, Display};
 
 use crate::{
@@ -33,6 +33,25 @@ pub trait Vectorable<const D: usize>{
     fn to_column_vector(&self) -> SMatrix<f64, D, 1>;
 }
 
+pub struct OLCM<const D: usize>{
+    pub mean: SMatrix<f64, D, 1>,
+    pub local_covariance: SMatrix<f64, D, D>,
+}
+impl<const D: usize> OLCM<D> {
+    pub fn distribution(&self) -> ABCDResult<MultivariateNormal> {
+        //TODO better way?
+        let dynamic_d = self.mean.len();
+        let mean = DVector::from_vec(self.mean.iter().cloned().collect::<Vec<f64>>());
+        let cov = DMatrix::from_vec(dynamic_d, dynamic_d, self.mean.iter().cloned().collect::<Vec<f64>>());
+
+        // cargo tree -i nalgebra@0.32.6
+        //TODO decouple by passing in vec
+        let mvn = MultivariateNormal::new_from_nalgebra(mean, cov)?;
+
+        Ok(mvn)
+    }
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct Population<P> {
     acceptance: f32,
@@ -50,7 +69,7 @@ impl<P> Population<P> {
         &self.normalised_particles
     }
 
-    pub fn local_covariance<const D: usize>(&self, locality: &Particle<P>) -> SMatrix<f64, D, D> 
+    pub fn olcm<const D: usize>(&self, locality: &Particle<P>) -> OLCM<D> 
     where
         P: Vectorable<D>,
     {
@@ -70,11 +89,15 @@ impl<P> Population<P> {
         });
         
         let bias = (mean - candidate) * (mean - candidate).transpose();
+        let local_covariance = cov + bias;
         
-        //todo remove
-        assert!(cov.transpose() == cov);
+        assert!(cov.upper_triangle().transpose() == cov.lower_triangle());
 
-        cov + bias
+        OLCM{
+            local_covariance: cov + bias,
+            mean,
+        }
+        
     }
 }
 
