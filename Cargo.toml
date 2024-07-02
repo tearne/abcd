@@ -19,7 +19,7 @@ toml = "0.5"
 envmnt = "0.9.1"
 log = "0.4.22"
 env_logger = "0.8.4"
-rand = "0.8.5"
+rand = { version = "0.8.5", features = [ "small_rng" ] }
 cast = "0.2.7"
 statrs = "0.17.1"
 clap = {version = "3.2", features = ["derive"]}

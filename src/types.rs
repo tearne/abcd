@@ -1,7 +1,10 @@
 use nalgebra::{DMatrix, DVector, SMatrix};
 use rand::prelude::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use statrs::{distribution::MultivariateNormal, statistics::{Data, OrderStatistics}};
+use statrs::{
+    distribution::MultivariateNormal,
+    statistics::{Data, OrderStatistics},
+};
 use std::fmt::{Debug, Display};
 
 use crate::{
@@ -29,26 +32,35 @@ pub struct Particle<P> {
     pub weight: f64,
 }
 
-pub trait Vectorable<const D: usize>{
+pub trait Vector<const D: usize> {
     fn to_column_vector(&self) -> SMatrix<f64, D, 1>;
 }
 
-pub struct OLCM<const D: usize>{
+pub struct OLCM<const D: usize> {
     pub mean: SMatrix<f64, D, 1>,
     pub local_covariance: SMatrix<f64, D, D>,
+    pub distribution: MultivariateNormal,
 }
 impl<const D: usize> OLCM<D> {
-    pub fn distribution(&self) -> ABCDResult<MultivariateNormal> {
+    pub fn new(mean: SMatrix<f64, D, 1>, local_covariance: SMatrix<f64, D, D>) -> ABCDResult<Self> {
         //TODO better way?
-        let dynamic_d = self.mean.len();
-        let mean = DVector::from_vec(self.mean.iter().cloned().collect::<Vec<f64>>());
-        let cov = DMatrix::from_vec(dynamic_d, dynamic_d, self.local_covariance.iter().cloned().collect::<Vec<f64>>());
+        let dynamic_d = mean.len();
+        let mean_dyn = DVector::from_vec(mean.iter().cloned().collect::<Vec<f64>>());
+        let cov_dyn = DMatrix::from_vec(
+            dynamic_d,
+            dynamic_d,
+            local_covariance.iter().cloned().collect::<Vec<f64>>(),
+        );
 
         // cargo tree -i nalgebra@0.32.6
-        //TODO decouple by passing in vec
-        let mvn = MultivariateNormal::new_from_nalgebra(mean, cov)?;
+        //TODO decouple nalgebra by passing in vec?
+        let distribution = MultivariateNormal::new_from_nalgebra(mean_dyn, cov_dyn)?;
 
-        Ok(mvn)
+        Ok(Self {
+            mean,
+            local_covariance,
+            distribution,
+        })
     }
 }
 
@@ -69,35 +81,37 @@ impl<P> Population<P> {
         &self.normalised_particles
     }
 
-    pub fn olcm<const D: usize>(&self, locality: &Particle<P>) -> OLCM<D> 
+    pub fn olcm<const D: usize>(&self, locality: &Particle<P>) -> ABCDResult<OLCM<D>>
     where
-        P: Vectorable<D>,
+        P: Vector<D>,
     {
-        let mean: SMatrix<f64, D, 1> = self.normalised_particles().iter().fold(SMatrix::<f64, D, 1>::zeros(), |acc, particle|{
-            let parameters_vec = particle.parameters.to_column_vector();
-            let weight = particle.weight;
-            acc + weight * parameters_vec
-        });
+        let mean: SMatrix<f64, D, 1> = self.normalised_particles().iter().fold(
+            SMatrix::<f64, D, 1>::zeros(),
+            |acc, particle| {
+                let parameters_vec = particle.parameters.to_column_vector();
+                let weight = particle.weight;
+                acc + weight * parameters_vec
+            },
+        );
 
         let candidate = locality.parameters.to_column_vector();
 
-        let cov: SMatrix<f64, D, D> = self.normalised_particles.iter().fold(SMatrix::<f64, D, D>::zeros(), |acc, par|{
-            let params = par.parameters.to_column_vector();
-            let weight = par.weight;
+        let cov: SMatrix<f64, D, D> =
+            self.normalised_particles
+                .iter()
+                .fold(SMatrix::<f64, D, D>::zeros(), |acc, par| {
+                    let params = par.parameters.to_column_vector();
+                    let weight = par.weight;
 
-            acc + weight * (params - mean) * (params - mean).transpose()
-        });
-        
+                    acc + weight * (params - mean) * (params - mean).transpose()
+                });
+
         let bias = (mean - candidate) * (mean - candidate).transpose();
         let local_covariance = cov + bias;
-        
+
         assert!(cov.upper_triangle().transpose() == cov.lower_triangle());
 
-        OLCM{
-            local_covariance,
-            mean,
-        }
-        
+        OLCM::new(mean,local_covariance)
     }
 }
 
@@ -160,5 +174,40 @@ impl<P> Generation<P> {
                 "Tolerance (from percentile) was not a number (NaN).".into(),
             )),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use nalgebra::{Matrix2, SMatrix, Vector2};
+    use serde::Deserialize;
+
+    use crate::{error::ABCDResult, types::Vector, Generation};
+
+    #[derive(Deserialize, Debug)]
+    struct TestParams{
+        x: f64,
+        y: f64,
+    }
+    
+    impl Vector<2> for TestParams {
+        fn to_column_vector(&self) -> SMatrix<f64, 2, 1> {
+           Vector2::new(self.x, self.y)
+       }
+    }
+
+    #[test]
+    fn test_olcm() -> ABCDResult<()> {
+        let path = "resources/test/olcm/particles.json";
+        let generation: Generation<TestParams> = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+
+        let population = generation.pop;
+        let candidate = &population.normalised_particles()[0];
+
+        let olcm = population.olcm(candidate)?;
+        assert_eq!(Matrix2::new(4.8, -13.6, -13.6, 44.1), olcm.local_covariance);
+        assert_eq!(Vector2::new(10.0, 100.1), olcm.mean);
+
+        Ok(())
     }
 }

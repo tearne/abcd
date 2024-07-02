@@ -3,7 +3,6 @@ pub mod error;
 pub mod storage;
 pub mod types;
 pub mod wrapper;
-pub mod covariance;
 
 use config::Config;
 use error::{ABCDErr, ABCDResult};
