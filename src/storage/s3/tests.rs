@@ -547,7 +547,7 @@ fn test_load_accepted_particles() {
 
         let w2 = Particle {
             parameters: DummyParams::new(3, 4.),
-            score: 300.0,
+            score: 200.0,
             weight: 1.567,
         };
 

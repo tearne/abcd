@@ -21,7 +21,7 @@ sleep 2
 cargo run --release --bin purge -- --bucket $TEST_BUCKET --prefix $TEST_PREFIX
 
 printf "Initialising storage prefix...\n"
-aws s3 sync ../../resources/examples/empty_prefix s3://${TEST_BUCKET}/${TEST_PREFIX}/ --delete --acl bucket-owner-full-control
+aws s3 sync ../../resources/empty_prefix s3://${TEST_BUCKET}/${TEST_PREFIX}/ --delete --acl bucket-owner-full-control
 
 printf "Starting application...\n"
 sleep 1

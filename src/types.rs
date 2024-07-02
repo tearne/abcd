@@ -94,7 +94,7 @@ impl<P> Population<P> {
         assert!(cov.upper_triangle().transpose() == cov.lower_triangle());
 
         OLCM{
-            local_covariance: cov + bias,
+            local_covariance,
             mean,
         }
         
