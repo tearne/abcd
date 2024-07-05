@@ -10,7 +10,8 @@ pub enum ABCDErr {
     TooManyRetriesError(String, Vec<String>),
     InfrastructureError(String),
     SystemError(String),
-    OCLMError(String)
+    OCLMError(String),
+    VectorConversionError(String),
 }
 
 impl Display for ABCDErr {
@@ -24,6 +25,7 @@ impl Display for ABCDErr {
                 write!(f, "{}\n  {:#?}", msg, history)
             },
             ABCDErr::OCLMError(ref msg) => write!(f, "OLCMError: {}", msg),
+            ABCDErr::VectorConversionError(ref msg) => write!(f, "VectorConversionError: {}", msg),
         }
     }
 }

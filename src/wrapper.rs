@@ -1,7 +1,7 @@
 use crate::{
     error::{ABCDErr, ABCDResult},
     storage::Storage,
-    Generation, Model, Particle,
+    Generation, Model, Particle, Population,
 };
 use rand::{
     distributions::{Uniform, WeightedIndex},
@@ -127,6 +127,10 @@ impl<P> Empirical<P> {
         }
     }
 
+    pub fn normalised_particles(&self) -> &Vec<Particle<P>>{
+        self.gen.pop.normalised_particles()
+    }
+
     pub fn generation_number(&self) -> u16 {
         self.gen.number
     }
@@ -136,7 +140,7 @@ impl<P> Empirical<P> {
         P: Clone,
     {
         let sampled_particle_index: usize = self.weight_dist.sample(rng);
-        &self.gen.pop.normalised_particles()[sampled_particle_index]
+        &self.normalised_particles()[sampled_particle_index]
     }
 
     pub fn sample_uniformly<R: Rng>(&self, rng: &mut R) -> &Particle<P>
@@ -144,7 +148,7 @@ impl<P> Empirical<P> {
         P: Clone,
     {
         let sampled_particle_index: usize = self.uniform_dist.sample(rng);
-        &self.gen.pop.normalised_particles()[sampled_particle_index]
+        &self.normalised_particles()[sampled_particle_index]
     }
 
     fn weigh<M: Model<Parameters = P>>(
@@ -158,8 +162,6 @@ impl<P> Empirical<P> {
         let weight = if score <= tolerance {
             let prior_prob = model.prior_density(&parameters);
             let denominator: f64 = self
-                .gen
-                .pop
                 .normalised_particles()
                 .iter()
                 .map(|prev_gen_particle| {

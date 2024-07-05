@@ -8,6 +8,7 @@ use config::Config;
 use error::{ABCDErr, ABCDResult};
 use rand::prelude::*;
 use storage::Storage;
+use types::Kernel;
 pub use types::{Generation, Model, Particle, Population};
 use wrapper::GenWrapper;
 pub struct ABCD<M: Model, S: Storage> {
@@ -111,6 +112,9 @@ impl<M: Model, S: Storage> ABCD<M, S> {
         log::info!("Start building generation #{}", new_gen_number);
 
         let mut particle_failures = Vec::<String>::new();
+        
+        // Build the kernel outside the loop, since it take a bit of effort
+        let kernel: M::K = self.model.build_kernel(prev_gen)?;
 
         loop {
             // Particle loop
@@ -123,7 +127,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
 
             self.check_still_working_on_correct_generation(prev_gen)?;
 
-            match self.make_one_particle(prev_gen, rng) {
+            match self.make_one_particle(prev_gen, &kernel, rng) {
                 o @ Ok(_) => o,
                 Err(e) => {
                     let msg = format!("In particle loop, failed to make particle: {}", e);
@@ -167,6 +171,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
     fn make_one_particle(
         &self,
         prev_gen: &GenWrapper<M::Parameters>,
+        kernel: &M::K,
         rng: &mut impl Rng,
     ) -> ABCDResult<()> {
         let parameters = {
