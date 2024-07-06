@@ -8,7 +8,6 @@ use config::Config;
 use error::{ABCDErr, ABCDResult};
 use rand::prelude::*;
 use storage::Storage;
-use types::Kernel;
 pub use types::{Generation, Model, Particle, Population};
 use wrapper::GenWrapper;
 pub struct ABCD<M: Model, S: Storage> {

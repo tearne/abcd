@@ -2,9 +2,15 @@ use std::{fmt::Display, num::TryFromIntError};
 
 pub type ABCDResult<T> = Result<T, ABCDErr>;
 
+pub struct VectorConversionError(pub String);
+impl Display for VectorConversionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "VectorConversionError: {}", self.0)
+    }
+}
+
 #[derive(Debug)]
 pub enum ABCDErr {
-    /// Returned when found we were working on an out of date previous generation
     StaleGenerationErr(String),
     ParticleErr(String),
     TooManyRetriesError(String, Vec<String>),
@@ -126,5 +132,11 @@ impl From<TryFromIntError> for ABCDErr {
 impl From<StatsError> for ABCDErr {
     fn from(value: StatsError) -> Self {
         ABCDErr::InfrastructureError(format!("Statistics error: {}", value))
+    }
+}
+
+impl From<VectorConversionError> for ABCDErr {
+    fn from(value: VectorConversionError) -> Self {
+        ABCDErr::VectorConversionError(value.0)
     }
 }

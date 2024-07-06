@@ -1,7 +1,7 @@
 use crate::{
     error::{ABCDErr, ABCDResult},
     storage::Storage,
-    Generation, Model, Particle, Population,
+    Generation, Model, Particle,
 };
 use rand::{
     distributions::{Uniform, WeightedIndex},

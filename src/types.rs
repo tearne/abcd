@@ -9,7 +9,7 @@ use std::{fmt::{Debug, Display}, marker::PhantomData};
 
 use crate::{
     config::Config,
-    error::{ABCDErr, ABCDResult}, wrapper::GenWrapper,
+    error::{ABCDErr, ABCDResult, VectorConversionError}, wrapper::GenWrapper,
 };
 
 pub trait Kernel<P> where 
@@ -19,25 +19,16 @@ pub trait Kernel<P> where
     fn pert_density(&self, from: &P, to: &P) -> f64;        
 }
 
-struct OLCMKernel<const D: usize, M: Model>
-where 
-    M::Parameters: Vector<D, M::Parameters, M::Err>
-{
-    weighted_mean:  SMatrix<f64, D, 1>,
+struct OLCMKernel<const D: usize, P: Vector<D>> {
+    pub weighted_mean:  SMatrix<f64, D, 1>,
     weighted_covariance: SMatrix<f64, D, D>,
-    phantom: PhantomData<M>,
+    phantom: PhantomData<P>,
 }
-impl<const D: usize, M: Model> OLCMKernel<D, M> 
-where 
-    M::Parameters: Vector<D, M::Parameters, M::Err>
-{
-    pub fn new(generation: &GenWrapper<M::Parameters>, model: &M) -> ABCDResult<Self> {
-        let pop = match generation {
-            GenWrapper::Emp(e) => e.normalised_particles(),
-            GenWrapper::Prior => return Err(ABCDErr::SystemError("Can't prepare an OLCM kernel builder from a prior".into())),
-        };
+impl<const D: usize, P: Vector<D>> OLCMKernel<D, P> {
+    pub fn new(particles: &Vec<Particle<P>>) -> ABCDResult<Self> {
+        assert!(f64::abs(particles.iter().map(|p|p.weight).sum::<f64>() - 1.0) < 0.000001);
 
-        let weighted_mean: SMatrix<f64, D, 1> = pop.iter().fold(
+        let weighted_mean: SMatrix<f64, D, 1> = particles.iter().fold(
             SMatrix::<f64, D, 1>::zeros(),
             |acc, particle| {
                 let parameters_vec = particle.parameters.to_column_vector();
@@ -47,7 +38,7 @@ where
         );
 
         let weighted_covariance: SMatrix<f64, D, D> =
-            pop.iter()
+            particles.iter()
                 .fold(SMatrix::<f64, D, D>::zeros(), |acc, par| {
                     let params = par.parameters.to_column_vector();
                     let weight = par.weight;
@@ -62,24 +53,23 @@ where
         })
     }
 
-    pub fn perturb(&self, particle: &Particle<M::Parameters>, rng: &mut impl Rng) -> ABCDResult<M::Parameters> {
-        let local_covariance = {
-            let particle_vector = particle.parameters.to_column_vector();
-            let bias = (self.weighted_mean - particle_vector) * (self.weighted_mean - particle_vector).transpose();
-            self.weighted_covariance + bias
-        };
+    pub fn local_covariance_matrix(&self, particle: &Particle<P>) -> SMatrix<f64, D, D> {
+        let particle_vector = particle.parameters.to_column_vector();
+        let bias = (self.weighted_mean - particle_vector) * (self.weighted_mean - particle_vector).transpose();
+        self.weighted_covariance + bias
+    }
 
+    pub fn perturb(&self, particle: &Particle<P>, rng: &mut impl Rng) -> ABCDResult<P> {
+        let local_covariance = self.local_covariance_matrix(particle);
 
         //TODO cheap way to convert from SMatrix to DMatrix?
         let distribution = MultivariateNormal::new(
             vec![0f64; D], 
-            local_covariance.iter().cloned().collect::<Vec<f64>>())?;
+            local_covariance.iter().cloned().collect::<Vec<f64>>()
+        )?;
 
         let sampled = distribution.sample(rng);
-        
-        M::Parameters::from_column_vector(sampled).map_err(|e|{
-            ABCDErr::VectorConversionError(format!("While attempting to convert from vector: {}",e))
-        })
+        Ok(P::from_column_vector(sampled)?)
     }
 }
 
@@ -106,9 +96,12 @@ pub struct Particle<P> {
 }
 
 //TODO split up
-pub trait Vector<const D: usize, P, Err: Display> {
+pub trait Vector<const D: usize> 
+where 
+    Self: Sized
+{
     fn to_column_vector(&self) -> SMatrix<f64, D, 1>;
-    fn from_column_vector(v: DVector<f64>) -> Result<P, Err>;
+    fn from_column_vector(v: DVector<f64>) -> Result<Self, VectorConversionError>;
 }
 
 // pub struct OLCM<const D: usize> {
@@ -254,10 +247,10 @@ impl<P> Generation<P> {
 
 #[cfg(test)]
 mod tests {
-    use nalgebra::{Matrix2, SMatrix, Vector2};
+    use nalgebra::{DVector, Matrix2, SMatrix, Vector2};
     use serde::Deserialize;
 
-    use crate::{error::ABCDResult, types::Vector, Generation};
+    use crate::{error::{ABCDResult, VectorConversionError}, types::{OLCMKernel, Vector}, Generation};
 
     #[derive(Deserialize, Debug)]
     struct TestParams{
@@ -268,7 +261,19 @@ mod tests {
     impl Vector<2> for TestParams {
         fn to_column_vector(&self) -> SMatrix<f64, 2, 1> {
            Vector2::new(self.x, self.y)
-       }
+        }
+       
+        fn from_column_vector(v: DVector<f64>) -> Result<TestParams, crate::error::VectorConversionError> {
+            let values = v.iter().cloned().collect::<Vec<f64>>();
+            if values.len() != 2 {
+                return Err(VectorConversionError(format!("Wrong number of arguments.  Expected 2, got {}", values.len())));
+            } else {
+                Ok(TestParams{
+                    x: values[0],
+                    y: values[1]
+                })
+            }
+        }
     }
 
     #[test]
@@ -276,12 +281,12 @@ mod tests {
         let path = "resources/test/olcm/particles.json";
         let generation: Generation<TestParams> = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
 
-        let population = generation.pop;
-        let candidate = &population.normalised_particles()[0];
+        let normalised_particles = generation.pop.normalised_particles;
+        let candidate = &normalised_particles[0];
 
-        let olcm = population.olcm(candidate)?;
-        assert_eq!(Matrix2::new(4.8, -13.6, -13.6, 44.1), olcm.local_covariance);
-        assert_eq!(Vector2::new(10.0, 100.1), olcm.mean);
+        let olcm = OLCMKernel::new(generation.pop.normalised_particles())?;
+        assert_eq!(Matrix2::new(4.8, -13.6, -13.6, 44.1), olcm.local_covariance_matrix(candidate));
+        assert_eq!(Vector2::new(10.0, 100.1), olcm.weighted_mean);
 
         Ok(())
     }
