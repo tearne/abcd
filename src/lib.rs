@@ -3,11 +3,13 @@ pub mod error;
 pub mod storage;
 pub mod types;
 pub mod wrapper;
+pub mod olcm;
 
 use config::Config;
 use error::{ABCDErr, ABCDResult};
 use rand::prelude::*;
 use storage::Storage;
+use types::KernelBuilder;
 pub use types::{Generation, Model, Particle, Population};
 use wrapper::GenWrapper;
 pub struct ABCD<M: Model, S: Storage> {
@@ -113,7 +115,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
         let mut particle_failures = Vec::<String>::new();
         
         // Build the kernel outside the loop, since it take a bit of effort
-        let kernel: M::K = self.model.build_kernel(prev_gen)?;
+        let kernel_builder: M::K = self.model.build_kernel_builder_for_generation(prev_gen)?;
 
         loop {
             // Particle loop
@@ -126,7 +128,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
 
             self.check_still_working_on_correct_generation(prev_gen)?;
 
-            match self.make_one_particle(prev_gen, &kernel, rng) {
+            match self.make_one_particle(prev_gen, &kernel_builder, rng) {
                 o @ Ok(_) => o,
                 Err(e) => {
                     let msg = format!("In particle loop, failed to make particle: {}", e);
@@ -170,12 +172,16 @@ impl<M: Model, S: Storage> ABCD<M, S> {
     fn make_one_particle(
         &self,
         prev_gen: &GenWrapper<M::Parameters>,
-        kernel: &M::K,
+        kernel_builder: &M::Kb,
         rng: &mut impl Rng,
     ) -> ABCDResult<()> {
+        // Sample from previous generation
+        let sampled = prev_gen.sample(&self.model, rng);
+                
+        //Build a perturbation kernel local to that sampled particle
+        let kernel = kernel_builder.build_kernel_around_particle(&sampled);
+                
         let parameters = {
-            // Sample from previous generation
-            let sampled = prev_gen.sample(&self.model, rng);
             // Apply perturbation kernel
             let perturbed = prev_gen.perturb(&sampled, &self.model, rng)?;
             // Ensure perturbed particle is within the prior, else will try again
@@ -203,6 +209,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
             score,
             prev_gen.next_gen_tolerance()?,
             &self.model,
+            &kernel,
         )?;
 
         // Save the non_normalised particle to storage
