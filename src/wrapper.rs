@@ -1,7 +1,5 @@
 use crate::{
-    error::{ABCDErr, ABCDResult},
-    storage::Storage,
-    Generation, Model, Particle,
+    error::{ABCDErr, ABCDResult}, kernel::Kernel, storage::Storage, Generation, Model, Particle
 };
 use rand::{
     distributions::{Uniform, WeightedIndex},
@@ -60,9 +58,10 @@ impl<P> GenWrapper<P> {
         &self,
         parameters: &P,
         model: &M,
+        kernel: &M::K,
         rng: &mut impl Rng,
     ) -> ABCDResult<P> {
-        let params = model.perturb(parameters, rng);
+        let params = kernel.perturb(parameters, rng);
         if model.prior_density(&params) > 0.0 {
             Ok(params)
         } else {
@@ -85,13 +84,15 @@ impl<P> GenWrapper<P> {
         score: f64,
         tolerance: f64,
         model: &M,
+        kernel: &M::K,
     ) -> ABCDResult<Particle<P>>
     where
         M: Model<Parameters = P>,
         P: Debug,
     {
         let result = match self {
-            GenWrapper::Emp(g) => g.weigh(parameters, score, tolerance, model),
+            GenWrapper::Emp(g) => 
+                g.weigh(parameters, score, tolerance, model, kernel),
             GenWrapper::Prior => Particle {
                 parameters,
                 score,
@@ -157,6 +158,7 @@ impl<P> Empirical<P> {
         score: f64,
         tolerance: f64,
         model: &M,
+        kernel: &M::K,
     ) -> Particle<P> {
         // Calculate a **not**-normalised_weight for each particle
         let weight = if score <= tolerance {
@@ -167,7 +169,7 @@ impl<P> Empirical<P> {
                 .map(|prev_gen_particle| {
                     let weight = prev_gen_particle.weight;
                     let pert_density =
-                        model.pert_density(&prev_gen_particle.parameters, &parameters);
+                        kernel.pert_density(&prev_gen_particle.parameters, &parameters);
                     weight * pert_density
                 })
                 .sum();

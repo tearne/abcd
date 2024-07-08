@@ -1,15 +1,12 @@
+use std::fmt::{Display, Debug};
+
 use nalgebra::{DVector, SMatrix};
 use rand::prelude::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use statrs::{
-    distribution::{Continuous, MultivariateNormal},
-    statistics::{Data, OrderStatistics},
-};
-use std::{fmt::{Debug, Display}, marker::PhantomData, ops::{Add, Sub}};
+use statrs::statistics::{Data, OrderStatistics};
 
 use crate::{
-    config::Config,
-    error::{ABCDErr, ABCDResult, VectorConversionError}, wrapper::GenWrapper,
+    config::Config, error::{ABCDErr, ABCDResult, VectorConversionError}, kernel::{Kernel, KernelBuilder}, wrapper::GenWrapper
 };
 
 pub trait Model {
@@ -21,7 +18,7 @@ pub trait Model {
     fn prior_sample(&self, rng: &mut impl Rng) -> Self::Parameters;
     fn prior_density(&self, p: &Self::Parameters) -> f64;
 
-    fn build_kernel_builder_for_generation(self, prev_gen: &GenWrapper<Self::Parameters>) -> ABCDResult<Self::K>;
+    fn build_kernel_builder_for_generation(&self, prev_gen: &GenWrapper<Self::Parameters>) -> ABCDResult<Self::Kb>;
     // fn perturb(&self, p: &Self::Parameters, rng: &mut impl Rng) -> Self::Parameters;
     // fn pert_density(&self, from: &Self::Parameters, to: &Self::Parameters) -> f64;
 
@@ -36,20 +33,6 @@ pub struct Particle<P> {
     pub weight: f64,
 }
 
-pub trait KernelBuilder<P, K> 
-where 
-    P: Serialize + DeserializeOwned + Debug + Clone ,
-    K: Kernel<P>,
-{
-    fn build_kernel_around_particle(&self, params: &P) -> K;
-}
-
-pub trait Kernel<P> where 
-        P: Serialize + DeserializeOwned + Debug + Clone {
-
-    fn perturb(&self, p: &P, rng: &mut impl Rng) -> P;
-    fn pert_density(&self, from: &P, to: &P) -> f64;        
-}
 
 //TODO split up
 pub trait Vector<const D: usize> 

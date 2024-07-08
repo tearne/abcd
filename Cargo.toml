@@ -29,3 +29,4 @@ nalgebra = {version = "0.32.6", features = ["serde-serialize"]}
 tempfile = "3"
 color-eyre = "0.6.3"
 path-absolutize = "3.1.1"
+derive_more = "0.99.18"
