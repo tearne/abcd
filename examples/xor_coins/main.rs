@@ -12,8 +12,7 @@ use tokio::runtime::Runtime;
 /// 
 /// An experiment involves tossing the pair and applying an
 /// XOR gate to the results, so that the overall result is 
-/// said to be positive if and only if just one of them is 
-/// heads but not both.
+/// positive if and only if precisely one of them is heads.
 /// 
 /// We toss the pair 100 times and count the number of 
 /// positive results as 38.  What is the posterior 
@@ -79,7 +78,6 @@ impl Kernel {
 #[derive(Debug)]
 struct MyModel {
     prior: Uniform,
-    kernel: Kernel,
     observed: f64,
     num_trials: u64,
 }
@@ -88,8 +86,7 @@ impl MyModel {
     pub fn new(observed_proportion_positive: f64, num_trials: u64) -> Self {
         MyModel {
             prior: Uniform::new(0.0, 1.0),
-            kernel: Kernel::new(0.1),
-            observed: observed_proportion_heads,
+            observed: observed_proportion_positive,
             num_trials,
         }
     }
@@ -97,8 +94,7 @@ impl MyModel {
 
 impl Model for MyModel {
     type Parameters = MyParameters;
-    type E = eyre::Report;
-
+    type K: 
     fn prior_sample(&self, rng: &mut impl Rng) -> Self::Parameters {
         let heads: f64 = self.prior.sample(rng);
         MyParameters { heads }

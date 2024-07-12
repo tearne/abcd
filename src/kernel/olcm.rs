@@ -9,6 +9,8 @@ use statrs::distribution::{Continuous, MultivariateNormal};
 
 use crate::{error::ABCDResult, types::Vector, Particle};
 
+use super::Kernel;
+
 pub struct OLCMKernel<const D: usize, P>
 where
     P: Vector<D> + Add<Output = P> + Sub<Output = P>,
@@ -37,6 +39,16 @@ where
                 .cloned()
                 .collect::<Vec<f64>>(),
         )
+    }
+}
+
+impl<P> Kernel<P> for OLCMKernel<P> {
+    fn perturb(&self, p: &P, rng: &mut impl Rng) -> P {
+        self.perturb(p, rng)
+    }
+
+    fn pert_density(&self, from: &P, to: &P) -> f64 {
+        self.pert_density(from, to)
     }
 }
 
