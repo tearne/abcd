@@ -1,10 +1,10 @@
-use abcd::{config::Config, Model, ABCD};
+use abcd::{config::Config, kernel::{Kernel, TrivialKernel}, wrapper::GenWrapper, Model, ABCD};
 use color_eyre::eyre;
 use path_absolutize::Absolutize;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use statrs::distribution::Normal;
-use std::{ops::Range, path::Path};
+use std::{error::Error, marker::PhantomData, ops::Range, path::Path};
 use tokio::runtime::Runtime;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -43,48 +43,58 @@ impl Uniform {
 }
 
 #[derive(Debug)]
-struct Kernel {
+struct NormalKernel {
     normal: Normal,
 }
-impl Kernel {
+impl NormalKernel {
     fn new(std_dev: f64) -> Self {
         Self {
             normal: Normal::new(0.0, std_dev).unwrap(),
         }
     }
-
-    fn sample(&self, rng: &mut impl Rng) -> f64 {
-        rng.sample(self.normal)
+}
+impl Kernel<MyParameters> for NormalKernel {
+    fn perturb(&self, p: &MyParameters, rng: &mut impl Rng) -> MyParameters {
+        let heads: f64 = p.heads + rng.sample(self.normal);
+        MyParameters { heads }
     }
 
-    fn density(&self, v: f64) -> f64 {
-        use statrs::distribution::Continuous;
-        self.normal.pdf(v)
+    fn pert_density(&self, from: &MyParameters, to: &MyParameters) -> f64 {
+        let pert_density: f64 = { 
+            let diff = from.heads - to.heads;
+            use statrs::distribution::Continuous;
+            self.normal.pdf(diff)
+        };
+        pert_density
     }
 }
 
-#[derive(Debug)]
+// #[derive(Debug)]
 struct MyModel {
     prior: Uniform,
-    kernel: Kernel,
+    kernel: TrivialKernel<MyParameters, NormalKernel>,
     observed: f64,
     num_trials: u64,
+    phantom: PhantomData<MyParameters>
 }
 
 impl MyModel {
     pub fn new(observed_proportion_heads: f64, num_trials: u64) -> Self {
         MyModel {
             prior: Uniform::new(0.0, 1.0),
-            kernel: Kernel::new(0.1),
+            kernel: TrivialKernel::from(NormalKernel::new(0.1)),
             observed: observed_proportion_heads,
             num_trials,
+            phantom: PhantomData::<MyParameters>::default(),
         }
     }
 }
 
+
 impl Model for MyModel {
     type Parameters = MyParameters;
-    type E = eyre::Report;
+    type K = TrivialKernel<MyParameters, NormalKernel>;
+    type Kb = Self::K;
 
     fn prior_sample(&self, rng: &mut impl Rng) -> Self::Parameters {
         let heads: f64 = self.prior.sample(rng);
@@ -96,17 +106,11 @@ impl Model for MyModel {
         density
     }
 
-    fn perturb(&self, _p: &Self::Parameters, rng: &mut impl Rng) -> Self::Parameters {
-        let heads: f64 = _p.heads + self.kernel.sample(rng);
-        MyParameters { heads }
+    fn build_kernel_builder_for_generation(&self, _prev_gen: &GenWrapper<Self::Parameters>) -> Result<&Self::Kb, Box<dyn Error>> {
+        Ok(&self.kernel)
     }
 
-    fn pert_density(&self, _from: &Self::Parameters, _to: &Self::Parameters) -> f64 {
-        let pert_density: f64 = { self.kernel.density(_from.heads - _to.heads) };
-        pert_density
-    }
-
-    fn score(&self, p: &Self::Parameters) -> Result<f64, Self::E> {
+    fn score(&self, p: &Self::Parameters) -> Result<f64, Box<dyn Error>> {
         let mut random = rand::thread_rng();
         let mut heads_count: u64 = 0;
 

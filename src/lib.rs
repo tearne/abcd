@@ -115,7 +115,10 @@ impl<M: Model, S: Storage> ABCD<M, S> {
         let mut particle_failures = Vec::<String>::new();
         
         // Build the kernel outside the loop, since it take a bit of effort
-        let kernel_builder: M::Kb = self.model.build_kernel_builder_for_generation(prev_gen)?;
+        let kernel_builder: &M::Kb = self.model.build_kernel_builder_for_generation(prev_gen)
+            .map_err(|e|{
+                ABCDErr::InfrastructureError(format!("Something went wrong with kernel builder: {}", e))
+            })?;
 
         loop {
             // Particle loop
@@ -183,7 +186,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
                 
         let parameters = {
             // Apply perturbation kernel
-            let perturbed = prev_gen.perturb(&sampled, &self.model, &kernel, rng)?;
+            let perturbed = prev_gen.perturb(&sampled, &self.model, kernel, rng)?;
             // Ensure perturbed particle is within the prior, else will try again
             if self.model.prior_density(&perturbed) == 0.0 {
                 Err(ABCDErr::ParticleErr(
@@ -209,7 +212,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
             score,
             prev_gen.next_gen_tolerance()?,
             &self.model,
-            &kernel,
+            kernel,
         )?;
 
         // Save the non_normalised particle to storage
