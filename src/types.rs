@@ -13,14 +13,11 @@ pub trait Model {
     type Parameters: Serialize + DeserializeOwned + Debug + Clone;
     type K: Kernel<Self::Parameters>;
     type Kb: KernelBuilder<Self::Parameters, Self::K>;
-    // type Err: Display;
 
     fn prior_sample(&self, rng: &mut impl Rng) -> Self::Parameters;
     fn prior_density(&self, p: &Self::Parameters) -> f64;
 
     fn build_kernel_builder_for_generation(&self, prev_gen: &GenWrapper<Self::Parameters>) -> Result<&Self::Kb, Box<dyn Error>>;
-    // fn perturb(&self, p: &Self::Parameters, rng: &mut impl Rng) -> Self::Parameters;
-    // fn pert_density(&self, from: &Self::Parameters, to: &Self::Parameters) -> f64;
 
     fn score(&self, p: &Self::Parameters) -> Result<f64, Box<dyn Error>>;
 }

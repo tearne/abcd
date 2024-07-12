@@ -9,12 +9,12 @@ use statrs::distribution::{Continuous, MultivariateNormal};
 
 use crate::{error::ABCDResult, types::Vector, Particle};
 
-struct OLCMKernel<const D: usize, P>
+pub struct OLCMKernel<const D: usize, P>
 where
     P: Vector<D> + Add<Output = P> + Sub<Output = P>,
 {
-    weighted_mean: SMatrix<f64, D, 1>,
-    local_covariance: SMatrix<f64, D, D>,
+    pub weighted_mean: SMatrix<f64, D, 1>,
+    pub local_covariance: SMatrix<f64, D, D>,
     distribution: MultivariateNormal,
     phantom: PhantomData<P>,
 }
@@ -40,7 +40,7 @@ where
     }
 }
 
-struct OLCMKernelBuilder<const D: usize, P>
+pub struct OLCMKernelBuilder<const D: usize, P>
 where
     P: Vector<D> + Add<Output = P> + Sub<Output = P>,
 {
