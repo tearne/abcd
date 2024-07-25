@@ -3,7 +3,7 @@ use std::{
     ops::{Add, Sub},
 };
 
-use nalgebra::SMatrix;
+use nalgebra::{DMatrix, DVector, SMatrix};
 use rand::{distributions::Distribution, Rng};
 use statrs::distribution::{Continuous, MultivariateNormal};
 
@@ -11,38 +11,35 @@ use crate::{error::ABCDResult, types::Vector, Particle};
 
 use super::Kernel;
 
-pub struct OLCMKernel<const D: usize, P>
+pub struct OLCMKernel<P>
 where
-    P: Vector<D> + Add<Output = P> + Sub<Output = P>,
+    P: From<DVector<f64>> + Add<Output = P> + Sub<Output = P> + Copy,
 {
-    pub weighted_mean: SMatrix<f64, D, 1>,
-    pub local_covariance: SMatrix<f64, D, D>,
+    pub weighted_mean: DMatrix<f64>,
+    pub local_covariance: DMatrix<f64>,
     distribution: MultivariateNormal,
     phantom: PhantomData<P>,
 }
-impl<const D: usize, P> OLCMKernel<D, P>
+impl<P> OLCMKernel<P>
 where
-    P: Vector<D> + Add<Output = P> + Sub<Output = P> + Copy,
+    P: From<DVector<f64>> + Into<DVector<f64>> + Add<Output = P> + Sub<Output = P> + Copy,
 {
-    pub fn perturb(&self, parameters: &P, rng: &mut impl Rng) -> ABCDResult<P> {
-        let sampled = P::from_column_vector(self.distribution.sample(rng))?;
-        Ok(*parameters + sampled)
+    pub fn perturb(&self, parameters: &P, rng: &mut impl Rng) -> P {
+        let sampled: P = self.distribution.sample(rng).into();
+        *parameters + sampled
     }
 
     pub fn pert_density(&self, from: &P, to: &P) -> f64 {
         let delta: P = *to - *from;
-        //TODO another case of SVector to DVector
-        self.distribution.pdf(
-            delta
-                .to_column_vector()
-                .iter()
-                .cloned()
-                .collect::<Vec<f64>>(),
-        )
+        let delta: DVector<f64> = delta.into();
+        self.distribution.pdf(&delta)
     }
 }
 
-impl<P> Kernel<P> for OLCMKernel<P> {
+impl<P> Kernel<P> for OLCMKernel<P> 
+where
+    P: From<DVector<f64>> + Into<DVector<f64>> + Add<Output = P> + Sub<Output = P> + Copy
+{
     fn perturb(&self, p: &P, rng: &mut impl Rng) -> P {
         self.perturb(p, rng)
     }
