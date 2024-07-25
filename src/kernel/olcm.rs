@@ -3,11 +3,11 @@ use std::{
     ops::{Add, Sub},
 };
 
-use nalgebra::{DMatrix, DVector, SMatrix};
+use nalgebra::{dimension, DMatrix, DVector, SMatrix};
 use rand::{distributions::Distribution, Rng};
 use statrs::distribution::{Continuous, MultivariateNormal};
 
-use crate::{error::ABCDResult, types::Vector, Particle};
+use crate::{error::{ABCDErr, ABCDResult}, Particle, ABCD};
 
 use super::Kernel;
 
@@ -15,7 +15,7 @@ pub struct OLCMKernel<P>
 where
     P: From<DVector<f64>> + Add<Output = P> + Sub<Output = P> + Copy,
 {
-    pub weighted_mean: DMatrix<f64>,
+    pub weighted_mean: DVector<f64>,
     pub local_covariance: DMatrix<f64>,
     distribution: MultivariateNormal,
     phantom: PhantomData<P>,
@@ -51,37 +51,46 @@ where
 
 pub struct OLCMKernelBuilder<const D: usize, P>
 where
-    P: Vector<D> + Add<Output = P> + Sub<Output = P>,
+    P: From<DVector<f64>> + Into<DVector<f64>> + Add<Output = P> + Sub<Output = P> + Copy,
 {
-    weighted_mean: SMatrix<f64, D, 1>,
-    weighted_covariance: SMatrix<f64, D, D>,
+    weighted_mean: DVector<f64>,
+    weighted_covariance: DMatrix<f64>,
     phantom: PhantomData<P>,
 }
 impl<const D: usize, P> OLCMKernelBuilder<D, P>
 where
-    P: Vector<D> + Add<Output = P> + Sub<Output = P>,
+    P: From<DVector<f64>> + Into<DVector<f64>> + Add<Output = P> + Sub<Output = P> + Copy,
 {
     pub fn new(particles: &Vec<Particle<P>>) -> ABCDResult<Self> {
         assert!(f64::abs(particles.iter().map(|p| p.weight).sum::<f64>() - 1.0) < 0.000001);
 
-        let weighted_mean: SMatrix<f64, D, 1> =
+        // let dimension = {
+        //     let first_particle = particles.first().ok_or_else(||ABCDErr::OCLMError("Empty particle vector.".into()))?;
+        //     let DVfirst_particle.
+
+        // };
+
+        let weighted_mean: DVector<f64> =
             particles
                 .iter()
-                .fold(SMatrix::<f64, D, 1>::zeros(), |acc, particle| {
-                    let parameters_vec = particle.parameters.to_column_vector();
+                .map(|particle|{
+                    let parameters_vec = Into::<DVector<f64>>::into(particle.parameters);
                     let weight = particle.weight;
-                    acc + weight * parameters_vec
-                });
+                    weight * parameters_vec
+                })
+                .reduce(|acc, vec| acc + vec)
+                .ok_or_else(||ABCDErr::OCLMError("Failed to build weighted mean.".into()))?;
 
-        let weighted_covariance: SMatrix<f64, D, D> =
+        let weighted_covariance: DMatrix<f64> =
             particles
                 .iter()
-                .fold(SMatrix::<f64, D, D>::zeros(), |acc, par| {
-                    let params = par.parameters.to_column_vector();
-                    let weight = par.weight;
-
-                    acc + weight * (params - weighted_mean) * (params - weighted_mean).transpose()
-                });
+                .map(|particle|{
+                    let params = Into::<DVector<f64>>::into(particle.parameters);
+                    let weight = particle.weight;
+                    weight * (&params - &weighted_mean) * (&params - &weighted_mean).transpose()
+                })
+                .reduce(|acc, mat| acc + mat)
+                .ok_or_else(||ABCDErr::OCLMError("Failed to build weighted covariance.".into()))?;
 
         Ok(Self {
             weighted_mean,
@@ -90,12 +99,12 @@ where
         })
     }
 
-    pub fn build_kernel_around(&self, particle: &Particle<P>) -> ABCDResult<OLCMKernel<D, P>> {
+    pub fn build_kernel_around(&self, particle: &Particle<P>) -> ABCDResult<OLCMKernel<P>> {
         let local_covariance = {
-            let particle_vector = particle.parameters.to_column_vector();
-            let bias = (self.weighted_mean - particle_vector)
-                * (self.weighted_mean - particle_vector).transpose();
-            self.weighted_covariance + bias
+            let particle_vector = Into::<DVector<f64>>::into(particle.parameters);
+            let bias = (&self.weighted_mean - &particle_vector)
+                * (&self.weighted_mean - &particle_vector).transpose();
+            &self.weighted_covariance + bias
         };
 
         let distribution = MultivariateNormal::new(
@@ -103,8 +112,8 @@ where
             local_covariance.iter().cloned().collect::<Vec<f64>>(),
         )?;
 
-        Ok(OLCMKernel::<D, P> {
-            weighted_mean: self.weighted_mean,
+        Ok(OLCMKernel::<P> {
+            weighted_mean: self.weighted_mean.clone(),
             local_covariance,
             distribution,
             phantom: PhantomData::default(),
@@ -120,7 +129,6 @@ mod tests {
     use crate::{
         error::{ABCDResult, VectorConversionError},
         kernel::olcm::OLCMKernelBuilder,
-        types::Vector,
         Generation,
     };
 

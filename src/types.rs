@@ -31,14 +31,14 @@ pub struct Particle<P> {
 }
 
 
-//TODO split up
-pub trait Vector<const D: usize> 
-where 
-    Self: Sized
-{
-    fn to_column_vector(&self) -> SMatrix<f64, D, 1>;
-    fn from_column_vector(v: DVector<f64>) -> Result<Self, VectorConversionError>;
-}
+// //TODO split up
+// pub trait Vector<const D: usize> 
+// where 
+//     Self: Sized
+// {
+//     fn to_column_vector(&self) -> SMatrix<f64, D, 1>;
+//     fn from_column_vector(v: DVector<f64>) -> Result<Self, VectorConversionError>;
+// }
 
 // pub struct OLCM<const D: usize> {
 //     pub mean: SMatrix<f64, D, 1>,
