@@ -1,5 +1,6 @@
-use abcd::{config::Config, kernel::{Kernel, TrivialKernel}, wrapper::GenWrapper, Model, ABCD};
+use abcd::{config::Config, error::{ABCDErr, ABCDResult}, kernel::{Kernel, TrivialKernel}, wrapper::GenWrapper, Model, ABCD};
 use color_eyre::eyre;
+use nalgebra::DVector;
 use path_absolutize::Absolutize;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -7,9 +8,21 @@ use statrs::distribution::Normal;
 use std::{error::Error, marker::PhantomData, ops::Range, path::Path};
 use tokio::runtime::Runtime;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, derive_more::Add, derive_more::Sub, Debug, Clone)]
 struct MyParameters {
     heads: f64,
+}
+impl TryFrom<DVector<f64>> for MyParameters {
+    type Error = ABCDErr;
+
+    fn try_from(value: DVector<f64>) -> Result<Self, Self::Error> {
+        todo!()
+    }
+}
+impl Into<DVector<f64>> for MyParameters {
+    fn into(self) -> DVector<f64> {
+        todo!()
+    }
 }
 
 #[derive(Debug)]
@@ -42,7 +55,7 @@ impl Uniform {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct NormalKernel {
     normal: Normal,
 }
@@ -54,9 +67,9 @@ impl NormalKernel {
     }
 }
 impl Kernel<MyParameters> for NormalKernel {
-    fn perturb(&self, p: &MyParameters, rng: &mut impl Rng) -> MyParameters {
+    fn perturb(&self, p: &MyParameters, rng: &mut impl Rng) -> ABCDResult<MyParameters> {
         let heads: f64 = p.heads + rng.sample(self.normal);
-        MyParameters { heads }
+        Ok(MyParameters { heads })
     }
 
     fn pert_density(&self, from: &MyParameters, to: &MyParameters) -> f64 {
@@ -69,7 +82,6 @@ impl Kernel<MyParameters> for NormalKernel {
     }
 }
 
-// #[derive(Debug)]
 struct MyModel {
     prior: Uniform,
     kernel: TrivialKernel<MyParameters, NormalKernel>,

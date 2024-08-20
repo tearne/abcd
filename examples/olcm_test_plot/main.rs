@@ -1,7 +1,7 @@
 use std::{path::Path, process::Command};
 
-use abcd::{error::{ABCDResult, VectorConversionError}, kernel::olcm::OLCMKernelBuilder, types::Vector, Generation};
-use nalgebra::{SMatrix, Vector2};
+use abcd::{error::{ABCDErr, ABCDResult}, kernel::{olcm::OLCMKernelBuilder, KernelBuilder}, Generation};
+use nalgebra::{DVector, SMatrix, Vector2};
 use rand::{distributions::Distribution, rngs::SmallRng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -20,26 +20,29 @@ impl TestParams {
     }
 }
 
-impl Vector<2> for TestParams {
-    fn to_column_vector(&self) -> SMatrix<f64, 2, 1> {
-        Vector2::new(self.x, self.y)
-    }
+impl TryFrom<DVector<f64>> for TestParams {
+    type Error = ABCDErr;
     
-    fn from_column_vector(v: nalgebra::DVector<f64>) -> Result<Self, abcd::error::VectorConversionError> {
-        let values = v.iter().cloned().collect::<Vec<f64>>();
-        if values.len() != 2 {
-            return Err(VectorConversionError(format!(
+    fn try_from(value: DVector<f64>) -> Result<Self, Self::Error> {
+        if value.len() != 2 {
+            return Err(ABCDErr::VectorConversionError(format!(
                 "Wrong number of arguments.  Expected 2, got {}",
-                values.len()
+                value.len()
             )));
         } else {
             Ok(TestParams {
-                x: values[0],
-                y: values[1],
+                x: value[0],
+                y: value[1],
             })
         }
     }
 }
+impl Into<DVector<f64>> for TestParams {
+    fn into(self) -> DVector<f64> {
+        DVector::from_column_slice(&[self.x, self.y])
+    }
+}
+
 
 pub fn main() -> ABCDResult<()> {
     let path = "resources/test/olcm/particles.json";
@@ -49,8 +52,9 @@ pub fn main() -> ABCDResult<()> {
     let population = generation.pop;
     let candidate = &population.normalised_particles()[0];
 
-    let builder = OLCMKernelBuilder::new(population.normalised_particles())?;
-    let olcm = builder.build_kernel_around(candidate)?;
+    let particles = population.normalised_particles();
+    let builder = OLCMKernelBuilder::new(particles)?;
+    let olcm = builder.build_kernel_around_parameters(&candidate.parameters)?;
 
     let mut rng = SmallRng::from_entropy();
 

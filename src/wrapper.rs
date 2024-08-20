@@ -61,7 +61,7 @@ impl<P> GenWrapper<P> {
         kernel: &M::K,
         rng: &mut impl Rng,
     ) -> ABCDResult<P> {
-        let params = kernel.perturb(parameters, rng);
+        let params = kernel.perturb(parameters, rng)?;
         if model.prior_density(&params) > 0.0 {
             Ok(params)
         } else {

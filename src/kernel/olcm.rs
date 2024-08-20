@@ -1,19 +1,19 @@
 use std::{
-    marker::PhantomData,
-    ops::{Add, Sub},
+    borrow::Cow, marker::PhantomData, ops::{Add, Sub}
 };
 
-use nalgebra::{dimension, DMatrix, DVector, SMatrix};
+use nalgebra::{DMatrix, DVector};
 use rand::{distributions::Distribution, Rng};
 use statrs::distribution::{Continuous, MultivariateNormal};
 
-use crate::{error::{ABCDErr, ABCDResult}, Particle, ABCD};
+use crate::{error::{ABCDErr, ABCDResult}, Particle};
 
-use super::Kernel;
+use super::{Kernel, KernelBuilder};
 
+#[derive(Clone)]
 pub struct OLCMKernel<P>
 where
-    P: From<DVector<f64>> + Add<Output = P> + Sub<Output = P> + Copy,
+    P: TryFrom<DVector<f64>, Error = ABCDErr> + Add<Output = P> + Sub<Output = P> + Copy,
 {
     pub weighted_mean: DVector<f64>,
     pub local_covariance: DMatrix<f64>,
@@ -22,11 +22,11 @@ where
 }
 impl<P> OLCMKernel<P>
 where
-    P: From<DVector<f64>> + Into<DVector<f64>> + Add<Output = P> + Sub<Output = P> + Copy,
+    P: TryFrom<DVector<f64>, Error = ABCDErr> + Into<DVector<f64>> + Add<Output = P> + Sub<Output = P> + Copy,
 {
-    pub fn perturb(&self, parameters: &P, rng: &mut impl Rng) -> P {
-        let sampled: P = self.distribution.sample(rng).into();
-        *parameters + sampled
+    pub fn perturb(&self, parameters: &P, rng: &mut impl Rng) -> ABCDResult<P> {
+        let sampled: P = self.distribution.sample(rng).try_into()?;
+        Ok(*parameters + sampled)
     }
 
     pub fn pert_density(&self, from: &P, to: &P) -> f64 {
@@ -38,9 +38,9 @@ where
 
 impl<P> Kernel<P> for OLCMKernel<P> 
 where
-    P: From<DVector<f64>> + Into<DVector<f64>> + Add<Output = P> + Sub<Output = P> + Copy
+    P: TryFrom<DVector<f64>, Error = ABCDErr> + Into<DVector<f64>> + Add<Output = P> + Sub<Output = P> + Copy
 {
-    fn perturb(&self, p: &P, rng: &mut impl Rng) -> P {
+    fn perturb(&self, p: &P, rng: &mut impl Rng) -> ABCDResult<P> {
         self.perturb(p, rng)
     }
 
@@ -49,26 +49,20 @@ where
     }
 }
 
-pub struct OLCMKernelBuilder<const D: usize, P>
+pub struct OLCMKernelBuilder<P>
 where
-    P: From<DVector<f64>> + Into<DVector<f64>> + Add<Output = P> + Sub<Output = P> + Copy,
+    P: TryFrom<DVector<f64>, Error = ABCDErr> + Into<DVector<f64>> + Add<Output = P> + Sub<Output = P> + Copy,
 {
     weighted_mean: DVector<f64>,
     weighted_covariance: DMatrix<f64>,
     phantom: PhantomData<P>,
 }
-impl<const D: usize, P> OLCMKernelBuilder<D, P>
+impl<P> OLCMKernelBuilder<P>
 where
-    P: From<DVector<f64>> + Into<DVector<f64>> + Add<Output = P> + Sub<Output = P> + Copy,
+    P: TryFrom<DVector<f64>, Error = ABCDErr> + Into<DVector<f64>> + Add<Output = P> + Sub<Output = P> + Copy,
 {
     pub fn new(particles: &Vec<Particle<P>>) -> ABCDResult<Self> {
         assert!(f64::abs(particles.iter().map(|p| p.weight).sum::<f64>() - 1.0) < 0.000001);
-
-        // let dimension = {
-        //     let first_particle = particles.first().ok_or_else(||ABCDErr::OCLMError("Empty particle vector.".into()))?;
-        //     let DVfirst_particle.
-
-        // };
 
         let weighted_mean: DVector<f64> =
             particles
@@ -99,17 +93,17 @@ where
         })
     }
 
-    pub fn build_kernel_around(&self, particle: &Particle<P>) -> ABCDResult<OLCMKernel<P>> {
+    pub fn build_kernel(&self, parameters: &P) -> ABCDResult<OLCMKernel<P>> {
         let local_covariance = {
-            let particle_vector = Into::<DVector<f64>>::into(particle.parameters);
+            let particle_vector = Into::<DVector<f64>>::into(*parameters);
             let bias = (&self.weighted_mean - &particle_vector)
                 * (&self.weighted_mean - &particle_vector).transpose();
             &self.weighted_covariance + bias
         };
 
-        let distribution = MultivariateNormal::new(
-            vec![0f64; D],
-            local_covariance.iter().cloned().collect::<Vec<f64>>(),
+        let distribution = MultivariateNormal::new_from_nalgebra(
+            DVector::<f64>::zeros(self.weighted_mean.len()),
+            local_covariance.clone(),
         )?;
 
         Ok(OLCMKernel::<P> {
@@ -121,43 +115,53 @@ where
     }
 }
 
+impl<P> KernelBuilder<P, OLCMKernel<P>> for OLCMKernelBuilder<P> 
+where 
+    P: TryFrom<DVector<f64>, Error = ABCDErr> + Into<DVector<f64>> + Add<Output = P> + Sub<Output = P> + Copy
+{
+    fn build_kernel_around_parameters<'a>(&'a self, parameters: &P) -> ABCDResult<Cow<'a, OLCMKernel<P>>> {
+        Ok(Cow::Owned(self.build_kernel(parameters)?))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use nalgebra::{DVector, Matrix2, SMatrix, Vector2};
     use serde::Deserialize;
 
     use crate::{
-        error::{ABCDResult, VectorConversionError},
-        kernel::olcm::OLCMKernelBuilder,
+        error::{ABCDErr, ABCDResult},
+        kernel::{olcm::OLCMKernelBuilder, KernelBuilder},
         Generation,
     };
 
-    #[derive(Deserialize, Debug, derive_more::Add, derive_more::Sub)]
+    #[derive(Deserialize, Debug, derive_more::Add, derive_more::Sub, Copy, Clone)]
     struct TestParams {
         x: f64,
         y: f64,
     }
 
-    impl Vector<2> for TestParams {
-        fn to_column_vector(&self) -> SMatrix<f64, 2, 1> {
-            Vector2::new(self.x, self.y)
-        }
-
-        fn from_column_vector(
-            v: DVector<f64>,
-        ) -> Result<TestParams, crate::error::VectorConversionError> {
-            let values = v.iter().cloned().collect::<Vec<f64>>();
-            if values.len() != 2 {
-                return Err(VectorConversionError(format!(
+    impl TryFrom<DVector<f64>> for TestParams {
+        type Error = ABCDErr;
+        
+        fn try_from(value: DVector<f64>) -> Result<Self, Self::Error> {
+            if value.len() != 2 {
+                return Err(ABCDErr::VectorConversionError(format!(
                     "Wrong number of arguments.  Expected 2, got {}",
-                    values.len()
+                    value.len()
                 )));
             } else {
                 Ok(TestParams {
-                    x: values[0],
-                    y: values[1],
+                    x: value[0],
+                    y: value[1],
                 })
             }
+        }
+    }
+
+    impl Into<DVector<f64>> for TestParams {
+        fn into(self) -> DVector<f64> {
+            DVector::from_column_slice(&[self.x, self.y])
         }
     }
 
@@ -168,9 +172,10 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
 
         let normalised_particles = generation.pop.normalised_particles();
-        let candidate = &normalised_particles[0];
+        let candidate = &normalised_particles[0].parameters;
 
-        let olcm = OLCMKernelBuilder::new(normalised_particles)?.build_kernel_around(candidate)?;
+        let kernel_builder = OLCMKernelBuilder::<TestParams>::new(normalised_particles)?;
+        let olcm = kernel_builder.build_kernel_around_parameters(candidate)?;
         assert_eq!(Matrix2::new(4.8, -13.6, -13.6, 44.1), olcm.local_covariance);
         assert_eq!(Vector2::new(10.0, 100.1), olcm.weighted_mean);
 

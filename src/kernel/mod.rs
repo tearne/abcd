@@ -1,19 +1,22 @@
-use std::marker::PhantomData;
+use std::{borrow::Cow, marker::PhantomData};
 
 use rand::Rng;
 
+use crate::{error::ABCDResult, Particle};
+
 pub mod olcm;
 
-pub trait KernelBuilder<P, K> where K: Kernel<P>,
+pub trait KernelBuilder<P, K> where K: Kernel<P> + Clone,
 {
-    fn build_kernel_around_particle(&self, params: &P) -> &K;
+    fn build_kernel_around_parameters<'a>(&'a self, params: &P) -> ABCDResult<Cow<'a, K>>;
 }
 
-pub trait Kernel<P> {
-    fn perturb(&self, p: &P, rng: &mut impl Rng) -> P;
+pub trait Kernel<P>: Clone{
+    fn perturb(&self, p: &P, rng: &mut impl Rng) -> ABCDResult<P>;
     fn pert_density(&self, from: &P, to: &P) -> f64;        
 }
 
+#[derive(Clone)]
 pub struct TrivialKernel<P, K: Kernel<P>> {
     kernel: K,
     phantom: PhantomData<P>,
@@ -24,13 +27,13 @@ impl<P,K: Kernel<P>> TrivialKernel<P, K> {
     }
 }
 
-impl<P,K: Kernel<P>> KernelBuilder<P, TrivialKernel<P, K>> for TrivialKernel<P, K> {
-    fn build_kernel_around_particle(&self, _: &P) -> &TrivialKernel<P, K> {
-        self
+impl<P: Clone,K: Kernel<P>> KernelBuilder<P, TrivialKernel<P, K>> for TrivialKernel<P, K> {
+    fn build_kernel_around_parameters<'a>(&'a self, _: &P) -> ABCDResult<Cow<'a, TrivialKernel<P, K>>> {
+        Ok(Cow::Borrowed(self))
     }
 }
-impl<P, K: Kernel<P>> Kernel<P> for TrivialKernel<P, K>{
-    fn perturb(&self, p: &P, rng: &mut impl Rng) -> P {
+impl<P: Clone, K: Kernel<P>> Kernel<P> for TrivialKernel<P, K>{
+    fn perturb(&self, p: &P, rng: &mut impl Rng) -> ABCDResult<P> {
         self.kernel.perturb(p, rng)
     }
     

@@ -15,6 +15,8 @@ printf "Script working dir: ${DIR}\n"
 
 export RUST_LOG=error,abcd=info,unfair_coin=info 
 
+cargo build --release
+
 printf "Purge old objects (and versions) in s3://${TEST_BUCKET}/${TEST_PREFIX}\n"
 printf "... 2 second pause\n"
 sleep 2

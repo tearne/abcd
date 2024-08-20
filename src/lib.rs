@@ -5,6 +5,8 @@ pub mod types;
 pub mod wrapper;
 pub mod kernel;
 
+use std::borrow::Borrow;
+
 use config::Config;
 use error::{ABCDErr, ABCDResult};
 use kernel::KernelBuilder;
@@ -180,13 +182,15 @@ impl<M: Model, S: Storage> ABCD<M, S> {
     ) -> ABCDResult<()> {
         // Sample from previous generation
         let sampled = prev_gen.sample(&self.model, rng);
+
+        // let t: &M::Parameters = sampled.borrow();
                 
         //Build a perturbation kernel local to that sampled particle
-        let kernel = kernel_builder.build_kernel_around_particle(&sampled);
+        let kernel = kernel_builder.build_kernel_around_parameters(&sampled)?;
                 
         let parameters = {
             // Apply perturbation kernel
-            let perturbed = prev_gen.perturb(&sampled, &self.model, kernel, rng)?;
+            let perturbed = prev_gen.perturb(&sampled, &self.model, &kernel, rng)?;
             // Ensure perturbed particle is within the prior, else will try again
             if self.model.prior_density(&perturbed) == 0.0 {
                 Err(ABCDErr::ParticleErr(
@@ -212,7 +216,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
             score,
             prev_gen.next_gen_tolerance()?,
             &self.model,
-            kernel,
+            &kernel,
         )?;
 
         // Save the non_normalised particle to storage

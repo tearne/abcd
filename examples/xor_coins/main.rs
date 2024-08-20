@@ -1,4 +1,4 @@
-use abcd::{config::Config, error::VectorConversionError, kernel::olcm::{OLCMKernel, OLCMKernelBuilder}, types::Vector, wrapper::GenWrapper, Model, ABCD};
+use abcd::{config::Config, error::ABCDErr, kernel::olcm::{OLCMKernel, OLCMKernelBuilder}, wrapper::GenWrapper, Model, ABCD};
 use color_eyre::eyre;
 use nalgebra::{DVector, SMatrix, Vector2};
 use path_absolutize::Absolutize;
@@ -11,40 +11,48 @@ use tokio::runtime::Runtime;
 /// We have two coins, A & B, neither of which need be fair.
 /// Let P(Heads_A)=alpha and P(Head_B)=beta.
 /// 
-/// An experiment involves tossing the pair and applying an
-/// XOR gate to the results, so that the overall result is 
-/// positive if and only if precisely one of them is heads.
+/// Our experiment involves tossing both coins and applying an
+/// XOR to the results, so that the overall result is positive
+/// if and only if precisely one coin is heads.
 /// 
 /// We toss the pair 100 times and count the number of 
-/// positive results as 38.  What is the posterior 
-/// distribution of alpha and beta?
+/// positive results as 38.  Given no prior knowledge of alpha
+/// and beta (uniform prior), what is their (two dimensional) 
+/// posterior distribution?
+/// 
+/// In the ABCD implementation, we are going to use an OLCM 
+/// kernel implementation, which is provided by the ABCD crate.
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct MyParameters {
-    heads_a: f64,
-    heads_b: f64,
+#[derive(Serialize, Deserialize, Debug, derive_more::Add, derive_more::Sub, Copy, Clone)]
+struct ProbabilityHeads {
+    alpha: f64,
+    beta: f64,
 }
 
-impl Vector<2> for MyParameters {
-    fn to_column_vector(&self) -> SMatrix<f64, 2, 1> {
-        Vector2::new(self.heads_a, self.heads_b)
-    }
-
-    fn from_column_vector(v: DVector<f64>) -> Result<Self, abcd::error::VectorConversionError> {
-        let values = v.iter().cloned().collect::<Vec<f64>>();
-            if values.len() != 2 {
-                return Err(VectorConversionError(format!(
-                    "Wrong number of arguments.  Expected 2, got {}",
-                    values.len()
-                )));
-            } else {
-                Ok(MyParameters {
-                    heads_a: values[0],
-                    heads_b: values[1],
-                })
-            }
+impl TryFrom<DVector<f64>> for ProbabilityHeads {
+    type Error = ABCDErr;
+    
+    fn try_from(value: DVector<f64>) -> Result<Self, Self::Error> {
+        if value.len() != 2 {
+            return Err(ABCDErr::VectorConversionError(format!(
+                "Wrong number of arguments.  Expected 2, got {}",
+                value.len()
+            )));
+        } else {
+            Ok(ProbabilityHeads {
+                alpha: value[0],
+                beta: value[1],
+            })
+        }
     }
 }
+
+impl Into<DVector<f64>> for ProbabilityHeads {
+    fn into(self) -> DVector<f64> {
+        DVector::from_column_slice(&[self.alpha, self.beta])
+    }
+}
+
 
 #[derive(Debug)]
 struct Uniform {
@@ -115,25 +123,25 @@ impl MyModel {
 }
 
 impl Model for MyModel {
-    type Parameters = MyParameters;
-    type K = OLCMKernel<2, MyParameters>; 
-    type Kb = OLCMKernelBuilder<2, MyParameters>;
+    type Parameters = ProbabilityHeads;
+    type K = OLCMKernel<ProbabilityHeads>; 
+    type Kb = OLCMKernelBuilder<ProbabilityHeads>;
 
     fn prior_sample(&self, rng: &mut impl Rng) -> Self::Parameters {
         let heads: f64 = self.prior.sample(rng);
-        MyParameters { 
-            heads_a : self.prior.sample(rng),
-            heads_b : self.prior.sample(rng),
+        ProbabilityHeads { 
+            alpha : self.prior.sample(rng),
+            beta : self.prior.sample(rng),
         }
     }
 
     fn prior_density(&self, p: &Self::Parameters) -> f64 {
-        let density: f64 = { self.prior.density(p.heads) };
+        let density: f64 = { self.prior.density(p.alpha) * self.prior.density(p.beta)};
         density
     }
     
     fn build_kernel_builder_for_generation(&self, prev_gen: &GenWrapper<Self::Parameters>) -> Result<&Self::Kb, Box<dyn Error>> {
-        OLCMKernelBuilder::new(prev_gen.pa)
+        OLCMKernelBuilder::new(prev_gen.)
     }
 
     // fn perturb(&self, _p: &Self::Parameters, rng: &mut impl Rng) -> Self::Parameters {

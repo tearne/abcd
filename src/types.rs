@@ -1,16 +1,16 @@
-use std::{error::Error, fmt::{Debug, Display}};
+use std::{error::Error, fmt::Debug, ops::{Add, Sub}};
 
-use nalgebra::{DVector, SMatrix};
+use nalgebra::DVector;
 use rand::prelude::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use statrs::statistics::{Data, OrderStatistics};
 
 use crate::{
-    config::Config, error::{ABCDErr, ABCDResult, VectorConversionError}, kernel::{Kernel, KernelBuilder}, wrapper::GenWrapper
+    config::Config, error::{ABCDErr, ABCDResult}, kernel::{Kernel, KernelBuilder}, wrapper::GenWrapper
 };
 
 pub trait Model {
-    type Parameters: Serialize + DeserializeOwned + Debug + Clone;
+    type Parameters: Serialize + DeserializeOwned + Debug + Clone + TryFrom<DVector<f64>> + Into<DVector<f64>> + Add<Output = Self::Parameters> + Sub<Output = Self::Parameters>;
     type K: Kernel<Self::Parameters>;
     type Kb: KernelBuilder<Self::Parameters, Self::K>;
 

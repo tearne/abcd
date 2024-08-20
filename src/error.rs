@@ -2,12 +2,12 @@ use std::{fmt::Display, num::TryFromIntError};
 
 pub type ABCDResult<T> = Result<T, ABCDErr>;
 
-pub struct VectorConversionError(pub String);
-impl Display for VectorConversionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "VectorConversionError: {}", self.0)
-    }
-}
+// pub struct VectorConversionError(pub String);
+// impl Display for VectorConversionError {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         write!(f, "VectorConversionError: {}", self.0)
+//     }
+// }
 
 #[derive(Debug)]
 pub enum ABCDErr {
@@ -135,8 +135,8 @@ impl From<StatsError> for ABCDErr {
     }
 }
 
-impl From<VectorConversionError> for ABCDErr {
-    fn from(value: VectorConversionError) -> Self {
-        ABCDErr::VectorConversionError(value.0)
-    }
-}
+// impl From<VectorConversionError> for ABCDErr {
+//     fn from(value: VectorConversionError) -> Self {
+//         ABCDErr::VectorConversionError(value.0)
+//     }
+// }
