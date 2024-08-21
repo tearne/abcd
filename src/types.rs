@@ -1,4 +1,4 @@
-use std::{error::Error, fmt::Debug, ops::{Add, Sub}};
+use std::{borrow::Cow, error::Error, fmt::Debug, ops::{Add, Sub}};
 
 use nalgebra::DVector;
 use rand::prelude::*;
@@ -6,7 +6,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use statrs::statistics::{Data, OrderStatistics};
 
 use crate::{
-    config::Config, error::{ABCDErr, ABCDResult}, kernel::{Kernel, KernelBuilder}, wrapper::GenWrapper
+    config::Config, error::{ABCDErr, ABCDResult}, kernel::{Kernel, KernelBuilder}
 };
 
 pub trait Model {
@@ -17,7 +17,7 @@ pub trait Model {
     fn prior_sample(&self, rng: &mut impl Rng) -> Self::Parameters;
     fn prior_density(&self, p: &Self::Parameters) -> f64;
 
-    fn build_kernel_builder_for_generation(&self, prev_gen: &GenWrapper<Self::Parameters>) -> Result<&Self::Kb, Box<dyn Error>>;
+    fn build_kernel_builder<'a>(&'a self, prev_gen_particles: &Vec<Particle<Self::Parameters>>) -> Result<Cow<'a, Self::Kb>, Box<dyn Error>>;
 
     fn score(&self, p: &Self::Parameters) -> Result<f64, Box<dyn Error>>;
 }
@@ -30,43 +30,6 @@ pub struct Particle<P> {
     pub weight: f64,
 }
 
-
-// //TODO split up
-// pub trait Vector<const D: usize> 
-// where 
-//     Self: Sized
-// {
-//     fn to_column_vector(&self) -> SMatrix<f64, D, 1>;
-//     fn from_column_vector(v: DVector<f64>) -> Result<Self, VectorConversionError>;
-// }
-
-// pub struct OLCM<const D: usize> {
-//     pub mean: SMatrix<f64, D, 1>,
-//     pub local_covariance: SMatrix<f64, D, D>,
-//     pub distribution: MultivariateNormal,
-// }
-// impl<const D: usize> OLCM<D> {
-//     pub fn new(mean: SMatrix<f64, D, 1>, local_covariance: SMatrix<f64, D, D>) -> ABCDResult<Self> {
-//         //TODO better way?
-//         let dynamic_d = mean.len();
-//         let mean_dyn = DVector::from_vec(mean.iter().cloned().collect::<Vec<f64>>());
-//         let cov_dyn = DMatrix::from_vec(
-//             dynamic_d,
-//             dynamic_d,
-//             local_covariance.iter().cloned().collect::<Vec<f64>>(),
-//         );
-
-//         // cargo tree -i nalgebra@0.32.6
-//         //TODO decouple nalgebra by passing in vec?
-//         let distribution = MultivariateNormal::new_from_nalgebra(mean_dyn, cov_dyn)?;
-
-//         Ok(Self {
-//             mean,
-//             local_covariance,
-//             distribution,
-//         })
-//     }
-// }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct Population<P> {

@@ -49,6 +49,7 @@ where
     }
 }
 
+#[derive(Clone)]
 pub struct OLCMKernelBuilder<P>
 where
     P: TryFrom<DVector<f64>, Error = ABCDErr> + Into<DVector<f64>> + Add<Output = P> + Sub<Output = P> + Copy,
@@ -62,7 +63,7 @@ where
     P: TryFrom<DVector<f64>, Error = ABCDErr> + Into<DVector<f64>> + Add<Output = P> + Sub<Output = P> + Copy,
 {
     pub fn new(particles: &Vec<Particle<P>>) -> ABCDResult<Self> {
-        assert!(f64::abs(particles.iter().map(|p| p.weight).sum::<f64>() - 1.0) < 0.000001);
+        assert!(f64::abs(particles.iter().map(|p| p.weight).sum::<f64>() - 1.0) < 0.000001, "Particles must be normalised to build OLCM kernel builder.");
 
         let weighted_mean: DVector<f64> =
             particles

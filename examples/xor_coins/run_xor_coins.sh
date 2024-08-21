@@ -15,8 +15,6 @@ printf "Script working dir: ${DIR}\n"
 
 export RUST_LOG=error,abcd=info,unfair_coin=info 
 
-cargo build --release
-
 printf "Purge old objects (and versions) in s3://${TEST_BUCKET}/${TEST_PREFIX}\n"
 printf "... 2 second pause\n"
 sleep 2
@@ -31,7 +29,7 @@ cargo run --release --example unfair_coin
 
 printf "Downloaing the completed generations...\n"
 sleep 1
-aws s3 sync s3://${TEST_BUCKET}/${TEST_PREFIX}/completed ../../out/unfair_coin
+aws s3 sync s3://${TEST_BUCKET}/${TEST_PREFIX}/completed ../../out/xor_coins
 
 printf "Plotting results...\n"
 sleep 1

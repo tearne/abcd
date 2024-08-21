@@ -1,11 +1,11 @@
-use abcd::{config::Config, error::{ABCDErr, ABCDResult}, kernel::{Kernel, TrivialKernel}, wrapper::GenWrapper, Model, ABCD};
+use abcd::{config::Config, error::{ABCDErr, ABCDResult}, kernel::{Kernel, TrivialKernel}, Model, Particle, ABCD};
 use color_eyre::eyre;
 use nalgebra::DVector;
 use path_absolutize::Absolutize;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use statrs::distribution::Normal;
-use std::{error::Error, marker::PhantomData, ops::Range, path::Path};
+use std::{borrow::Cow, error::Error, marker::PhantomData, ops::Range, path::Path};
 use tokio::runtime::Runtime;
 
 #[derive(Serialize, Deserialize, derive_more::Add, derive_more::Sub, Debug, Clone)]
@@ -118,8 +118,8 @@ impl Model for MyModel {
         density
     }
 
-    fn build_kernel_builder_for_generation(&self, _prev_gen: &GenWrapper<Self::Parameters>) -> Result<&Self::Kb, Box<dyn Error>> {
-        Ok(&self.kernel)
+    fn build_kernel_builder<'a>(&'a self, _: &Vec<Particle<Self::Parameters>>) -> Result<Cow<'a, Self::Kb>, Box<dyn Error>> {
+        Ok(Cow::Borrowed(&self.kernel))
     }
 
     fn score(&self, p: &Self::Parameters) -> Result<f64, Box<dyn Error>> {

@@ -5,7 +5,7 @@ pub mod types;
 pub mod wrapper;
 pub mod kernel;
 
-use std::borrow::Borrow;
+use std::borrow::Cow;
 
 use config::Config;
 use error::{ABCDErr, ABCDResult};
@@ -116,11 +116,10 @@ impl<M: Model, S: Storage> ABCD<M, S> {
 
         let mut particle_failures = Vec::<String>::new();
         
-        // Build the kernel outside the loop, since it take a bit of effort
-        let kernel_builder: &M::Kb = self.model.build_kernel_builder_for_generation(prev_gen)
-            .map_err(|e|{
-                ABCDErr::InfrastructureError(format!("Something went wrong with kernel builder: {}", e))
-            })?;
+        // If this is not the first generation we build the kernel builder outside 
+        // the loop, as it takes a bit of effort.
+        let kernel_builder: Option<Cow<M::Kb>> = prev_gen.prepare_kernel_builder(&self.model)?;
+               
 
         loop {
             // Particle loop
@@ -177,20 +176,19 @@ impl<M: Model, S: Storage> ABCD<M, S> {
     fn make_one_particle(
         &self,
         prev_gen: &GenWrapper<M::Parameters>,
-        kernel_builder: &M::Kb,
+        kernel_builder_opt: &Option<Cow<M::Kb>>,
         rng: &mut impl Rng,
     ) -> ABCDResult<()> {
         // Sample from previous generation
         let sampled = prev_gen.sample(&self.model, rng);
-
-        // let t: &M::Parameters = sampled.borrow();
                 
-        //Build a perturbation kernel local to that sampled particle
-        let kernel = kernel_builder.build_kernel_around_parameters(&sampled)?;
+        //Build a perturbation kernel local to the sampled particle (only relevant if not first gen)
+        //It will be used for both perturbation and weighing below
+        let kernel_opt = kernel_builder_opt.as_ref().map(|kb| kb.build_kernel_around_parameters(&sampled)).transpose()?;
                 
         let parameters = {
             // Apply perturbation kernel
-            let perturbed = prev_gen.perturb(&sampled, &self.model, &kernel, rng)?;
+            let perturbed = prev_gen.perturb(&sampled, &self.model, &kernel_opt, rng)?;
             // Ensure perturbed particle is within the prior, else will try again
             if self.model.prior_density(&perturbed) == 0.0 {
                 Err(ABCDErr::ParticleErr(
@@ -210,13 +208,13 @@ impl<M: Model, S: Storage> ABCD<M, S> {
 
         log::debug!("Score = {:?}", &score);
 
-        // Calculate not_normalised_weight based on score (zero if score < threshold)
+        // Calculate not_normalised_weight based on score (zero if score > threshold)
         let particle: Particle<M::Parameters> = prev_gen.weigh(
             parameters,
             score,
             prev_gen.next_gen_tolerance()?,
             &self.model,
-            &kernel,
+            &kernel_opt,
         )?;
 
         // Save the non_normalised particle to storage

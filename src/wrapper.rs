@@ -43,6 +43,24 @@ impl<P> GenWrapper<P> {
         }
     }
 
+    pub fn prepare_kernel_builder<'a, M: Model>(&self, model: &'a M) -> ABCDResult<Option<Cow<'a, M::Kb>>> 
+    where 
+        M: Model<Parameters = P>,
+    {
+        match self {
+            GenWrapper::Emp(empirical) =>  {
+                model
+                    .build_kernel_builder(empirical.normalised_particles())
+                    .map(|k| Some(k))
+                    .map_err(|e|{
+                        ABCDErr::InfrastructureError(format!("Something went wrong with kernel builder: {}", e))
+                    })
+                }
+            ,
+            GenWrapper::Prior => Ok(None),
+        }
+    }
+
     pub fn sample<M, R: Rng>(&self, model: &M, rng: &mut R) -> Cow<P>
     where
         M: Model<Parameters = P>,
@@ -58,16 +76,28 @@ impl<P> GenWrapper<P> {
         &self,
         parameters: &P,
         model: &M,
-        kernel: &M::K,
+        kernel_opt: &Option<Cow<M::K>>,
         rng: &mut impl Rng,
-    ) -> ABCDResult<P> {
-        let params = kernel.perturb(parameters, rng)?;
-        if model.prior_density(&params) > 0.0 {
-            Ok(params)
-        } else {
-            Err(ABCDErr::ParticleErr(
-                "Perturbed particle out of prior bounds.".into(),
-            ))
+    ) -> ABCDResult<P> 
+    where 
+        P: Clone {
+        match self {
+            GenWrapper::Prior => {
+                // No perturbation when simple sampling from the prior to build the first generation
+                Ok(parameters.clone()) //TODO use a Cow to eliminate the clone
+            },
+            GenWrapper::Emp(g) => {
+                let params = kernel_opt.as_ref()
+                    .expect("Kernel is required for perturbing, as this isn't the first gen.")
+                    .perturb(parameters, rng)?;
+                if model.prior_density(&params) > 0.0 {
+                    Ok(params)
+                } else {
+                    Err(ABCDErr::ParticleErr(
+                        "Perturbed particle out of prior bounds.".into(),
+                    ))
+                }
+            },
         }
     }
 
@@ -84,7 +114,7 @@ impl<P> GenWrapper<P> {
         score: f64,
         tolerance: f64,
         model: &M,
-        kernel: &M::K,
+        kernel_opt: &Option<Cow<M::K>>,
     ) -> ABCDResult<Particle<P>>
     where
         M: Model<Parameters = P>,
@@ -92,7 +122,13 @@ impl<P> GenWrapper<P> {
     {
         let result = match self {
             GenWrapper::Emp(g) => 
-                g.weigh(parameters, score, tolerance, model, kernel),
+                g.weigh(
+                    parameters, 
+                    score, 
+                    tolerance, 
+                    model, 
+                    kernel_opt.as_ref().expect("Kernel is required for weighing, as this isn't the first gen")
+                ),
             GenWrapper::Prior => Particle {
                 parameters,
                 score,

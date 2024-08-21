@@ -15,7 +15,7 @@ from pathlib import Path
 if 'VIRTUAL_ENV' not in os.environ:
     exit("Run this script from a venv to avoid polluting your system.")
 
-data_dir = '../../../out'
+data_dir = '../../../out/xor_coins'
 
 all_files = glob.glob(path.join(data_dir, "gen_*.json"))
 gen_pattern = 'gen_0*([0-9]*).json$'

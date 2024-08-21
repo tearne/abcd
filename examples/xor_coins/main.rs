@@ -1,11 +1,10 @@
-use abcd::{config::Config, error::ABCDErr, kernel::olcm::{OLCMKernel, OLCMKernelBuilder}, wrapper::GenWrapper, Model, ABCD};
+use abcd::{config::Config, error::ABCDErr, kernel::olcm::{OLCMKernel, OLCMKernelBuilder}, wrapper::GenWrapper, Model, Particle, ABCD};
 use color_eyre::eyre;
-use nalgebra::{DVector, SMatrix, Vector2};
+use nalgebra::DVector;
 use path_absolutize::Absolutize;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use statrs::distribution::Normal;
-use std::{error::Error, ops::Range, path::Path};
+use std::{borrow::Cow, error::Error, ops::Range, path::Path};
 use tokio::runtime::Runtime;
 
 /// We have two coins, A & B, neither of which need be fair.
@@ -20,8 +19,7 @@ use tokio::runtime::Runtime;
 /// and beta (uniform prior), what is their (two dimensional) 
 /// posterior distribution?
 /// 
-/// In the ABCD implementation, we are going to use an OLCM 
-/// kernel implementation, which is provided by the ABCD crate.
+/// We use an OLCM kernel provided by the ABCD crate.
 
 #[derive(Serialize, Deserialize, Debug, derive_more::Add, derive_more::Sub, Copy, Clone)]
 struct ProbabilityHeads {
@@ -85,38 +83,17 @@ impl Uniform {
 }
 
 #[derive(Debug)]
-struct Kernel {
-    normal: Normal,
-}
-impl Kernel {
-    fn new(std_dev: f64) -> Self {
-        Self {
-            normal: Normal::new(0.0, std_dev).unwrap(),
-        }
-    }
-
-    fn sample(&self, rng: &mut impl Rng) -> f64 {
-        rng.sample(self.normal)
-    }
-
-    fn density(&self, v: f64) -> f64 {
-        use statrs::distribution::Continuous;
-        self.normal.pdf(v)
-    }
-}
-
-#[derive(Debug)]
 struct MyModel {
     prior: Uniform,
-    observed: f64,
+    observed_count: u8,
     num_trials: u64,
 }
 
 impl MyModel {
-    pub fn new(observed_proportion_positive: f64, num_trials: u64) -> Self {
+    pub fn new(observed_count: u8, num_trials: u64) -> Self {
         MyModel {
             prior: Uniform::new(0.0, 1.0),
-            observed: observed_proportion_positive,
+            observed_count,
             num_trials,
         }
     }
@@ -140,33 +117,23 @@ impl Model for MyModel {
         density
     }
     
-    fn build_kernel_builder_for_generation(&self, prev_gen: &GenWrapper<Self::Parameters>) -> Result<&Self::Kb, Box<dyn Error>> {
-        OLCMKernelBuilder::new(prev_gen.)
+    fn build_kernel_builder<'a>(&'a self, prev_gen_particles: &Vec<Particle<Self::Parameters>>) -> Result<Cow<'a, Self::Kb>, Box<dyn Error>> {
+        //TODO this is a bit of a mess for the client to have to deal with
+        OLCMKernelBuilder::new(prev_gen_particles).map(|k|Cow::Owned(k)).map_err(|e|e.into())
     }
 
-    // fn perturb(&self, _p: &Self::Parameters, rng: &mut impl Rng) -> Self::Parameters {
-    //     let heads: f64 = _p.heads + self.kernel.sample(rng);
-    //     MyParameters { heads }
-    // }
-
-    // fn pert_density(&self, _from: &Self::Parameters, _to: &Self::Parameters) -> f64 {
-    //     let pert_density: f64 = { self.kernel.density(_from.heads - _to.heads) };
-    //     pert_density
-    // }
-
-    fn score(&self, p: &Self::Parameters) -> Result<f64, Self::E> {
+    fn score(&self, p: &Self::Parameters) -> Result<f64, Box<dyn Error>> {
         let mut random = rand::thread_rng();
-        let mut heads_count: u64 = 0;
+        let mut simulated_count: u8 = 0;
 
         for _ in 0..self.num_trials {
-            let coin_toss = random.gen_bool(p.heads);
-            if coin_toss {
-                heads_count += 1;
+            let combined_result = random.gen_bool(p.alpha) != random.gen_bool(p.beta);
+            if combined_result {
+                simulated_count += 1;
             }
         }
 
-        let simulated = heads_count as f64 / self.num_trials as f64;
-        let diff = (self.observed - simulated).abs();
+        let diff = (self.observed_count as i64 - simulated_count as i64).abs() as f64;
         eyre::Result::Ok(diff)
     }
 }
@@ -174,10 +141,10 @@ impl Model for MyModel {
 fn main() -> eyre::Result<()> {
     env_logger::init();
 
-    let observed_proportion_heads = 0.8;
-    let num_trials = 50;
+    let observed_count = 38u8;
+    let num_trials = 100;
 
-    let m = MyModel::new(observed_proportion_heads, num_trials);
+    let m = MyModel::new(observed_count, num_trials);
     let mut random = rand::thread_rng();
 
     let path = Path::new("./config.toml").absolutize().unwrap();
