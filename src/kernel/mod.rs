@@ -16,22 +16,6 @@ pub trait Kernel<P>: Clone{
     fn pert_density(&self, from: &P, to: &P) -> f64;        
 }
 
-// #[derive(Clone)]
-// pub struct NullKernel;
-// impl<P> KernelBuilder<P, NullKernel> for NullKernel {
-//     fn build_kernel_around_parameters<'a>(&'a self, params: &P) -> ABCDResult<Cow<'a, NullKernel>> {
-//         todo!()
-//     }
-// }
-// impl<P: Clone> Kernel<P> for NullKernel {
-//     fn perturb(&self, p: &P, rng: &mut impl Rng) -> ABCDResult<P> {
-//         Ok(p.clone())   
-//     }
-
-//     fn pert_density(&self, from: &P, to: &P) -> f64 {
-//         todo!()
-//     }
-// }
 
 #[derive(Clone)]
 pub struct TrivialKernel<P, K: Kernel<P>> {
