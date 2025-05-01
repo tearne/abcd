@@ -71,51 +71,94 @@ meta_df = meta_df.with_columns(
 )
 meta_melted = meta_df.melt('generation', variable_name='statistic', value_vars=['log_tolerance', 'acceptance'])
 
-# Metadata plot
-sns.FacetGrid(
-    meta_melted,
-    row="statistic",
-    aspect=4,
-).map_dataframe(
-    sns.barplot,
-    x='generation', 
-    y='value',
-    color='grey'
-)
-plt.savefig("plot_0.png", format='png', dpi=300)
+latest_gen = meta_df.get_column("generation").max()
+print("latest gen is", latest_gen)
 
+def plot_meta(meta):
+    facet_grid = sns.FacetGrid(meta.melt('generation', variable_name='statistic', value_vars=[
+        'tolerance', 'acceptance']),
+        row="statistic",
+        aspect=4,
+        sharey=False
+    )
 
-# Posterior distribution
-fig, ax = plt.subplots(figsize=(8,4))
-ax.set_xlim(0, 1)
-sns.kdeplot(
-   data=particle_df,
-   x="heads", 
-   hue='gen_number',
-   fill=True, 
-   palette="viridis_r",
-   alpha=.1, 
-   linewidth=1,
-   bw_adjust=0.8, 
-   cut=0, 
-).set(title='Posterior Heads')
-sns.move_legend(ax, "upper left")
-plt.savefig("plot_1.png", format='png', dpi=300)
+    facet_grid.map_dataframe(
+        sns.barplot,
+        x='generation',
+        y='value',
+        alpha= 0.8,
+        palette = "viridis_r",
+        # hue='generation'
+    )
+    fig = facet_grid
+    fig.savefig( f'meta_gen{latest_gen:03}.pdf')
 
+def plot_posterior(particles):
+    g = sns.FacetGrid(
+        particles
+            .lazy()
+            .select(pl.exclude(["score"]))
+            .collect()
+            .melt("gen_number"),   
+        col="variable",
+        hue="gen_number",
+        palette="viridis_r",
+        col_wrap=3,
+        sharex=False,
+        sharey=False,
+        legend_out=True,
+        despine=False
+    )
+    g.map(
+        sns.kdeplot,
+        "value",
+        fill=True,
+        alpha=.1,
+        linewidth=1,
+        bw_adjust=.8,
+        cut=0,
+    )
+    g.set(ylabel=None)
+    g.set(xlabel=None)
+    g.set(yticklabels=[])
+    g.tight_layout()
+    g.add_legend()
+    g.savefig( f'posterior_gen{latest_gen:03}.pdf')
 
-# Score plot
-fig, ax = plt.subplots(figsize=(8,4))
-score_max = max(particle_df['score'])
-ax.set_xlim(0, score_max)
-sns.kdeplot(
-    data=particle_df, 
-    x='score', 
-    hue='gen_number',
-    fill=True, 
-    palette="rocket_r",
-    alpha=.1, 
-    linewidth=1,
-    bw_adjust=.8, 
-    cut=0,
-).set(title='Acceptance Rate')
-plt.savefig("plot_2.png", format='png', dpi=300)
+def plot_correlations(particles):
+    fig = sns.PairGrid(
+        particles
+        .lazy()
+        .filter(pl.col("gen_number") == latest_gen)
+        .select(pl.exclude(["score", "gen_number"]))
+        .collect(),
+        diag_sharey=False
+    )
+    fig.map_lower(sns.kdeplot, cmap="Blues",
+                  fill=True, bw_adjust=0.75, thresh=0)
+    fig.map_upper(sns.scatterplot, s=15)
+    fig.map_diag(sns.kdeplot, cut=0, bw_adjust=0.6, fill=True)
+    fig.savefig(f'correlations_gen{latest_gen:03}.pdf')
+
+plot_meta(meta_df)
+plot_posterior(particle_df)
+plot_correlations(particle_df)
+
+# TODO lots of deprecation warnings - make them go away
+
+# # Score plot # CG Do we still want this? 
+# fig, ax = plt.subplots(figsize=(8,4))
+# score_max = max(particle_df['score'])
+# ax.set_xlim(0, score_max)
+# sns.kdeplot(
+#     data=particle_df, 
+#     x='score', 
+#     hue='gen_number',
+#     fill=True, 
+#     palette="rocket_r",
+#     alpha=.1, 
+#     linewidth=1,
+#     bw_adjust=.8, 
+#     cut=0,
+# ).set(title='Acceptance Rate')
+# plt.savefig("plot_2.png", format='png', dpi=300)

@@ -1,4 +1,9 @@
-use abcd::{config::Config, error::ABCDErr, kernel::olcm::{OLCMKernel, OLCMKernelBuilder}, wrapper::GenWrapper, Model, Particle, ABCD};
+use abcd::{
+    config::Config,
+    error::ABCDErr,
+    kernel::olcm::{OLCMKernel, OLCMKernelBuilder},
+    Model, Particle, ABCD,
+};
 use color_eyre::eyre;
 use nalgebra::DVector;
 use path_absolutize::Absolutize;
@@ -9,16 +14,16 @@ use tokio::runtime::Runtime;
 
 /// We have two coins, A & B, neither of which need be fair.
 /// Let P(Heads_A)=alpha and P(Head_B)=beta.
-/// 
+///
 /// Our experiment involves tossing both coins and applying an
 /// XOR to the results, so that the overall result is positive
 /// if and only if precisely one coin is heads.
-/// 
-/// We toss the pair 100 times and count the number of 
+///
+/// We toss the pair 100 times and count the number of
 /// positive results as 38.  Given no prior knowledge of alpha
-/// and beta (uniform prior), what is their (two dimensional) 
+/// and beta (uniform prior), what is their (two dimensional)
 /// posterior distribution?
-/// 
+///
 /// We use an OLCM kernel provided by the ABCD crate.
 
 #[derive(Serialize, Deserialize, Debug, derive_more::Add, derive_more::Sub, Copy, Clone)]
@@ -29,7 +34,7 @@ struct ProbabilityHeads {
 
 impl TryFrom<DVector<f64>> for ProbabilityHeads {
     type Error = ABCDErr;
-    
+
     fn try_from(value: DVector<f64>) -> Result<Self, Self::Error> {
         if value.len() != 2 {
             return Err(ABCDErr::VectorConversionError(format!(
@@ -50,7 +55,6 @@ impl Into<DVector<f64>> for ProbabilityHeads {
         DVector::from_column_slice(&[self.alpha, self.beta])
     }
 }
-
 
 #[derive(Debug)]
 struct Uniform {
@@ -101,25 +105,30 @@ impl MyModel {
 
 impl Model for MyModel {
     type Parameters = ProbabilityHeads;
-    type K = OLCMKernel<ProbabilityHeads>; 
+    type K = OLCMKernel<ProbabilityHeads>;
     type Kb = OLCMKernelBuilder<ProbabilityHeads>;
 
     fn prior_sample(&self, rng: &mut impl Rng) -> Self::Parameters {
         let heads: f64 = self.prior.sample(rng);
-        ProbabilityHeads { 
-            alpha : self.prior.sample(rng),
-            beta : self.prior.sample(rng),
+        ProbabilityHeads {
+            alpha: self.prior.sample(rng),
+            beta: self.prior.sample(rng),
         }
     }
 
     fn prior_density(&self, p: &Self::Parameters) -> f64 {
-        let density: f64 = { self.prior.density(p.alpha) * self.prior.density(p.beta)};
+        let density: f64 = { self.prior.density(p.alpha) * self.prior.density(p.beta) };
         density
     }
-    
-    fn build_kernel_builder<'a>(&'a self, prev_gen_particles: &Vec<Particle<Self::Parameters>>) -> Result<Cow<'a, Self::Kb>, Box<dyn Error>> {
+
+    fn build_kernel_builder<'a>(
+        &'a self,
+        prev_gen_particles: &Vec<Particle<Self::Parameters>>,
+    ) -> Result<Cow<'a, Self::Kb>, Box<dyn Error>> {
         //TODO this is a bit of a mess for the client to have to deal with
-        OLCMKernelBuilder::new(prev_gen_particles).map(|k|Cow::Owned(k)).map_err(|e|e.into())
+        OLCMKernelBuilder::new(prev_gen_particles)
+            .map(|k| Cow::Owned(k))
+            .map_err(|e| e.into())
     }
 
     fn score(&self, p: &Self::Parameters) -> Result<f64, Box<dyn Error>> {
@@ -151,8 +160,7 @@ fn main() -> eyre::Result<()> {
     println!("---{:?}", path);
     log::info!("Load config from {:?}", path);
     let config = Config::from_path(path)?;
-    println!("+++{:?}", &config);
-    // exit(1);
+    // println!("+++{:?}", &config);
 
     let runtime = Runtime::new().unwrap();
     let handle = runtime.handle();
