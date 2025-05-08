@@ -109,7 +109,7 @@ impl Model for MyModel {
     type Kb = OLCMKernelBuilder<ProbabilityHeads>;
 
     fn prior_sample(&self, rng: &mut impl Rng) -> Self::Parameters {
-        let heads: f64 = self.prior.sample(rng);
+        // let heads: f64 = self.prior.sample(rng);
         ProbabilityHeads {
             alpha: self.prior.sample(rng),
             beta: self.prior.sample(rng),
@@ -136,7 +136,8 @@ impl Model for MyModel {
         let mut simulated_count: u8 = 0;
 
         for _ in 0..self.num_trials {
-            let combined_result = random.gen_bool(p.alpha) != random.gen_bool(p.beta);
+            let combined_result = random.gen_bool(p.alpha) || random.gen_bool(p.beta);
+            // let combined_result = random.gen_bool(p.alpha) != random.gen_bool(p.beta);
             if combined_result {
                 simulated_count += 1;
             }
@@ -150,7 +151,7 @@ impl Model for MyModel {
 fn main() -> eyre::Result<()> {
     env_logger::init();
 
-    let observed_count = 38u8;
+    let observed_count = 75u8;
     let num_trials = 100;
 
     let m = MyModel::new(observed_count, num_trials);
