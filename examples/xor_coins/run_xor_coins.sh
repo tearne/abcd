@@ -35,4 +35,4 @@ aws s3 sync s3://${TEST_BUCKET}/${TEST_PREFIX}/completed ../../out/xor_coins
 
 printf "Plotting results...\n"
 sleep 1
-./plot/run.sh
+uv run plot/script.py

@@ -1,21 +1,37 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#   "polars",
+#   "seaborn",
+# ]
+# ///
+
 import json
 import glob
 import re
-import dpath.util
+# import dpath.util
 import io
-import polars as pl
 import os
 from os import path
 from statistics import mean
-import seaborn as sns
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import math
 from pathlib import Path
+from rich.console import Console
 
-if 'VIRTUAL_ENV' not in os.environ:
+import polars as pl
+import seaborn as sns
+
+os.environ['REQUESTS_CA_BUNDLE'] = "/etc/ssl/certs/ca-certificates.crt"
+console = Console()
+
+if "VIRTUAL_ENV" not in os.environ:
     exit("Run this script from a venv to avoid polluting your system.")
+else:
+    console.print(f"You're running from venv: {os.environ["VIRTUAL_ENV"]}")
 
-data_dir = '../../../out/xor_coins'
+data_dir = '../../out/xor_coins'
 
 all_files = glob.glob(path.join(data_dir, "gen_*.json"))
 gen_pattern = 'gen_0*([0-9]*).json$'
