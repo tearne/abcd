@@ -99,7 +99,7 @@ where
             .reduce(|acc, vec| acc + vec)
             .ok_or_else(|| ABCDErr::OCLMError("Failed to build weighted mean.".into()))?;
 
-        let weighted_covariance: DMatrix<f64> = particles
+        let mut weighted_cov: DMatrix<f64> = particles
             .iter()
             .map(|particle| {
                 let params = Into::<DVector<f64>>::into(particle.parameters);
@@ -109,9 +109,17 @@ where
             .reduce(|acc, mat| acc + mat)
             .ok_or_else(|| ABCDErr::OCLMError("Failed to build weighted covariance.".into()))?;
 
+        let diffs = weighted_cov.lower_triangle() - weighted_cov.upper_triangle().transpose();
+        if diffs.max() < f64::EPSILON {
+            // Cov matrix should be symmetric but calculations may be imprecise due to floating point multiplication
+            make_symmetric(&mut weighted_cov);
+        } else {
+            ABCDErr::OCLMError("weighted covariance matrix is not symmetric".into());
+        }
+
         Ok(Self {
             weighted_mean,
-            weighted_covariance,
+            weighted_covariance: weighted_cov,
             phantom: PhantomData::default(),
         })
     }
@@ -210,5 +218,26 @@ mod tests {
         assert_eq!(Vector2::new(10.0, 100.1), olcm.weighted_mean);
 
         Ok(())
+    }
+}
+
+fn make_symmetric<T>(matrix: &mut DMatrix<T>)
+where
+    T: Copy + PartialEq + Default,
+{
+    if matrix.nrows() == 0 {
+        return; // Nothing to do for an empty matrix
+    }
+
+    if matrix.ncols() != matrix.nrows() {
+        panic!("Matrix must be square to be symmetric."); // Not a square matrix
+    }
+
+    // Iterate through the upper triangle (including diagonal)
+    for i in 0..matrix.nrows() {
+        for j in i..matrix.ncols() {
+            // Ensure symmetry: mirror the upper triangle to the lower triangle
+            matrix[(j, i)] = matrix[(i, j)];
+        }
     }
 }

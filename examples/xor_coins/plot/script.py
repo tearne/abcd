@@ -10,18 +10,16 @@
 import json
 import glob
 import re
-# import dpath.util
 import io
 import os
 from os import path
 from statistics import mean
-# import matplotlib.pyplot as plt
 import math
 from pathlib import Path
 from rich.console import Console
 
-import polars as pl
-import seaborn as sns
+import polars as pl # type: ignore
+import seaborn as sns # type: ignore
 
 os.environ['REQUESTS_CA_BUNDLE'] = "/etc/ssl/certs/ca-certificates.crt"
 console = Console()
@@ -107,7 +105,7 @@ def plot_meta(meta):
         # hue='generation'
     )
     fig = facet_grid
-    fig.savefig( f'meta_gen{latest_gen:03}.pdf')
+    fig.savefig( f'out/meta_gen{latest_gen:03}.pdf')
 
 def plot_posterior(particles):
     g = sns.FacetGrid(
@@ -139,7 +137,7 @@ def plot_posterior(particles):
     g.set(yticklabels=[])
     g.tight_layout()
     g.add_legend()
-    g.savefig( f'posterior_gen{latest_gen:03}.pdf')
+    g.savefig( f'out/posterior_gen{latest_gen:03}.pdf')
 
 def plot_correlations(particles):
     fig = sns.PairGrid(
@@ -154,7 +152,7 @@ def plot_correlations(particles):
                   fill=True, bw_adjust=0.75, thresh=0)
     fig.map_upper(sns.scatterplot, s=15)
     fig.map_diag(sns.kdeplot, cut=0, bw_adjust=0.6, fill=True)
-    fig.savefig(f'correlations_gen{latest_gen:03}.pdf')
+    fig.savefig(f'out/correlations_gen{latest_gen:03}.pdf')
 
 plot_meta(meta_df)
 plot_posterior(particle_df)
