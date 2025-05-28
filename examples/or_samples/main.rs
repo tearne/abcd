@@ -56,7 +56,7 @@ pub fn main() -> ABCDResult<()> {
     fn available_generations() -> io::Result<Vec<PathBuf>> {
         let mut generations = vec![];
 
-        for path in fs::read_dir("../../out/xor_coins/")? {
+        for path in fs::read_dir("../../out/or_coins/")? {
             let path = path?.path();
             if let Some("json") = path.extension().and_then(OsStr::to_str) {
                 generations.push(path.to_owned());
@@ -140,7 +140,7 @@ fn get_samples(
     });
 
     // Save them to a file
-    let path = Path::new("../../out/xor_coins/samples");
+    let path = Path::new("../../out/or_coins/samples");
     if !path.exists() {
         std::fs::create_dir_all(path)?;
     }

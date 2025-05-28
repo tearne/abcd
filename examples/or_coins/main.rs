@@ -16,11 +16,11 @@ use tokio::runtime::Runtime;
 /// Let P(Heads_A)=alpha and P(Head_B)=beta.
 ///
 /// Our experiment involves tossing both coins and applying an
-/// XOR to the results, so that the overall result is positive
-/// if and only if precisely one coin is heads.
+/// OR to the results, so that the overall result is positive
+/// if either coin is heads.
 ///
 /// We toss the pair 100 times and count the number of
-/// positive results as 38.  Given no prior knowledge of alpha
+/// positive results as 75.  Given no prior knowledge of alpha
 /// and beta (uniform prior), what is their (two dimensional)
 /// posterior distribution?
 ///

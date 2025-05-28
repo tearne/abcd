@@ -20,15 +20,15 @@ this_dir = os.path.dirname(os.path.realpath(__file__))
 os.chdir(this_dir)
 
 project_dir = Path("..", "..", "..")
-particles_dir = project_dir / "out/xor_coins"
+particles_dir = project_dir / "out/or_coins"
 
 all_gens = list(Path(particles_dir).glob('*.json'))
 
 particles_file = max(all_gens)
 
-samples_1 = project_dir / "out/xor_coins/samples/samples_1.json"
-samples_2 = project_dir / "out/xor_coins/samples/samples_2.json"
-samples_3 = project_dir / "out/xor_coins/samples/samples_3.json"
+samples_1 = project_dir / "out/or_coins/samples/samples_1.json"
+samples_2 = project_dir / "out/or_coins/samples/samples_2.json"
+samples_3 = project_dir / "out/or_coins/samples/samples_3.json"
 
 assert particles_file.exists()
 with open(particles_file) as f:

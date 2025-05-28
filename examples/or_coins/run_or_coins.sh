@@ -39,8 +39,8 @@ uv run plot/script.py
 
 printf "Generating Samples...\n"
 sleep 1
-cargo run --example xor_samples
+cargo run --example or_samples
 
 printf "Plotting Kernel...\n"
 sleep 1
-uv run ../xor_samples/plot/script.py
+uv run ../or_samples/plot/script.py
