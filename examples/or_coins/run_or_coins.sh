@@ -27,11 +27,11 @@ export TEST_PREFIX=CG_Testing
 
 # printf "Starting application...\n"
 # sleep 1
-# cargo run --release --example xor_coins 
+# cargo run --release --example or_coins 
 
 # printf "Downloaing the completed generations...\n"
 # sleep 1
-# aws s3 sync s3://${TEST_BUCKET}/${TEST_PREFIX}/completed ../../out/xor_coins
+# aws s3 sync s3://${TEST_BUCKET}/${TEST_PREFIX}/completed ../../out/or_coins
 
 printf "Plotting results...\n"
 sleep 1
