@@ -112,7 +112,7 @@ where
         let diffs = weighted_cov.lower_triangle() - weighted_cov.upper_triangle().transpose();
         if diffs.max() < f64::EPSILON {
             // Cov matrix should be symmetric but calculations may be imprecise due to floating point multiplication
-            make_symmetric(&mut weighted_cov);
+            make_symmetric(&mut weighted_cov)?;
         } else {
             ABCDErr::OCLMError("weighted covariance matrix is not symmetric".into());
         }
@@ -221,16 +221,13 @@ mod tests {
     }
 }
 
-fn make_symmetric<T>(matrix: &mut DMatrix<T>)
-where
-    T: Copy + PartialEq + Default,
-{
+fn make_symmetric(matrix: &mut DMatrix<f64>) -> ABCDResult<()> {
     if matrix.nrows() == 0 {
-        return; // Nothing to do for an empty matrix
+        return Ok(()); // Nothing to do for an empty matrix
     }
 
     if matrix.ncols() != matrix.nrows() {
-        panic!("Matrix must be square to be symmetric."); // Not a square matrix
+        ABCDErr::OCLMError("Matrix must be square to be symmetric.".into());
     }
 
     // Iterate through the upper triangle (including diagonal)
@@ -240,4 +237,11 @@ where
             matrix[(j, i)] = matrix[(i, j)];
         }
     }
+
+    // Check that matrix is now symmetric
+    if matrix.lower_triangle() != matrix.upper_triangle().transpose() {
+        ABCDErr::OCLMError("weighted covariance matrix is still not symmetric".into());
+    }
+
+    Ok(())
 }

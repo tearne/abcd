@@ -1,6 +1,10 @@
 use std::{path::Path, process::Command};
 
-use abcd::{error::{ABCDErr, ABCDResult}, kernel::{olcm::OLCMKernelBuilder, KernelBuilder}, Generation};
+use abcd::{
+    error::{ABCDErr, ABCDResult},
+    kernel::{olcm::OLCMKernelBuilder, KernelBuilder},
+    Generation,
+};
 use nalgebra::{DVector, SMatrix, Vector2};
 use rand::{distributions::Distribution, rngs::SmallRng, SeedableRng};
 use serde::{Deserialize, Serialize};
@@ -15,14 +19,14 @@ impl TestParams {
     pub fn from_slice(slice: &[f64]) -> Self {
         Self {
             x: slice[0],
-            y: slice[1]
+            y: slice[1],
         }
     }
 }
 
 impl TryFrom<DVector<f64>> for TestParams {
     type Error = ABCDErr;
-    
+
     fn try_from(value: DVector<f64>) -> Result<Self, Self::Error> {
         if value.len() != 2 {
             return Err(ABCDErr::VectorConversionError(format!(
@@ -37,12 +41,12 @@ impl TryFrom<DVector<f64>> for TestParams {
         }
     }
 }
-impl Into<DVector<f64>> for TestParams {
-    fn into(self) -> DVector<f64> {
-        DVector::from_column_slice(&[self.x, self.y])
+
+impl From<TestParams> for DVector<f64> {
+    fn from(value: TestParams) -> Self {
+        DVector::from_column_slice(&[value.x, value.y])
     }
 }
-
 
 pub fn main() -> ABCDResult<()> {
     let path = "resources/test/olcm/particles.json";
@@ -69,7 +73,9 @@ pub fn main() -> ABCDResult<()> {
 
     // Save them to a file
     let path = Path::new("out");
-    if !path.exists() { std::fs::create_dir_all(path)?; }
+    if !path.exists() {
+        std::fs::create_dir_all(path)?;
+    }
     std::fs::write(
         path.join("samples.json"),
         serde_json::to_string_pretty(&json)?,

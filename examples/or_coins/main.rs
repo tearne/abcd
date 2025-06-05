@@ -50,9 +50,9 @@ impl TryFrom<DVector<f64>> for ProbabilityHeads {
     }
 }
 
-impl Into<DVector<f64>> for ProbabilityHeads {
-    fn into(self) -> DVector<f64> {
-        DVector::from_column_slice(&[self.alpha, self.beta])
+impl From<ProbabilityHeads> for DVector<f64> {
+    fn from(value: ProbabilityHeads) -> Self {
+        DVector::from_column_slice(&[value.alpha, value.beta])
     }
 }
 

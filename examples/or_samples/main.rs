@@ -15,11 +15,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, derive_more::Add, derive_more::Sub)]
-struct TestParams {
+struct ProbabilityHeads {
     alpha: f64,
     beta: f64,
 }
-impl TestParams {
+
+impl ProbabilityHeads {
     pub fn from_slice(slice: &[f64]) -> Self {
         Self {
             alpha: slice[0],
@@ -28,7 +29,7 @@ impl TestParams {
     }
 }
 
-impl TryFrom<DVector<f64>> for TestParams {
+impl TryFrom<DVector<f64>> for ProbabilityHeads {
     type Error = ABCDErr;
 
     fn try_from(value: DVector<f64>) -> Result<Self, Self::Error> {
@@ -38,16 +39,17 @@ impl TryFrom<DVector<f64>> for TestParams {
                 value.len()
             )));
         } else {
-            Ok(TestParams {
+            Ok(ProbabilityHeads {
                 alpha: value[0],
                 beta: value[1],
             })
         }
     }
 }
-impl Into<DVector<f64>> for TestParams {
-    fn into(self) -> DVector<f64> {
-        DVector::from_column_slice(&[self.alpha, self.beta])
+
+impl From<ProbabilityHeads> for DVector<f64> {
+    fn from(value: ProbabilityHeads) -> Self {
+        DVector::from_column_slice(&[value.alpha, value.beta])
     }
 }
 
@@ -76,7 +78,7 @@ pub fn main() -> ABCDResult<()> {
     println!("Using generation: {:?} to generate samples", biggest_gen);
 
     let path = biggest_gen;
-    let generation: Generation<TestParams> =
+    let generation: Generation<ProbabilityHeads> =
         serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
     let population = generation.pop;
 
@@ -118,11 +120,11 @@ pub fn main() -> ABCDResult<()> {
 }
 
 fn get_samples(
-    candidate: &Particle<TestParams>,
-    particles: &Vec<Particle<TestParams>>,
+    candidate: &Particle<ProbabilityHeads>,
+    particles: &Vec<Particle<ProbabilityHeads>>,
     identifier: &str,
 ) -> ABCDResult<()> {
-    let builder: OLCMKernelBuilder<TestParams> = OLCMKernelBuilder::new(particles)?;
+    let builder: OLCMKernelBuilder<ProbabilityHeads> = OLCMKernelBuilder::new(particles)?;
     let mut rng = SmallRng::from_entropy();
 
     // Get samples
@@ -130,13 +132,13 @@ fn get_samples(
     let olcm = builder.build_kernel_around_parameters(params)?;
 
     // Generate some samples
-    let samples: Vec<TestParams> = (1..=1000)
+    let samples: Vec<ProbabilityHeads> = (1..=1000)
         .map(|_| olcm.perturb(&candidate.parameters, &mut rng))
-        .collect::<ABCDResult<Vec<TestParams>>>()?;
+        .collect::<ABCDResult<Vec<ProbabilityHeads>>>()?;
 
     let json = json!({
         "samples": samples,
-        "mean": TestParams::from_slice(&olcm.weighted_mean.iter().cloned().collect::<Vec<f64>>())
+        "mean": ProbabilityHeads::from_slice(&olcm.weighted_mean.iter().cloned().collect::<Vec<f64>>())
     });
 
     // Save them to a file

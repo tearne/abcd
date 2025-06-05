@@ -6,7 +6,7 @@ prefix = "${TEST_PREFIX}"
 [job]
 num_generations = 10
 terminate_at_target_gen = true
-num_particles = 100
+num_particles = 300
 
 [algorithm]
 tolerance_descent_percentile = 75
