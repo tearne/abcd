@@ -27,11 +27,11 @@ aws s3 sync ../../resources/empty_prefix s3://${TEST_BUCKET}/${TEST_PREFIX}/ --d
 
 printf "Starting application...\n"
 sleep 1
-cargo run --release --example or_coins 
+cargo run --release --example or_coins_trivial_kernel
 
 printf "Downloaing the completed generations...\n"
 sleep 1
-aws s3 sync s3://${TEST_BUCKET}/${TEST_PREFIX}/completed ../../out/or_coins
+aws s3 sync s3://${TEST_BUCKET}/${TEST_PREFIX}/completed ../../out/or_coins_trivial
 
 printf "Plotting results...\n"
 sleep 1

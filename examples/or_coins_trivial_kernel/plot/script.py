@@ -30,7 +30,7 @@ if "VIRTUAL_ENV" not in os.environ:
 else:
     console.print(f"You're running from venv: {os.environ["VIRTUAL_ENV"]}")
 
-data_dir = '../../out/or_coins'
+data_dir = '../../out/or_coins_trivial'
 
 all_files = glob.glob(path.join(data_dir, "gen_*.json"))
 gen_pattern = 'gen_0*([0-9]*).json$'

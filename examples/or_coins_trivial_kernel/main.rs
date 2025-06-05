@@ -10,23 +10,50 @@ use path_absolutize::Absolutize;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use statrs::distribution::Normal;
-use std::{borrow::Cow, error::Error, marker::PhantomData, ops::Range, path::Path};
+use std::{borrow::Cow, error::Error, ops::Range, path::Path};
 use tokio::runtime::Runtime;
 
-#[derive(Serialize, Deserialize, derive_more::Add, derive_more::Sub, Debug, Clone)]
-struct MyParameters {
-    heads: f64,
+/// We have two coins, A & B, neither of which need be fair.
+/// Let P(Heads_A)=alpha and P(Head_B)=beta.
+///
+/// Our experiment involves tossing both coins and applying an
+/// OR to the results, so that the overall result is positive
+/// if either coin is heads.
+///
+/// We toss the pair 100 times and count the number of
+/// positive results as 75.  Given no prior knowledge of alpha
+/// and beta (uniform prior), what is their (two dimensional)
+/// posterior distribution?
+///
+/// We use an Simple Normal kernel provided by the ABCD crate.
+
+#[derive(Serialize, Deserialize, Debug, derive_more::Add, derive_more::Sub, Copy, Clone)]
+struct ProbabilityHeads {
+    alpha: f64,
+    beta: f64,
 }
-impl TryFrom<DVector<f64>> for MyParameters {
+
+impl TryFrom<DVector<f64>> for ProbabilityHeads {
     type Error = ABCDErr;
 
     fn try_from(value: DVector<f64>) -> Result<Self, Self::Error> {
-        todo!()
+        if value.len() != 2 {
+            return Err(ABCDErr::VectorConversionError(format!(
+                "Wrong number of arguments.  Expected 2, got {}",
+                value.len()
+            )));
+        } else {
+            Ok(ProbabilityHeads {
+                alpha: value[0],
+                beta: value[1],
+            })
+        }
     }
 }
-impl Into<DVector<f64>> for MyParameters {
-    fn into(self) -> DVector<f64> {
-        todo!()
+
+impl From<ProbabilityHeads> for DVector<f64> {
+    fn from(value: ProbabilityHeads) -> Self {
+        DVector::from_column_slice(&[value.alpha, value.beta])
     }
 }
 
@@ -71,17 +98,19 @@ impl NormalKernel {
         }
     }
 }
-impl Kernel<MyParameters> for NormalKernel {
-    fn perturb(&self, p: &MyParameters, rng: &mut impl Rng) -> ABCDResult<MyParameters> {
-        let heads: f64 = p.heads + rng.sample(self.normal);
-        Ok(MyParameters { heads })
+
+impl Kernel<ProbabilityHeads> for NormalKernel {
+    fn perturb(&self, p: &ProbabilityHeads, rng: &mut impl Rng) -> ABCDResult<ProbabilityHeads> {
+        let alpha: f64 = p.alpha + rng.sample(self.normal);
+        let beta = p.beta + rng.sample(self.normal);
+
+        Ok(ProbabilityHeads { alpha, beta })
     }
 
-    fn pert_density(&self, from: &MyParameters, to: &MyParameters) -> f64 {
+    fn pert_density(&self, from: &ProbabilityHeads, to: &ProbabilityHeads) -> f64 {
         let pert_density: f64 = {
-            let diff = from.heads - to.heads;
             use statrs::distribution::Continuous;
-            self.normal.pdf(diff)
+            self.normal.pdf(from.alpha - to.alpha) * self.normal.pdf(from.beta - to.beta)
         };
         pert_density
     }
@@ -89,39 +118,38 @@ impl Kernel<MyParameters> for NormalKernel {
 
 struct MyModel {
     prior: Uniform,
-    kernel: TrivialKernel<MyParameters, NormalKernel>,
-    observed: f64,
+    kernel: TrivialKernel<ProbabilityHeads, NormalKernel>,
+    observed_count: u8,
     num_trials: u64,
-    phantom: PhantomData<MyParameters>,
 }
 
 impl MyModel {
-    pub fn new(observed_proportion_heads: f64, num_trials: u64) -> Self {
+    pub fn new(observed_count: u8, num_trials: u64) -> Self {
         MyModel {
             prior: Uniform::new(0.0, 1.0),
             kernel: TrivialKernel::from(NormalKernel::new(0.1)),
-            observed: observed_proportion_heads,
+            observed_count,
             num_trials,
-            phantom: PhantomData::<MyParameters>::default(),
         }
     }
 }
 
 impl Model for MyModel {
-    type Parameters = MyParameters;
-    type K = TrivialKernel<MyParameters, NormalKernel>;
+    type Parameters = ProbabilityHeads;
+    type K = TrivialKernel<ProbabilityHeads, NormalKernel>;
     type Kb = Self::K;
 
     fn prior_sample(&self, rng: &mut impl Rng) -> Self::Parameters {
-        let heads: f64 = self.prior.sample(rng);
-        MyParameters { heads }
+        ProbabilityHeads {
+            alpha: self.prior.sample(rng),
+            beta: self.prior.sample(rng),
+        }
     }
 
     fn prior_density(&self, p: &Self::Parameters) -> f64 {
-        let density: f64 = { self.prior.density(p.heads) };
+        let density: f64 = { self.prior.density(p.alpha) * self.prior.density(p.beta) };
         density
     }
-
     fn build_kernel_builder<'a>(
         &'a self,
         _: &Vec<Particle<Self::Parameters>>,
@@ -131,17 +159,16 @@ impl Model for MyModel {
 
     fn score(&self, p: &Self::Parameters) -> Result<f64, Box<dyn Error>> {
         let mut random = rand::thread_rng();
-        let mut heads_count: u64 = 0;
+        let mut simulated_count: u8 = 0;
 
         for _ in 0..self.num_trials {
-            let coin_toss = random.gen_bool(p.heads);
-            if coin_toss {
-                heads_count += 1;
+            let combined_result = random.gen_bool(p.alpha) || random.gen_bool(p.beta);
+            if combined_result {
+                simulated_count += 1;
             }
         }
 
-        let simulated = heads_count as f64 / self.num_trials as f64;
-        let diff = (self.observed - simulated).abs();
+        let diff = (self.observed_count as i64 - simulated_count as i64).abs() as f64;
         eyre::Result::Ok(diff)
     }
 }
@@ -149,18 +176,16 @@ impl Model for MyModel {
 fn main() -> eyre::Result<()> {
     env_logger::init();
 
-    let observed_proportion_heads = 0.8;
-    let num_trials = 50;
+    let observed_count = 75u8;
+    let num_trials = 100;
 
-    let m = MyModel::new(observed_proportion_heads, num_trials);
+    let m = MyModel::new(observed_count, num_trials);
     let mut random = rand::thread_rng();
 
     let path = Path::new("./config.toml").absolutize().unwrap();
     println!("---{:?}", path);
     log::info!("Load config from {:?}", path);
     let config = Config::from_path(path)?;
-    println!("+++{:?}", &config);
-    // exit(1);
 
     let runtime = Runtime::new().unwrap();
     let handle = runtime.handle();

@@ -142,7 +142,7 @@ fn get_samples(
     });
 
     // Save them to a file
-    let path = Path::new("../../out/or_coins/samples");
+    let path = Path::new("../../out/or_coins_trivial/samples");
     if !path.exists() {
         std::fs::create_dir_all(path)?;
     }
