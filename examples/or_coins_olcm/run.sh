@@ -15,7 +15,7 @@ printf "Script working dir: ${DIR}\n"
 
 export RUST_LOG=error,abcd=info,or_coins=info 
 export TEST_BUCKET=s3-ranch-007
-export TEST_PREFIX=CG_testing
+export TEST_PREFIX=CG_testing_olcm
 
 printf "Purge old objects (and versions) in s3://${TEST_BUCKET}/${TEST_PREFIX}\n"
 printf "... 2 second pause\n"

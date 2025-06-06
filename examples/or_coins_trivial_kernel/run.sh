@@ -15,7 +15,7 @@ printf "Script working dir: ${DIR}\n"
 
 export RUST_LOG=error,abcd=info,or_coins=info 
 export TEST_BUCKET=s3-ranch-007
-export TEST_PREFIX=CG_testing
+export TEST_PREFIX=CG_testing_trivial
 
 printf "Purge old objects (and versions) in s3://${TEST_BUCKET}/${TEST_PREFIX}\n"
 printf "... 2 second pause\n"
@@ -36,11 +36,3 @@ aws s3 sync s3://${TEST_BUCKET}/${TEST_PREFIX}/completed ../../out/or_coins_triv
 printf "Plotting results...\n"
 sleep 1
 uv run plot/script.py
-
-printf "Generating Samples...\n"
-sleep 1
-cargo run --example or_samples
-
-printf "Plotting Kernel...\n"
-sleep 1
-uv run ../or_samples/plot/script.py
