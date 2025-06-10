@@ -7,3 +7,5 @@ Run `resources/examples/or_coins_olcm/run.sh` to
 - Run ABCD, saving to S3.
 - Download the results to `out` folder.
 - Plot stuff 
+- Generate 1000 samples (around 3 different points) 
+- Plot OLCM kernel & trivial kernel
