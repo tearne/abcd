@@ -1,3 +1,4 @@
 /target
 /out
 venv-*
+/xor_coins/out

@@ -1,12 +1,17 @@
 use std::{
-    borrow::Cow, marker::PhantomData, ops::{Add, Sub}
+    borrow::Cow,
+    marker::PhantomData,
+    ops::{Add, Sub},
 };
 
 use nalgebra::{DMatrix, DVector};
 use rand::{distributions::Distribution, Rng};
 use statrs::distribution::{Continuous, MultivariateNormal};
 
-use crate::{error::{ABCDErr, ABCDResult}, Particle};
+use crate::{
+    error::{ABCDErr, ABCDResult},
+    Particle,
+};
 
 use super::{Kernel, KernelBuilder};
 
@@ -22,7 +27,11 @@ where
 }
 impl<P> OLCMKernel<P>
 where
-    P: TryFrom<DVector<f64>, Error = ABCDErr> + Into<DVector<f64>> + Add<Output = P> + Sub<Output = P> + Copy,
+    P: TryFrom<DVector<f64>, Error = ABCDErr>
+        + Into<DVector<f64>>
+        + Add<Output = P>
+        + Sub<Output = P>
+        + Copy,
 {
     pub fn perturb(&self, parameters: &P, rng: &mut impl Rng) -> ABCDResult<P> {
         let sampled: P = self.distribution.sample(rng).try_into()?;
@@ -36,9 +45,13 @@ where
     }
 }
 
-impl<P> Kernel<P> for OLCMKernel<P> 
+impl<P> Kernel<P> for OLCMKernel<P>
 where
-    P: TryFrom<DVector<f64>, Error = ABCDErr> + Into<DVector<f64>> + Add<Output = P> + Sub<Output = P> + Copy
+    P: TryFrom<DVector<f64>, Error = ABCDErr>
+        + Into<DVector<f64>>
+        + Add<Output = P>
+        + Sub<Output = P>
+        + Copy,
 {
     fn perturb(&self, p: &P, rng: &mut impl Rng) -> ABCDResult<P> {
         self.perturb(p, rng)
@@ -52,7 +65,11 @@ where
 #[derive(Clone)]
 pub struct OLCMKernelBuilder<P>
 where
-    P: TryFrom<DVector<f64>, Error = ABCDErr> + Into<DVector<f64>> + Add<Output = P> + Sub<Output = P> + Copy,
+    P: TryFrom<DVector<f64>, Error = ABCDErr>
+        + Into<DVector<f64>>
+        + Add<Output = P>
+        + Sub<Output = P>
+        + Copy,
 {
     weighted_mean: DVector<f64>,
     weighted_covariance: DMatrix<f64>,
@@ -60,36 +77,49 @@ where
 }
 impl<P> OLCMKernelBuilder<P>
 where
-    P: TryFrom<DVector<f64>, Error = ABCDErr> + Into<DVector<f64>> + Add<Output = P> + Sub<Output = P> + Copy,
+    P: TryFrom<DVector<f64>, Error = ABCDErr>
+        + Into<DVector<f64>>
+        + Add<Output = P>
+        + Sub<Output = P>
+        + Copy,
 {
     pub fn new(particles: &Vec<Particle<P>>) -> ABCDResult<Self> {
-        assert!(f64::abs(particles.iter().map(|p| p.weight).sum::<f64>() - 1.0) < 0.000001, "Particles must be normalised to build OLCM kernel builder.");
+        assert!(
+            f64::abs(particles.iter().map(|p| p.weight).sum::<f64>() - 1.0) < 0.000001,
+            "Particles must be normalised to build OLCM kernel builder."
+        );
 
-        let weighted_mean: DVector<f64> =
-            particles
-                .iter()
-                .map(|particle|{
-                    let parameters_vec = Into::<DVector<f64>>::into(particle.parameters);
-                    let weight = particle.weight;
-                    weight * parameters_vec
-                })
-                .reduce(|acc, vec| acc + vec)
-                .ok_or_else(||ABCDErr::OCLMError("Failed to build weighted mean.".into()))?;
+        let weighted_mean: DVector<f64> = particles
+            .iter()
+            .map(|particle| {
+                let parameters_vec = Into::<DVector<f64>>::into(particle.parameters);
+                let weight = particle.weight;
+                weight * parameters_vec
+            })
+            .reduce(|acc, vec| acc + vec)
+            .ok_or_else(|| ABCDErr::OCLMError("Failed to build weighted mean.".into()))?;
 
-        let weighted_covariance: DMatrix<f64> =
-            particles
-                .iter()
-                .map(|particle|{
-                    let params = Into::<DVector<f64>>::into(particle.parameters);
-                    let weight = particle.weight;
-                    weight * (&params - &weighted_mean) * (&params - &weighted_mean).transpose()
-                })
-                .reduce(|acc, mat| acc + mat)
-                .ok_or_else(||ABCDErr::OCLMError("Failed to build weighted covariance.".into()))?;
+        let mut weighted_cov: DMatrix<f64> = particles
+            .iter()
+            .map(|particle| {
+                let params = Into::<DVector<f64>>::into(particle.parameters);
+                let weight = particle.weight;
+                weight * (&params - &weighted_mean) * (&params - &weighted_mean).transpose()
+            })
+            .reduce(|acc, mat| acc + mat)
+            .ok_or_else(|| ABCDErr::OCLMError("Failed to build weighted covariance.".into()))?;
+
+        let diffs = weighted_cov.lower_triangle() - weighted_cov.upper_triangle().transpose();
+        if diffs.max() < f64::EPSILON {
+            // Cov matrix should be symmetric but calculations may be imprecise due to floating point multiplication
+            make_symmetric(&mut weighted_cov)?;
+        } else {
+            ABCDErr::OCLMError("weighted covariance matrix is not symmetric".into());
+        }
 
         Ok(Self {
             weighted_mean,
-            weighted_covariance,
+            weighted_covariance: weighted_cov,
             phantom: PhantomData::default(),
         })
     }
@@ -116,18 +146,25 @@ where
     }
 }
 
-impl<P> KernelBuilder<P, OLCMKernel<P>> for OLCMKernelBuilder<P> 
-where 
-    P: TryFrom<DVector<f64>, Error = ABCDErr> + Into<DVector<f64>> + Add<Output = P> + Sub<Output = P> + Copy
+impl<P> KernelBuilder<P, OLCMKernel<P>> for OLCMKernelBuilder<P>
+where
+    P: TryFrom<DVector<f64>, Error = ABCDErr>
+        + Into<DVector<f64>>
+        + Add<Output = P>
+        + Sub<Output = P>
+        + Copy,
 {
-    fn build_kernel_around_parameters<'a>(&'a self, parameters: &P) -> ABCDResult<Cow<'a, OLCMKernel<P>>> {
+    fn build_kernel_around_parameters<'a>(
+        &'a self,
+        parameters: &P,
+    ) -> ABCDResult<Cow<'a, OLCMKernel<P>>> {
         Ok(Cow::Owned(self.build_kernel(parameters)?))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use nalgebra::{DVector, Matrix2, SMatrix, Vector2};
+    use nalgebra::{DVector, Matrix2, Vector2};
     use serde::Deserialize;
 
     use crate::{
@@ -144,7 +181,7 @@ mod tests {
 
     impl TryFrom<DVector<f64>> for TestParams {
         type Error = ABCDErr;
-        
+
         fn try_from(value: DVector<f64>) -> Result<Self, Self::Error> {
             if value.len() != 2 {
                 return Err(ABCDErr::VectorConversionError(format!(
@@ -182,4 +219,29 @@ mod tests {
 
         Ok(())
     }
+}
+
+fn make_symmetric(matrix: &mut DMatrix<f64>) -> ABCDResult<()> {
+    if matrix.nrows() == 0 {
+        return Ok(()); // Nothing to do for an empty matrix
+    }
+
+    if matrix.ncols() != matrix.nrows() {
+        ABCDErr::OCLMError("Matrix must be square to be symmetric.".into());
+    }
+
+    // Iterate through the upper triangle (including diagonal)
+    for i in 0..matrix.nrows() {
+        for j in i..matrix.ncols() {
+            // Ensure symmetry: mirror the upper triangle to the lower triangle
+            matrix[(j, i)] = matrix[(i, j)];
+        }
+    }
+
+    // Check that matrix is now symmetric
+    if matrix.lower_triangle() != matrix.upper_triangle().transpose() {
+        ABCDErr::OCLMError("weighted covariance matrix is still not symmetric".into());
+    }
+
+    Ok(())
 }
