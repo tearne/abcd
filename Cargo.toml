@@ -1,7 +1,7 @@
 [package]
 name = "abcd"
-version = "0.2.3"
-authors = ["tearne <tearne@gmail.com>"]
+version = "1.0.0"
+authors = ["tearne <tearne@gmail.com>", "christine.gavin@apha.gov.uk"]
 edition = "2021"
 
 [dependencies]
