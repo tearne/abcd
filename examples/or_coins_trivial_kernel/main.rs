@@ -150,6 +150,7 @@ impl Model for MyModel {
         let density: f64 = { self.prior.density(p.alpha) * self.prior.density(p.beta) };
         density
     }
+    
     fn build_kernel_builder<'a>(
         &'a self,
         _: &Vec<Particle<Self::Parameters>>,

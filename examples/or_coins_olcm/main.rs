@@ -109,7 +109,6 @@ impl Model for MyModel {
     type Kb = OLCMKernelBuilder<ProbabilityHeads>;
 
     fn prior_sample(&self, rng: &mut impl Rng) -> Self::Parameters {
-        // let heads: f64 = self.prior.sample(rng);
         ProbabilityHeads {
             alpha: self.prior.sample(rng),
             beta: self.prior.sample(rng),
@@ -125,7 +124,6 @@ impl Model for MyModel {
         &'a self,
         prev_gen_particles: &Vec<Particle<Self::Parameters>>,
     ) -> Result<Cow<'a, Self::Kb>, Box<dyn Error>> {
-        //TODO this is a bit of a mess for the client to have to deal with
         OLCMKernelBuilder::new(prev_gen_particles)
             .map(|k| Cow::Owned(k))
             .map_err(|e| e.into())
@@ -137,7 +135,6 @@ impl Model for MyModel {
 
         for _ in 0..self.num_trials {
             let combined_result = random.gen_bool(p.alpha) || random.gen_bool(p.beta);
-            // let combined_result = random.gen_bool(p.alpha) != random.gen_bool(p.beta);
             if combined_result {
                 simulated_count += 1;
             }
@@ -161,7 +158,6 @@ fn main() -> eyre::Result<()> {
     println!("---{:?}", path);
     log::info!("Load config from {:?}", path);
     let config = Config::from_path(path)?;
-    // println!("+++{:?}", &config);
 
     let runtime = Runtime::new().unwrap();
     let handle = runtime.handle();
