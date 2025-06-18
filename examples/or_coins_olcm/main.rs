@@ -1,5 +1,5 @@
 use abcd::{
-    config::AbcdConfig, error::ABCDErr, kernel::olcm::{OLCMKernel, OLCMKernelBuilder}, storage::config::StorageConfig, Model, Particle, ABCD
+    config::AbcdConfig, error::ABCDErr, kernel::olcm::{OLCMKernel, OLCMKernelBuilder}, storage::{config::StorageConfig, s3::S3System}, Model, Particle, ABCD
 };
 use color_eyre::eyre;
 use nalgebra::DVector;
@@ -159,7 +159,11 @@ fn main() -> eyre::Result<()> {
     };
 
     let runtime = Runtime::new().unwrap();
-    let storage = StorageConfig::new("$TEST_BUCKET","$TEST_PREFIX").build(runtime.handle().clone())?;
+    let storage = S3System::new(
+        "$TEST_BUCKET",
+        "$TEST_PREFIX",
+        runtime.handle().clone()
+    )?;
 
     ABCD::run(m, config, storage, &mut random)?;
 

@@ -1,5 +1,5 @@
 num_generations = 15
 terminate_at_target_gen = true
-num_particles = 200
+num_particles = 50
 tolerance_descent_percentile = 75
 max_num_failures = 50

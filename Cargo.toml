@@ -1,6 +1,6 @@
 [package]
 name = "abcd"
-version = "1.0.0"
+version = "2.0.0-OT.1"
 authors = ["tearne <tearne@gmail.com>", "christine.gavin@apha.gov.uk"]
 edition = "2021"
 

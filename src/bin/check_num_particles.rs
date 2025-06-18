@@ -26,7 +26,11 @@ fn main() {
     let runtime = Runtime::new().unwrap();
     let handle = runtime.handle();
 
-    let s3 = S3System::new(check_num_particles.bucket, check_num_particles.prefix, handle.clone()).unwrap();
+    let s3 = S3System::new(
+        &check_num_particles.bucket, 
+        &check_num_particles.prefix, 
+        handle.clone()
+    ).unwrap();
 
     println!("Number of accepted particles in current gen: {:#?}", s3.num_accepted_particles().unwrap());
 }

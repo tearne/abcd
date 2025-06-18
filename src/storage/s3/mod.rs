@@ -11,6 +11,7 @@ use aws_sdk_s3::types::{ObjectIdentifier, Delete, BucketVersioningStatus, Object
 use aws_smithy_http::byte_stream::ByteStream;
 use aws_smithy_http::result::SdkError;
 use bytes::Bytes;
+use envmnt::{ExpandOptions, ExpansionType};
 use futures::{Future, FutureExt, TryFutureExt};
 use regex::Regex;
 use serde::{de::DeserializeOwned, Serialize};
@@ -34,7 +35,19 @@ pub struct S3System {
     completed_gen_re: Regex,
 }
 impl S3System {
-    pub fn new(bucket: String, prefix: String, handle: Handle) -> ABCDResult<Self> {
+    pub fn new(bucket: &str, prefix: &str, handle: Handle) -> ABCDResult<Self> {
+        if bucket.starts_with("s3://") {
+            return Err(ABCDErr::SystemError(
+                "Bucket in config shouldn't start with 's3://'.  Just provide the bucket name.".into()
+            ));
+        }
+
+        // Expand bucket environment variables as appropriate
+        let mut options = ExpandOptions::new();
+        options.expansion_type = Some(ExpansionType::Unix);
+        let bucket = envmnt::expand(&bucket, Some(options));
+        let prefix = envmnt::expand(&prefix, Some(options));
+        
         let client = {
             let config = handle.block_on(
                 aws_config::from_env()
