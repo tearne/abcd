@@ -1,4 +1,0 @@
-polars
-seaborn
-matplotlib
-dpath
