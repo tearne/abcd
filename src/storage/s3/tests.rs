@@ -263,13 +263,13 @@ impl Drop for StorageTestHelper {
 }
 
 fn build_instance(helper: &StorageTestHelper) -> S3System {
-    let storage_config = StorageConfig::S3 {
-        bucket: helper.bucket.clone(),
-        prefix: helper.prefix.clone(),
-    };
+    let storage_config = StorageConfig::new(
+        &helper.bucket,
+        &helper.prefix,
+    );
 
     storage_config
-        .build_s3(helper.runtime.handle().clone())
+        .build(helper.runtime.handle().clone())
         .expect("Failed to build storage instance")
 }
 
