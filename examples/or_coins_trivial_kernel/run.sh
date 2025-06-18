@@ -35,4 +35,4 @@ aws s3 sync s3://${TEST_BUCKET}/${TEST_PREFIX}/completed ../../out/or_coins_triv
 
 printf "Plotting results...\n"
 sleep 1
-uv run plot/script.py
+./plot.py

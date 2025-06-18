@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, path::Path, fmt::Debug};
 
 use envmnt::{ExpandOptions, ExpansionType};
 use tokio::runtime::Handle;
@@ -13,7 +13,6 @@ pub struct StorageConfig<'a> {
     pub prefix: Cow<'a, str>,
 }
 impl<'a> StorageConfig<'a> {
-
     pub fn new<P: Into<Cow<'a, str>>>(bucket: P, prefix: P) -> Self {
         Self {
             bucket: bucket.into(),
@@ -33,6 +32,8 @@ impl<'a> StorageConfig<'a> {
         options.expansion_type = Some(ExpansionType::Unix);
         let bucket = envmnt::expand(&self.bucket, Some(options));
         let prefix = envmnt::expand(&self.prefix, Some(options));
+
+        log::info!("Building storage system for S3.  Bucket = {}, prefix = {}", &bucket, &prefix);
 
         S3System::new(bucket, prefix, handle)
     }
