@@ -6,7 +6,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use statrs::statistics::{Data, OrderStatistics};
 
 use crate::{
-    config::Config, error::{ABCDErr, ABCDResult}, kernel::{Kernel, KernelBuilder}
+    config::AbcdConfig, error::{ABCDErr, ABCDResult}, kernel::{Kernel, KernelBuilder}
 };
 
 pub trait Model {
@@ -60,7 +60,7 @@ impl<P> Generation<P> {
         mut particles: Vec<Particle<P>>,
         generation_number: u16,
         acceptance: f32,
-        config: &Config,
+        config: &AbcdConfig,
     ) -> ABCDResult<Self> {
         let total_weight: f64 = particles.iter().map(|p| p.weight).sum();
 
@@ -79,7 +79,7 @@ impl<P> Generation<P> {
         })
     }
 
-    fn calculate_next_tolerance(particles: &[Particle<P>], config: &Config) -> ABCDResult<f64> {
+    fn calculate_next_tolerance(particles: &[Particle<P>], config: &AbcdConfig) -> ABCDResult<f64> {
         // Get distribution of scores from last generation then reduce by tolerance descent rate (configured) - crate exists for percentile =>
         let score_distribution: ABCDResult<Vec<f64>> = particles
             .iter()
@@ -97,7 +97,7 @@ impl<P> Generation<P> {
 
         let mut score_distribution = Data::new(score_distribution?);
         let new_tolerance =
-            score_distribution.percentile(config.algorithm.tolerance_descent_percentile);
+            score_distribution.percentile(config.tolerance_descent_percentile);
 
         match new_tolerance.is_nan() {
             false => {

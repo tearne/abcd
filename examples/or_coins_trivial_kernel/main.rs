@@ -1,8 +1,5 @@
 use abcd::{
-    config::Config,
-    error::{ABCDErr, ABCDResult},
-    kernel::{Kernel, TrivialKernel},
-    Model, Particle, ABCD,
+    config::AbcdConfig, error::{ABCDErr, ABCDResult}, kernel::{Kernel, TrivialKernel}, storage::{config::StorageConfig, s3::S3System}, Model, Particle, ABCD
 };
 use color_eyre::eyre;
 use nalgebra::DVector;
@@ -184,15 +181,19 @@ fn main() -> eyre::Result<()> {
     let mut random = rand::thread_rng();
 
     let path = Path::new("./config.toml").absolutize().unwrap();
-    println!("---{:?}", path);
     log::info!("Load config from {:?}", path);
-    let config = Config::from_path(path)?;
+    let config = {
+        let str = std::fs::read_to_string(path)?;
+        toml::from_str::<AbcdConfig>(&str).expect("Expected parsed config")
+    };
 
     let runtime = Runtime::new().unwrap();
-    let handle = runtime.handle();
-
-    let storage = config.storage.build_s3(handle.clone())?;
-
+    let storage = S3System::new(
+        "$TEST_BUCKET",
+        "$TEST_PREFIX",
+        runtime.handle().clone()
+    )?;
+    
     ABCD::run(m, config, storage, &mut random)?;
 
     Ok(())

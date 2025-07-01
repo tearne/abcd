@@ -19,8 +19,9 @@ from pathlib import Path
 this_dir = os.path.dirname(os.path.realpath(__file__))
 os.chdir(this_dir)
 
-project_dir = Path("..", "..", "..")
+project_dir = Path("..", "..")
 particles_dir = project_dir / "out/or_coins_olcm"
+print("particles dir", particles_dir.resolve())
 
 all_gens = list(Path(particles_dir).glob('*.json'))
 

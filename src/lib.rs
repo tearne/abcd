@@ -7,34 +7,36 @@ pub mod kernel;
 
 use std::borrow::Cow;
 
-use config::Config;
+
 use error::{ABCDErr, ABCDResult};
 use kernel::KernelBuilder;
 use rand::prelude::*;
 use storage::Storage;
 pub use types::{Generation, Model, Particle, Population};
 use wrapper::GenWrapper;
+
+use crate::config::AbcdConfig;
 pub struct ABCD<M: Model, S: Storage> {
     model: M,
-    config: Config,
+    config: AbcdConfig,
     storage: S,
 }
 
 impl<M: Model, S: Storage> ABCD<M, S> {
     // Run until the target generation as specified in config.job is met
-    pub fn run(model: M, config: Config, storage: S, rng: &mut impl Rng) -> ABCDResult<()> {
+    pub fn run(model: M, config: AbcdConfig, storage: S, rng: &mut impl Rng) -> ABCDResult<()> {
         Self::inner_run(model, config, storage, rng, false)
     }
 
     // Run until the next generation is reached, then shut down
-    pub fn boost(model: M, config: Config, storage: S, rng: &mut impl Rng) -> ABCDResult<()> {
+    pub fn boost(model: M, config: AbcdConfig, storage: S, rng: &mut impl Rng) -> ABCDResult<()> {
         log::info!("Running in boost mode - will only run until the next generation.");
         Self::inner_run(model, config, storage, rng, true)
     }
 
     fn inner_run(
         model: M,
-        config: Config,
+        config: AbcdConfig,
         storage: S,
         rng: &mut impl Rng,
         boost_mode: bool,
@@ -58,7 +60,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
         let start_gen_num = self.storage.previous_gen_number()?;
 
         loop {
-            if gen_failures.len() > self.config.algorithm.max_num_failures {
+            if gen_failures.len() > self.config.max_num_failures {
                 return Err(ABCDErr::TooManyRetriesError(
                     "Too many retries in generation loop".into(),
                     gen_failures,
@@ -66,8 +68,8 @@ impl<M: Model, S: Storage> ABCD<M, S> {
             }
 
             let prev_gen_num_in_storage = self.storage.previous_gen_number()?;
-            if prev_gen_num_in_storage >= self.config.job.num_generations
-                && self.config.job.terminate_at_target_gen
+            if prev_gen_num_in_storage >= self.config.num_generations
+                && self.config.terminate_at_target_gen
             {
                 log::info!(
                     "Reached target number of generations: {}",
@@ -123,7 +125,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
 
         loop {
             // Particle loop
-            if particle_failures.len() > self.config.algorithm.max_num_failures {
+            if particle_failures.len() > self.config.max_num_failures {
                 return Err(ABCDErr::TooManyRetriesError(
                     "In particle loop".into(),
                     particle_failures,
@@ -146,7 +148,7 @@ impl<M: Model, S: Storage> ABCD<M, S> {
 
             // Check if we now have the required num particles/reps, if so, break
             let num_accepted = self.storage.num_accepted_particles()?;
-            if num_accepted < self.config.job.num_particles {
+            if num_accepted < self.config.num_particles {
                 if num_accepted % 10 == 0 {
                     log::info!("{num_accepted} accepted particles in storage.");
                 }
