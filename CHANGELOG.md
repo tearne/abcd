@@ -1,3 +1,14 @@
+# [2.0.2] Unreleased
+### Objective
+### Fixed
+### Added
+### Changed
+### Known Issues
+
+# [2.0.1] 2025-09-23
+### Fixed
+- Increased threshold for testing whether covariant matrix was symmetric as this was set too low (previously f64::EPSILON).
+
 # [1.0.0] 2024-06-25
 - Introduce new OLCM kernel option based on: Filippi, S., Barnes, C. P., Cornebise, J., & Stumpf, M. P. (2013). On optimality of kernels for approximate Bayesian computation using sequential Monte Carlo. Statistical applications in genetics and molecular biology, 12(1), 87-107.
 
