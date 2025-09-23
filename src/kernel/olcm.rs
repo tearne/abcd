@@ -109,8 +109,8 @@ where
             .reduce(|acc, mat| acc + mat)
             .ok_or_else(|| ABCDErr::OCLMError("Failed to build weighted covariance.".into()))?;
 
-        let diffs = weighted_cov.lower_triangle() - weighted_cov.upper_triangle().transpose();
-        if diffs.max() < f64::EPSILON {
+        let diffs = (weighted_cov.lower_triangle() - weighted_cov.upper_triangle().transpose()).abs();
+        if diffs.max() < 0.001 {
             // Cov matrix should be symmetric but calculations may be imprecise due to floating point multiplication
             make_symmetric(&mut weighted_cov)?;
         } else {
